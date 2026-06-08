@@ -37,7 +37,7 @@ Spring Boot 3.4.x/ Java 21 기반 REST API 서버. 레이어드 아키텍처를 
 ```
 com.soma.backend
 ├── domain/      # 비즈니스 도메인별 Controller·Service·Repository
-├── global/      # 전 도메인 공통 (config, exception, response, security)
+├── global/      # 전 도메인 공통 (config, exception, security)
 └── infra/       # 외부 시스템 연동 (redis, s3, fcm)
 ```
 
@@ -45,9 +45,7 @@ com.soma.backend
 
 **global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다.
 
-**global/exception** — 모든 예외는 `BusinessException(ErrorCode)`으로 던지고 `GlobalExceptionHandler`가 `ApiResponse<Void>` 형태로 응답한다.
-
-**global/response** — 모든 API 응답은 `ApiResponse<T>`로 통일한다 (`success`, `message`, `data`).
+**global/exception** — 모든 예외는 `BusinessException(ErrorCode)`으로 던지고 `GlobalExceptionHandler`가 `ErrorResponse` (`{ "error": { "code", "message" } }`) 형태로 응답한다.
 
 **infra/redis** — `RefreshTokenRepository`가 `RedisTemplate<String, String>`으로 Refresh Token을 `refresh:{userId}` 키로 관리한다 (TTL 14일).
 
@@ -63,8 +61,9 @@ DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{
 
 ## Constraints
 
-- 응답 포맷은 항상 `ApiResponse<T>` 사용
-- 예외는 `BusinessException` + `ErrorCode` enum 사용, `GlobalExceptionHandler`에서 처리
+- 응답 포맷은 flat JSON (래퍼 없음), 필드명은 snake_case (Jackson 전역 설정)
+- 엔티티 PK는 UUID 사용, `CustomUserDetails.userId`도 UUID
+- 에러는 `BusinessException` + `ErrorCode` enum, `GlobalExceptionHandler`가 `ErrorResponse`로 처리
 - JWT secret은 최소 32자 이상
 - `open-in-view: false` — 서비스 레이어 안에서 트랜잭션 완료 후 응답
 
