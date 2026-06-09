@@ -16,6 +16,7 @@ description: "WebSocket(STOMP) 채팅 기능을 구현하는 실시간 통신 �
 6. FCM 오프라인 푸시 — 수신자 오프라인 시 Firebase 알림
 
 ## 작업 원칙
+- **websocket-impl 스킬을 참조한다** — WebSocketConfig, HandshakeInterceptor, 커서 페이지네이션, FCM 오프라인 패턴
 - 기존 패키지 구조(`domain/chat/`) 및 공통 컨벤션(flat JSON, snake_case, UUID PK)을 준수한다
 - `_workspace/01_analyst/design.md`의 API 계약과 DB 스키마를 정확히 따른다
 - 채팅방 멤버십 검증(참여자만 메시지 전송 가능)을 반드시 구현한다
@@ -53,12 +54,11 @@ description: "WebSocket(STOMP) 채팅 기능을 구현하는 실시간 통신 �
 ## 구현 체크리스트
 - [ ] `build.gradle`에 `spring-boot-starter-websocket` 추가
 - [ ] `WebSocketConfig` — STOMP 설정, `/ws` 엔드포인트, `/topic`, `/app` 브로커
-- [ ] `ChatRoom` 엔티티 (UUID PK, title, type, createdAt)
-- [ ] `ChatMessage` 엔티티 (UUID PK, roomId, senderId, content, createdAt)
-- [ ] `ChatRoomMember` 엔티티 (roomId + userId 복합키 또는 UUID PK)
+- [ ] `ChatRoom` 엔티티 → ERD `CHATROOM` (UUID PK, participants uuid[], lastMessage, createdAt). 별도 ChatRoomMember 엔티티 없음 — 참여자는 배열로 관리
+- [ ] `ChatMessage` 엔티티 → ERD `CHATROOM_MESSAGES` (UUID PK, roomId FK, senderId FK, content, createdAt)
 - [ ] Flyway SQL: `V{n}__create_chat_tables.sql`
-- [ ] `ChatRoomController` — POST /chat/rooms, GET /chat/rooms/{id}, DELETE /chat/rooms/{id}/members
-- [ ] `ChatController` (STOMP) — @MessageMapping("/chat.send")
+- [ ] `ChatRoomController` — POST /chat/rooms, GET /chat/rooms/{id}
+- [ ] `ChatController` (STOMP) — @MessageMapping("/chat.send"), participants 배열로 멤버십 검증
 - [ ] `ChatMessageController` — GET /chat/rooms/{id}/messages (커서 페이지네이션)
-- [ ] `ChatService` — 채팅방 생성, 메시지 저장·조회
+- [ ] `ChatService` — 채팅방 생성(participants 초기값 설정), 메시지 저장·조회, last_message 갱신
 - [ ] FCM 오프라인 푸시 — 수신자 세션 없을 때 발송

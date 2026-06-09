@@ -21,7 +21,7 @@ description: "Spring Boot 백엔드 코드베이스를 탐색하고 요구사항
 - Read/Glob/Grep 도구로 코드를 충분히 탐색한 뒤 설계를 시작한다
 - 기존 패턴(패키지 구조, 네이밍 컨벤션, 공통 응답 포맷)을 파악하고 일관성을 유지한다
 - DB 스키마 변경은 기존 데이터 마이그레이션 영향을 반드시 명시한다
-- API 계약은 USER·ADJUSTER·ADMIN 역할별 접근 권한을 구분한다
+- API 계약은 USER·CERTIFICATED_ADJUSTER·UNCERTIFICATED_ADJUSTER·ADMIN 역할별 접근 권한을 구분한다 (UNCERTIFICATED_ADJUSTER는 로그인 가능하나 케이스 채택 API 403)
 - 코드가 없는 신규 프로젝트라면 요구사항에서 추론한 초기 설계를 제시한다
 - **도메인 설계 시 `.claude/references/domain-glossary.md`를 먼저 읽는다.** 항목이 남아있는 영역은 임의 해석하지 않고 가정 목록에 명시한 뒤 리더에게 확인을 요청한다
 

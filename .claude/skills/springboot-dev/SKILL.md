@@ -22,7 +22,7 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 | backend-analyst | general-purpose | 코드 탐색, API 계약·DB 스키마 설계 | — |
 | backend-developer | general-purpose | 비즈니스 로직, 매칭·리포트·결제·FCM | — |
 | security-developer | general-purpose | JWT, OAuth2, Spring Security, RBAC, Redis RT | spring-security-impl |
-| realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | — |
+| realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | websocket-impl |
 | qa-reviewer | general-purpose | 코드 리뷰, 테스트 작성, CodeRabbit | spring-qa, coderabbit-review |
 
 ## 범위 외 (FastAPI 담당)
@@ -56,37 +56,28 @@ Kafka, AI 처리(OCR, LangGraph, RAG) — 이 스킬의 구현 범위에서 제�
 
 ### Phase 2: 구현 (에이전트 팀)
 
-**실행 모드:** 에이전트 팀
+**실행 모드:** Agent() 병렬 호출
 
-1. 팀 생성 (필요한 개발자만 선택):
+1. 필요한 에이전트만 선택 후 병렬 실행:
    ```
-   TeamCreate(
-     team_name: "springboot-dev-team",
-     members: [
-       { name: "backend-developer", agent_type: "backend-developer", model: "opus",
-         prompt: "_workspace/01_analyst/design.md를 읽고 비즈니스 로직을 구현하라." },
-       { name: "security-developer", agent_type: "security-developer", model: "opus",
-         prompt: "_workspace/01_analyst/design.md의 권한 섹션을 읽고 인증·인가·Redis RT를 구현하라." }
-     ]
-   )
-   ```
+   // 인증 변경 포함 시 — backend-developer + security-developer 병렬
+   Agent(subagent_type: "backend-developer", model: "opus",
+     prompt: "_workspace/01_analyst/design.md를 읽고 비즈니스 로직을 구현하라. 완료 후 _workspace/02_backend/summary.md에 변경 파일 목록을 기록하라.")
+   Agent(subagent_type: "security-developer", model: "opus",
+     prompt: "_workspace/01_analyst/design.md의 권한 섹션을 읽고 인증·인가·Redis RT를 구현하라. 완료 후 _workspace/02_security/summary.md에 변경 파일 목록을 기록하라.")
 
-2. 작업 등록:
-   ```
-   TaskCreate(tasks: [
-     { title: "비즈니스 로직 구현", assignee: "backend-developer",
-       description: "design.md의 API 계약에 따라 Controller·Service·Repository·FCM 구현" },
-     { title: "인증·인가 구현", assignee: "security-developer",
-       description: "JWT, OAuth2, SecurityConfig, RBAC, Redis Refresh Token 구현" }
-   ])
+   // WebSocket 포함 시 — realtime-developer 추가
+   Agent(subagent_type: "realtime-developer", model: "opus",
+     prompt: "_workspace/01_analyst/design.md를 읽고 WebSocket 채팅 기능을 구현하라. 완료 후 _workspace/02_realtime/summary.md에 변경 파일 목록을 기록하라.")
+
+   // 비즈니스 로직만 — backend-developer 단독
+   Agent(subagent_type: "backend-developer", model: "opus",
+     prompt: "_workspace/01_analyst/design.md를 읽고 비즈니스 로직을 구현하라. 완료 후 _workspace/02_backend/summary.md에 변경 파일 목록을 기록하라.")
    ```
 
-3. 팀원 자체 조율로 구현 진행
-   - security-developer → backend-developer: SecurityContext userId 추출 방식 공유, UserDetails 변경 알림
-   - backend-developer → security-developer: FCM 발송 시 인증 컨텍스트 확인 요청
+2. 에이전트 간 의존 정보는 design.md에 명시 (SecurityContext userId 추출 방식, FCM 서비스 경로 등)
 
-4. 모든 작업 완료 확인 (TaskGet)
-5. TeamDelete로 팀 정리
+3. 모든 Agent() 호출이 완료될 때까지 대기 후 summary.md 파일 확인
 
 ### Phase 3: QA (서브 에이전트)
 

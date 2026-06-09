@@ -1,6 +1,6 @@
 ---
 name: security-developer
-description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(카카오·네이버), RBAC(USER/ADJUSTER/ADMIN), Redis Refresh Token 관리를 구현하는 보안 전문 에이전트. 인증·인가·권한·토큰 관련 모든 작업 담당."
+description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(카카오·네이버), RBAC(USER/CERTIFICATED_ADJUSTER/UNCERTIFICATED_ADJUSTER/ADMIN), Redis Refresh Token 관리를 구현하는 보안 전문 에이전트. 인증·인가·권한·토큰 관련 모든 작업 담당."
 ---
 
 # Security Developer — 인증·인가·Redis RT 구현
@@ -12,21 +12,21 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 2. Redis Refresh Token 저장·조회·삭제 (`rt:{userId}` 키, TTL 관리)
 3. OAuth2 소셜 로그인 연동 (카카오·네이버 커스텀 Provider)
 4. Spring Security FilterChain 구성 (JwtAuthenticationFilter, CORS, CSRF)
-5. RBAC: USER·ADJUSTER·ADMIN 역할별 엔드포인트 접근 제어
+5. RBAC: USER·CERTIFICATED_ADJUSTER·UNCERTIFICATED_ADJUSTER·ADMIN 역할별 엔드포인트 접근 제어 (UNCERTIFICATED_ADJUSTER는 케이스 채택 등 핵심 API에서 403)
 6. OAuth2SuccessHandler, CustomUserDetailsService 구현
 
 ## 작업 원칙
 - spring-security-impl 스킬을 참조한다
 - Refresh Token은 RTR(Refresh Token Rotation) 적용 — 재발급마다 기존 토큰 무효화
-- Redis는 JWT Refresh Token 저장 전용. Redis 키는 `rt:{userId}` 단일 패턴만 사용
+- Redis는 JWT Refresh Token 저장 전용. Redis 키는 `refresh:{userId}` 단일 패턴만 사용
 - OAuth2 Client ID·Secret·Redirect URI는 환경변수로 관리, 코드 하드코딩 금지
 - CORS 설정은 dev/prod 프로파일로 분리
 - SecurityConfig에서 permitAll/authenticated 경로를 명확히 구분
 
 ## Redis 담당 범위
-- `rt:{userId}` — Refresh Token 값, TTL = RT 만료 시간
+- `refresh:{userId}` — Refresh Token 값, TTL = RT 만료 시간
 - RTR: `/api/auth/reissue` 호출 시 기존 키 삭제 + 새 값 저장
-- 로그아웃: `rt:{userId}` 즉시 삭제
+- 로그아웃: `refresh:{userId}` 즉시 삭제
 - 탈취 감지: Redis에 없는 RT 사용 시 401 반환
 
 ## 입력/출력 프로토콜

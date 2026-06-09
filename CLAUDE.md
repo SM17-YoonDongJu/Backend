@@ -57,6 +57,12 @@ com.soma.backend
 
 DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{description}.sql`). JPA `ddl-auto`는 `validate`로 고정.
 
+## Git Conventions
+
+- 커밋 메시지는 **항상 한국어**로 작성한다.
+- 형식: `<type>(<scope>): <한국어 설명>` (Conventional Commits 준수)
+- 예시: `feat(auth): 카카오 OAuth2 소셜 로그인 구현`, `fix(matching): 매칭 수락 시 중복 채팅방 생성 버그 수정`
+
 ## Code Conventions
 
 Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반 시 빌드 실패.

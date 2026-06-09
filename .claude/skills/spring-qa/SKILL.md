@@ -34,7 +34,7 @@ class MatchingServiceTest {
     @DisplayName("매칭 수락 시 채팅 채널이 개설된다")
     void acceptMatching_ShouldCreateChatRoom() {
         // Given
-        Long matchingId = 1L;
+        UUID matchingId = UUID.randomUUID();
         Matching matching = createMatchingFixture(MatchingStatus.PENDING);
         given(matchingRepository.findById(matchingId)).willReturn(Optional.of(matching));
 
@@ -79,7 +79,7 @@ class MatchingControllerTest {
 
     @Test
     @WithMockUser(roles = "USER")
-    void requestMatching_WithValidRequest_Returns201() throws Exception {
+    void requestMatching_WithValidRequest_Returns201() throws Exception { // USER만 매칭 요청 가능
         // Given
         MatchingRequestDto request = new MatchingRequestDto(adjusterId, description);
 
@@ -92,9 +92,15 @@ class MatchingControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
+    @WithMockUser(roles = "CERTIFICATED_ADJUSTER")
     void requestMatching_AsAdjuster_Returns403() throws Exception {
-        // 권한 없는 역할의 접근 거부 검증
+        // 사정사 역할의 접근 거부 검증
+    }
+
+    @Test
+    @WithMockUser(roles = "UNCERTIFICATED_ADJUSTER")
+    void adoptCase_AsUncertificatedAdjuster_Returns403() throws Exception {
+        // 미인증 사정사 케이스 채택 시도 → 403 검증
     }
 }
 ```
@@ -105,8 +111,8 @@ class MatchingControllerTest {
 // 커스텀 UserDetails가 있는 경우
 @WithUserDetails(value = "user@test.com", userDetailsServiceBeanName = "customUserDetailsService")
 
-// 특정 권한 직접 지정
-@WithMockUser(username = "adjuster", roles = {"ADJUSTER"})
+// 특정 권한 직접 지정 — ERD role Enum 그대로 사용
+@WithMockUser(username = "adjuster", roles = {"CERTIFICATED_ADJUSTER"})
 
 // JWT 토큰 헤더 직접 설정
 mockMvc.perform(get("/api/adjuster/matching")

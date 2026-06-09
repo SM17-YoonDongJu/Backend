@@ -12,13 +12,13 @@ description: "Spring Security 6 기반 JWT(RTR), OAuth2 소셜 로그인(카카�
 - JWT (jjwt 또는 spring-security-oauth2-resource-server)
 - OAuth2 Client (카카오·네이버 커스텀 Provider)
 - Redis (Refresh Token 저장)
-- RBAC: USER · ADJUSTER · ADMIN
+- RBAC: USER · CERTIFICATED_ADJUSTER · UNCERTIFICATED_ADJUSTER · ADMIN
 
 ## JWT 구현 패턴
 
 ### 토큰 전략
 - Access Token: 짧은 만료 (15분~1시간), HTTP 응답 바디 또는 쿠키
-- Refresh Token: 긴 만료 (7~30일), Redis에 `rt:{userId}` 키로 저장
+- Refresh Token: 긴 만료 (30일), Redis에 `refresh:{userId}` 키로 저장
 - RTR(Refresh Token Rotation): 재발급 시 기존 RT 삭제 + 새 RT 발급
 
 ### JwtProvider 핵심 메서드
@@ -55,14 +55,15 @@ OAuth2 로그인 성공 → CustomOAuth2UserService.loadUser()
 
 ### 권한 계층
 ```
-ADMIN > ADJUSTER > USER
+ADMIN > CERTIFICATED_ADJUSTER > USER
+UNCERTIFICATED_ADJUSTER: 로그인 가능, 케이스 채택 등 핵심 API 접근 시 403
 ```
 
 ### 엔드포인트 접근 제어 예시
 ```java
 // SecurityConfig
 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-.requestMatchers("/api/adjuster/**").hasAnyRole("ADJUSTER", "ADMIN")
+.requestMatchers("/api/adjuster/**").hasAnyRole("CERTIFICATED_ADJUSTER", "ADMIN")
 .requestMatchers("/api/user/**").authenticated()
 .requestMatchers("/api/public/**").permitAll()
 ```
@@ -70,7 +71,7 @@ ADMIN > ADJUSTER > USER
 ### 메서드 레벨 권한
 ```java
 @PreAuthorize("hasRole('ADMIN')")
-@PreAuthorize("hasRole('ADJUSTER') and #adjusterId == authentication.principal.id")
+@PreAuthorize("hasRole('CERTIFICATED_ADJUSTER') and #adjusterId == authentication.principal.id")
 ```
 
 ## SecurityConfig 기본 구조
@@ -116,16 +117,16 @@ Redis는 JWT Refresh Token 저장 전용으로만 사용한다.
 ```java
 @Component
 public class RefreshTokenRepository {
-    private static final String PREFIX = "rt:";
+    private static final String PREFIX = "refresh:";
 
     // 저장
-    public void save(Long userId, String refreshToken, long ttlMillis) {
+    public void save(UUID userId, String refreshToken, long ttlMillis) {
         redisTemplate.opsForValue()
             .set(PREFIX + userId, refreshToken, ttlMillis, TimeUnit.MILLISECONDS);
     }
 
     // RTR: 재발급 시 기존 삭제 + 신규 저장
-    public String reissue(Long userId, String newRefreshToken, long ttlMillis) {
+    public String reissue(UUID userId, String newRefreshToken, long ttlMillis) {
         String existing = redisTemplate.opsForValue().getAndDelete(PREFIX + userId);
         if (existing == null) throw new InvalidTokenException("RT not found or expired");
         save(userId, newRefreshToken, ttlMillis);
@@ -133,7 +134,7 @@ public class RefreshTokenRepository {
     }
 
     // 로그아웃
-    public void delete(Long userId) {
+    public void delete(UUID userId) {
         redisTemplate.delete(PREFIX + userId);
     }
 }
