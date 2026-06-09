@@ -1,6 +1,9 @@
 package com.soma.backend.global.security;
 
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.security.Keys;
@@ -63,14 +66,15 @@ public class JwtProvider {
     }
 
     /**
-     * 서명·만료를 검증한다. 유효하지 않으면 false.
+     * 서명·만료를 검증한다. 만료 시 EXPIRED_TOKEN, 위조·형식 오류 시 INVALID_TOKEN을 던진다.
      */
-    public boolean validateToken(String token) {
+    public void validate(String token) {
         try {
             parseClaims(token);
-            return true;
+        } catch (ExpiredJwtException e) {
+            throw new BusinessException(ErrorCode.EXPIRED_TOKEN);
         } catch (JwtException | IllegalArgumentException e) {
-            return false;
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
     }
 
