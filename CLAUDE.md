@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Commands
 
 ```bash
@@ -41,15 +39,15 @@ com.soma.backend
 └── infra/       # 외부 시스템 연동 (redis, s3, fcm)
 ```
 
-**domain** 패키지 내부는 도메인별로 `controller`, `service`, `dto` 서브패키지로 구성한다. 도메인: `auth`, `user`, `adjuster`, `report`, `matching`, `payment`, `chat`.
+**domain** 패키지 내부는 도메인별로 `controller`, `service`, `dto` 서브패키지로 구성한다. 도메인: `auth`, `user`, `adjuster`, `chat`.
 
 **global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다.
 
-**global/exception** — 모든 예외는 `BusinessException(ErrorCode)`으로 던지고 `GlobalExceptionHandler`가 `ErrorResponse` (`{ "error": { "code", "message" } }`) 형태로 응답한다.
+**global/exception** — 모든 예외는 `BusinessException(ErrorCode)`으로 던지고 `GlobalExceptionHandler`가 `ErrorResponse` (`{ "status": "400", "code": "ERROR_CODE", "message": "..." }`) 형태로 응답한다.
 
 **infra/redis** — `RefreshTokenRepository`가 `RedisTemplate<String, String>`으로 Refresh Token을 `refresh:{userId}` 키로 관리한다 (TTL 14일).
 
-**infra/s3** — `S3Client` Bean은 `global/config/S3Config`에서 `aws.*` 프로퍼티로 직접 구성한다 (Spring Cloud AWS 미사용).
+**infra/s3** — `S3Client` Bean은 `infra/s3/S3Config`에서 `aws.*` 프로퍼티로 직접 구성한다 (Spring Cloud AWS 미사용).
 
 ## Key Configuration
 
@@ -58,6 +56,37 @@ com.soma.backend
 로컬 개발 시 DB/Redis 기본값이 적용되므로 `docker compose up -d`만 실행하면 된다.
 
 DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{description}.sql`). JPA `ddl-auto`는 `validate`로 고정.
+
+## Code Conventions
+
+Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반 시 빌드 실패.
+
+**포맷**
+- 들여쓰기: 스페이스만 사용 (탭 금지)
+- 최대 줄 길이: 120자 (package·import·URL 제외)
+- 파일 마지막 줄: 빈 줄 필수
+
+**네이밍**
+- 클래스: `PascalCase`
+- 메서드·파라미터·지역변수·필드: `camelCase`
+- 상수(`static final`): `UPPER_SNAKE_CASE`
+- 패키지: 소문자, 숫자·언더스코어 금지
+
+**임포트**
+- 와일드카드 임포트(`*`) 금지
+- 미사용·중복 임포트 금지
+
+**블록**
+- 모든 `if`/`for`/`while` 등에 중괄호 필수 (한 줄이라도)
+- catch 블록 비워두기 금지 (주석이라도 작성)
+
+**코딩**
+- 한 줄에 문장 하나
+- 변수 한 번에 하나씩 선언
+- 배열 타입: `String[] args` 형식 (`String args[]` 금지)
+- long 리터럴: `L` 대문자 사용 (`100l` → `100L`)
+- `equals()`/`hashCode()` 둘 다 구현하거나 둘 다 구현 안 하거나
+- `switch`에 `default` 필수, `fall-through` 금지
 
 ## Constraints
 

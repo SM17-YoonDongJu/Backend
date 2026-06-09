@@ -6,16 +6,5 @@
       "Write(.claude/skills/*)",
       "Edit(.claude/skills/*)"
     ]
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "type": "command",
-        "command": "cd \"C:/work/backend\" && ./gradlew checkstyleMain -q 2>&1 | tail -5",
-        "shell": "bash",
-        "timeout": 60,
-        "statusMessage": "Checkstyle 검사 중..."
-      }
-    ]
   }
 }
