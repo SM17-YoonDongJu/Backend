@@ -1,4 +1,4 @@
-package com.soma.backend.global.config;
+package com.soma.backend.infra.s3;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -18,7 +18,6 @@ public class S3Config {
 
     @Value("${aws.credentials.secret-key}")
     private String secretKey;
-
 
     @Value("${aws.region:ap-northeast-2}")
     private String region;

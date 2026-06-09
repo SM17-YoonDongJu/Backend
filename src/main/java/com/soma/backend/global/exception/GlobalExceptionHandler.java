@@ -1,6 +1,7 @@
 package com.soma.backend.global.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,7 +24,7 @@ public class GlobalExceptionHandler {
                 .findFirst()
                 .orElse(ErrorCode.INVALID_INPUT.getMessage());
         return ResponseEntity.badRequest()
-                .body(ErrorResponse.of("BAD_REQUEST", message));
+                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, "BAD_REQUEST", message));
     }
 
     @ExceptionHandler(Exception.class)

@@ -61,7 +61,8 @@ DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{
 
 ## Constraints
 
-- 응답 포맷은 flat JSON (래퍼 없음), 필드명은 snake_case (Jackson 전역 설정)
+- 응답 포맷: 성공 `{ "status": "200", "message": "...", "data": { ... } }`, 실패 `{ "status": "400", "code": "ERROR_CODE", "message": "..." }`, 필드명은 snake_case (Jackson 전역 설정)
+- 성공 응답은 `ApiResponse.ok(data)` / `ApiResponse.ok(message, data)` / `ApiResponse.ok()` 사용, 컨트롤러는 `ResponseEntity<ApiResponse<T>>` 반환
 - 엔티티 PK는 UUID 사용, `CustomUserDetails.userId`도 UUID
 - 에러는 `BusinessException` + `ErrorCode` enum, `GlobalExceptionHandler`가 `ErrorResponse`로 처리
 - JWT secret은 최소 32자 이상
@@ -93,3 +94,4 @@ Spring Boot가 담당하는 영역:
 |------|----------|------|------|
 | 2026-06-09 | 초기 구성 | 전체 | 환경 세팅 완료 후 하네스 등록 |
 | 2026-06-09 | realtime-developer 추가, WebSocket 범위 편입 | agents/realtime-developer.md, springboot-dev SKILL.md | 채팅 기능 추가 요청 |
+| 2026-06-09 | domain-glossary 뼈대 추가, qa-reviewer 컴플라이언스 섹션 추가, backend-analyst glossary 참조 원칙 추가 | references/domain-glossary.md, agents/qa-reviewer.md, agents/backend-analyst.md | 변호사법·보험업법 리스크 대응 |

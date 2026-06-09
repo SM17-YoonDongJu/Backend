@@ -6,5 +6,20 @@
       "Write(.claude/skills/*)",
       "Edit(.claude/skills/*)"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"C:/work/backend\" && git add -A && (git diff --cached --quiet && echo \"Nothing to commit\" || git commit -m \"chore: auto-commit $(date '+%Y-%m-%d%H:%M')\")",
+            "shell": "bash",
+            "timeout": 30,
+            "statusMessage": "Auto-committing changes..."
+          }
+        ]
+      }
+    ]
   }
 }

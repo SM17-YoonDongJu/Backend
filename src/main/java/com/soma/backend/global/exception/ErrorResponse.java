@@ -1,17 +1,18 @@
 package com.soma.backend.global.exception;
 
-public record ErrorResponse(ErrorDetail error) {
+import org.springframework.http.HttpStatus;
 
-    public record ErrorDetail(String code, String message) {}
+public record ErrorResponse(String status, String code, String message) {
 
     public static ErrorResponse of(ErrorCode errorCode) {
-        return new ErrorResponse(new ErrorDetail(
+        return new ErrorResponse(
+                String.valueOf(errorCode.getStatus().value()),
                 errorCode.name(),
                 errorCode.getMessage()
-        ));
+        );
     }
 
-    public static ErrorResponse of(String code, String message) {
-        return new ErrorResponse(new ErrorDetail(code, message));
+    public static ErrorResponse of(HttpStatus httpStatus, String code, String message) {
+        return new ErrorResponse(String.valueOf(httpStatus.value()), code, message);
     }
 }

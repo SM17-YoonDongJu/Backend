@@ -1,4 +1,4 @@
-package com.soma.backend.global.config;
+package com.soma.backend.infra.redis;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

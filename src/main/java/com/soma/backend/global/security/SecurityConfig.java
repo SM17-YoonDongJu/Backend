@@ -13,8 +13,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 /**
  * Spring Security 설정.
  * - STATELESS 세션, CSRF 비활성화
- * - /ws/** 핸드셰이크는 인터셉터에서 인증하므로 permitAll
- * - /api/chat/** 은 authenticated
+ * - /ws/** WebSocket 핸드셰이크 permitAll (인터셉터에서 인증)
  * - JwtFilter를 UsernamePasswordAuthenticationFilter 앞에 등록
  */
 @Configuration
@@ -36,7 +35,6 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/ws/**").permitAll()
-                        .requestMatchers("/api/chat/**").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
