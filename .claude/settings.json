@@ -10,15 +10,11 @@
   "hooks": {
     "Stop": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"C:/work/backend\" && ./gradlew checkstyleMain -q && git add -A && (git diff --cached --quiet && echo \"Nothing to commit\" || git commit -m \"chore: auto-commit $(date '+%Y-%m-%d %H:%M')\") && git push",
-            "shell": "bash",
-            "timeout": 120,
-            "statusMessage": "Auto-committing changes..."
-          }
-        ]
+        "type": "command",
+        "command": "cd \"C:/work/backend\" && ./gradlew checkstyleMain -q 2>&1 | tail -5",
+        "shell": "bash",
+        "timeout": 60,
+        "statusMessage": "Checkstyle 검사 중..."
       }
     ]
   }
