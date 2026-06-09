@@ -22,7 +22,7 @@ public class GlobalExceptionHandler {
         String message = e.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .findFirst()
-                .orElse(ErrorCode.INVALID_INPUT.getMessage());
+                .orElse(ErrorCode.VALIDATION_ERROR.getMessage());
         return ResponseEntity.badRequest()
                 .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, "BAD_REQUEST", message));
     }
