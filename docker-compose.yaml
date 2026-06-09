@@ -21,6 +21,7 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      SPRING_PROFILES_ACTIVE: oauth
     depends_on:
       postgres:
         condition: service_healthy
