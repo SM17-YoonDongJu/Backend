@@ -13,9 +13,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"C:/work/backend\" && git add -A && (git diff --cached --quiet && echo \"Nothing to commit\" || git commit -m \"chore: auto-commit $(date '+%Y-%m-%d %H:%M')\")",
+            "command": "cd \"C:/work/backend\" && ./gradlew checkstyleMain -q && git add -A && (git diff --cached --quiet && echo \"Nothing to commit\" || git commit -m \"chore: auto-commit $(date '+%Y-%m-%d %H:%M')\")",
             "shell": "bash",
-            "timeout": 30,
+            "timeout": 120,
             "statusMessage": "Auto-committing changes..."
           }
         ]
