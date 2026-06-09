@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${DB_NAME:-soma_db}
       POSTGRES_USER: ${DB_USER:-soma}
@@ -10,10 +10,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-soma}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U $${DB_USER:-soma} -d $${DB_NAME:-soma_db}"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -35,12 +35,16 @@ services:
     env_file: .env
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
       REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SPRING_PROFILES_ACTIVE: oauth
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: on-failure
 
 volumes:
   postgres_data:
