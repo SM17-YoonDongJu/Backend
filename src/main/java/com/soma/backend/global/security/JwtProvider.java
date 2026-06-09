@@ -1,0 +1,98 @@
+package com.soma.backend.global.security;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.UUID;
+import javax.crypto.SecretKey;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+/**
+ * JWT 토큰 생성·검증·파싱을 담당한다.
+ * jjwt 0.12.x API를 사용한다.
+ */
+@Component
+public class JwtProvider {
+
+    private static final String ROLE_CLAIM = "role";
+
+    private final SecretKey secretKey;
+    private final long accessTokenExpiry;
+    private final long refreshTokenExpiry;
+
+    public JwtProvider(
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.access-token-expiry}") long accessTokenExpiry,
+            @Value("${jwt.refresh-token-expiry}") long refreshTokenExpiry) {
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.accessTokenExpiry = accessTokenExpiry;
+        this.refreshTokenExpiry = refreshTokenExpiry;
+    }
+
+    /**
+     * Access Token 발급. subject=userId, role 클레임 포함.
+     */
+    public String generateAccessToken(UUID userId, String role) {
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + accessTokenExpiry);
+        return Jwts.builder()
+                .subject(userId.toString())
+                .claim(ROLE_CLAIM, role)
+                .issuedAt(now)
+                .expiration(expiry)
+                .signWith(secretKey)
+                .compact();
+    }
+
+    /**
+     * Refresh Token 발급. subject=userId만 포함.
+     */
+    public String generateRefreshToken(UUID userId) {
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + refreshTokenExpiry);
+        return Jwts.builder()
+                .subject(userId.toString())
+                .issuedAt(now)
+                .expiration(expiry)
+                .signWith(secretKey)
+                .compact();
+    }
+
+    /**
+     * 서명·만료를 검증한다. 유효하지 않으면 false.
+     */
+    public boolean validateToken(String token) {
+        try {
+            parseClaims(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 토큰 subject에서 userId(UUID)를 추출한다.
+     */
+    public UUID getUserId(String token) {
+        return UUID.fromString(parseClaims(token).getSubject());
+    }
+
+    /**
+     * 토큰 role 클레임을 추출한다.
+     */
+    public String getRole(String token) {
+        return parseClaims(token).get(ROLE_CLAIM, String.class);
+    }
+
+    private Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+}

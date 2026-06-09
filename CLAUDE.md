@@ -80,3 +80,16 @@ Spring Boot가 담당하는 영역:
 - 검수 리포트 등록, review_feedback 수집
 - 구독·결제 (PG사 연동)
 - FCM Push (검수 완료 시)
+- WebSocket(STOMP) 채팅 (ChatRoom, ChatMessage, 오프라인 FCM 푸시)
+
+## 하네스: Spring Boot Backend
+
+**목표:** 전문 에이전트 팀으로 Spring Boot 피처를 분석·구현·검증한다.
+
+**트리거:** 피처 구현, API 추가, 버그 수정, 채팅/WebSocket 작업 요청 시 `springboot-dev` 스킬을 사용하라. 단순 질문은 직접 응답 가능.
+
+**변경 이력:**
+| 날짜 | 변경 내용 | 대상 | 사유 |
+|------|----------|------|------|
+| 2026-06-09 | 초기 구성 | 전체 | 환경 세팅 완료 후 하네스 등록 |
+| 2026-06-09 | realtime-developer 추가, WebSocket 범위 편입 | agents/realtime-developer.md, springboot-dev SKILL.md | 채팅 기능 추가 요청 |

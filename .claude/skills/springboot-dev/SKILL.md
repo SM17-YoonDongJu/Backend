@@ -1,6 +1,6 @@
 ---
 name: springboot-dev
-description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 후속 작업: 결과 수정, 부분 재실행, 업데이트, 보완, 다시 구현, 이전 구현 개선 요청 시에도 사용."
+description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC, WebSocket 채팅 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 후속 작업: 결과 수정, 부분 재실행, 업데이트, 보완, 다시 구현, 이전 구현 개선 요청 시에도 사용."
 ---
 
 # Spring Boot Dev Orchestrator
@@ -22,10 +22,11 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 | backend-analyst | general-purpose | 코드 탐색, API 계약·DB 스키마 설계 | — |
 | backend-developer | general-purpose | 비즈니스 로직, 매칭·리포트·결제·FCM | — |
 | security-developer | general-purpose | JWT, OAuth2, Spring Security, RBAC, Redis RT | spring-security-impl |
+| realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | — |
 | qa-reviewer | general-purpose | 코드 리뷰, 테스트 작성, CodeRabbit | spring-qa, coderabbit-review |
 
 ## 범위 외 (FastAPI 담당)
-WebSocket, Kafka, AI 처리 — 이 스킬의 구현 범위에서 제외.
+Kafka, AI 처리(OCR, LangGraph, RAG) — 이 스킬의 구현 범위에서 제외.
 
 ## 워크플로우
 

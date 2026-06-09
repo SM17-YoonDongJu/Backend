@@ -6,7 +6,7 @@ public record ErrorResponse(ErrorDetail error) {
 
     public static ErrorResponse of(ErrorCode errorCode) {
         return new ErrorResponse(new ErrorDetail(
-                errorCode.getStatus().name(),
+                errorCode.name(),
                 errorCode.getMessage()
         ));
     }

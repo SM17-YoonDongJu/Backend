@@ -13,6 +13,12 @@
         <property name="eachLine" value="true"/>
     </module>
 
+    <!-- Line length must be a direct child of Checker, not TreeWalker -->
+    <module name="LineLength">
+        <property name="max" value="120"/>
+        <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
+    </module>
+
     <module name="TreeWalker">
 
         <!-- Naming -->
@@ -32,12 +38,6 @@
         <module name="UnusedImports"/>
         <module name="RedundantImport"/>
         <module name="IllegalImport"/>
-
-        <!-- Line length -->
-        <module name="LineLength">
-            <property name="max" value="120"/>
-            <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
-        </module>
 
         <!-- Blocks -->
         <module name="NeedBraces"/>
