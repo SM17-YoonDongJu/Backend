@@ -39,18 +39,21 @@ git diff --stat HEAD
 
 **scope 가이드 (이 프로젝트):**
 
-| scope      | 해당 영역 |
-|------------|---------|
-| `auth`     | JWT, OAuth2, Spring Security |
-| `adjuster` | 검수 리포트, review_feedback |
-| `chat`     | WebSocket 채팅, 챗봇 |
-| `user`     | 사용자 엔티티, 프로필 |
-| `config`   | 설정, 환경변수 |
+| scope          | 해당 영역 |
+|----------------|---------|
+| `auth`         | JWT, OAuth2, Spring Security, 회원가입 |
+| `user`         | 사용자 엔티티, 프로필, 내 정보 |
+| `adjuster`     | 사정사 신청·프로필 |
+| `report`       | 리포트 생성·조회·검수 및 서명 |
+| `match`        | 상담 신청·매칭 수락 |
+| `chat`         | WebSocket 채팅 |
+| `payment`      | 결제 내역, 구독 |
+| `config`       | 설정, 환경변수 |
 
 **예시:**
 ```
 feat(auth): 카카오 OAuth2 소셜 로그인 구현
-fix(matching): 매칭 수락 시 중복 채팅방 생성 버그 수정
+fix(match): 매칭 수락 시 중복 채팅방 생성 버그 수정
 test(payment): 결제 웹훅 멱등성 통합 테스트 추가
 ```
 

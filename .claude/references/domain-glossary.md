@@ -64,10 +64,12 @@ MATCHED              ← 최종 매칭 완료.
 
 ## 5. 검수 리포트 확정 조건 (보험업법 §186·§188)
 
-검수 리포트 등록(`POST /api/v1/adjuster/my-reviews/{review_id}/publish`) 시 **필수 포함 필드:**
+검수 수정과 서명 확정은 `PATCH /api/v1/reports/{report_id}` 단일 API로 처리한다.
+`status`를 최종 확정 값(`AWAITING_ADOPTION`)으로 변경할 때 **서명 필드 필수:**
 
 ```json
 {
+  "status": "AWAITING_ADOPTION",
   "adjuster_license_no": "제2024-0001호",
   "adjuster_name":       "홍길동",
   "signed_at":           "2026-06-03T14:00:00Z"
@@ -76,8 +78,8 @@ MATCHED              ← 최종 매칭 완료.
 
 > `signed_at` = `REPORTS.created_at` (사정사가 리포트를 등록한 시각). AI 초안과 사정사 검수본 모두 `REPORTS` 테이블에 저장되므로 각 레코드의 `created_at`이 발행 시각이다. 별도 `published_at` 컬럼 불필요.
 
-- **서명 없이 등록 불가** (미서명 상태로 publish API 호출 시 거부)
-- **등록 후 수정 불가** — 이력 관리 DB에 불변 저장
+- **서명 없이 확정 불가** — status를 확정값으로 변경 시 서명 필드 누락이면 거부
+- **확정 후 수정 불가** — 이미 확정된 리포트에 PATCH 시 `UNSUPPORTED_OPERATION(400)`
 - **보존 기간:** `REPORTS.created_at` 기준 **3년** (보험업법 §188 / 개인정보보호법)
 - **탈퇴 시:** 사용자 식별정보는 익명화, 서명된 리포트·S3 원본은 보존 기간 동안 유지
 
@@ -128,28 +130,25 @@ MATCHED              ← 최종 매칭 완료.
 
 ## 9. 주요 API 엔드포인트 (Spring Boot 담당)
 
+> 로그인은 OAuth2 소셜 로그인만 사용. 자체 로그인 없음.
+
 | 기능 | Method | Path |
 |------|--------|------|
-| 회원가입 | POST | `/api/v1/auth/signup` |
-| 로그인 | POST | `/api/v1/auth/login` |
+| 회원가입 | POST | `/api/v1/auth/register` |
 | 소셜 로그인 콜백 | GET | `/api/v1/auth/oauth2/{provider}/callback` |
 | 토큰 갱신 | POST | `/api/v1/auth/refresh` |
 | 로그아웃 | POST | `/api/v1/auth/logout` |
 | 내 정보 조회 | GET | `/api/v1/users/me` |
-| 내 정보 수정 | PUT | `/api/v1/users/me` |
+| 내 정보 수정 | PATCH | `/api/v1/users/me` |
 | 회원 탈퇴 | DELETE | `/api/v1/users/me` |
-| 사정사 계정 신청 | POST | `/api/v1/adjusters/apply` |
-| 사정사 프로필 등록 | POST | `/api/v1/adjusters/profile` |
-| 채택 가능 목록 조회 | GET | `/api/v1/adjuster/available-cases` |
-| 케이스 채택 | POST | `/api/v1/adjuster/available-cases/{report_id}/adopt` |
-| 심층 분석 리포트 | GET | `/api/v1/adjuster/my-reviews/{review_id}/deep-analysis` |
-| 검수 수정 | PATCH | `/api/v1/adjuster/my-reviews/{review_id}` |
-| 검수 리포트 등록 | POST | `/api/v1/adjuster/my-reviews/{review_id}/publish` |
-| 사용자 검수 리포트 목록 | GET | `/api/v1/reports/{report_id}/reviewed-list` |
-| 매칭 요청 | POST | `/api/v1/reports/{report_id}/match-request` |
-| 매칭 수락 | POST | `/api/v1/match-requests/{request_id}/accept` |
-| 매칭 거절 | POST | `/api/v1/match-requests/{request_id}/reject` |
-| WebSocket 채팅 | WS | `/ws/chat/{channel_id}?token={jwt}` |
+| 사정사 계정 신청 | POST | `/api/v1/users/adjusters/apply` |
+| 리포트 목록 조회 | GET | `/api/v1/reports?status={status}&page={page}` |
+| 리포트 상세 조회 | GET | `/api/v1/reports/{report_id}` |
+| 초안 리포트 검수 및 수정 | PATCH | `/api/v1/reports/{report_id}?status={status}` |
+| 상담 신청 | POST | `/api/v1/match/{report_id}` |
+| 매칭 수락 | POST | `/api/v1/match/{report_id}/accept` |
+| 구독 신청 | POST | `/api/v1/subscriptions` |
+| 결제 내역 조회 | GET | `/api/v1/payments/history` |
 
 ---
 
@@ -172,7 +171,7 @@ MATCHED              ← 최종 매칭 완료.
 ### REPORT_REVIEWS (사정사 검수 테이블)
 - **목적**: 사정사가 AI 초안(REPORTS)을 채택·수정한 내용을 저장하는 작업 공간
 - **생성 시점**: 사정사가 케이스를 채택(`adopt`)할 때 행 생성
-- **publish 흐름**: `검수 수정(PATCH)` → `검수 등록(POST .../publish)` — publish 시 서명 필드(adjuster_license_no, adjuster_name, signed_at) 포함 필수
+- **확정 흐름**: `검수 수정(PATCH, 서명 필드 없이)` → `서명 확정(PATCH, status=AWAITING_ADOPTION + 서명 필드)` — 단일 API로 처리
 - **격리 규칙**: 경쟁 검수 모델에 따라 동일 AI 초안에 여러 사정사의 REPORT_REVIEWS 행이 존재할 수 있음. 조회 시 반드시 `adjuster_id` 필터링
 - **RAG 피드백**: `review` 필드는 AI 개선 피드백 전용 — publish·서명 검증 대상 아님
 

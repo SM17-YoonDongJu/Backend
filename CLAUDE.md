@@ -39,7 +39,7 @@ com.soma.backend
 └── infra/       # 외부 시스템 연동 (redis, s3, fcm)
 ```
 
-**domain** 패키지 내부는 도메인별로 `controller`, `service`, `dto` 서브패키지로 구성한다. 도메인: `auth`, `user`, `adjuster`, `chat`.
+**domain** 패키지 내부는 도메인별로 `controller`, `service`, `dto` 서브패키지로 구성한다. 도메인: `auth`, `user`, `adjuster`, `report`, `match`, `chat`, `payment`, `subscription`.
 
 **global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다.
 
@@ -61,7 +61,7 @@ DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{
 
 - 커밋 메시지는 **항상 한국어**로 작성한다.
 - 형식: `<type>(<scope>): <한국어 설명>` (Conventional Commits 준수)
-- 예시: `feat(auth): 카카오 OAuth2 소셜 로그인 구현`, `fix(matching): 매칭 수락 시 중복 채팅방 생성 버그 수정`
+- 예시: `feat(auth): 카카오 OAuth2 소셜 로그인 구현`, `fix(match): 매칭 수락 시 중복 채팅방 생성 버그 수정`
 
 ## Code Conventions
 
@@ -112,8 +112,8 @@ FastAPI가 담당하는 영역 (Spring Boot 범위 외):
 
 Spring Boot가 담당하는 영역:
 - 인증·회원 (JWT, OAuth2, RBAC)
-- 손해사정사 매칭 플로우 (요청·수락·거절)
-- 검수 리포트 등록, review_feedback 수집
+- 손해사정사 매칭 플로우 (요청·수락)
+- 검수 리포트 등록(서명 포함 PATCH), review_feedback 수집
 - 구독·결제 (PG사 연동)
 - FCM Push (검수 완료 시)
 - WebSocket(STOMP) 채팅 (ChatRoom, ChatMessage, 오프라인 FCM 푸시)
