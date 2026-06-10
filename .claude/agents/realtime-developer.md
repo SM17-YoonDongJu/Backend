@@ -47,7 +47,7 @@ description: "WebSocket(STOMP) 채팅 기능을 구현하는 실시간 통신 �
 - FCM 연동 실패: 로그만 기록하고 메시지 저장은 정상 처리 (non-blocking)
 
 ## 협업
-- backend-developer: FCM infra 서비스 재사용 여부 확인
+- backend-developer: FCM infra 서비스 재사용 여부 확인. **`ChatService.createRoom(userId, adjusterId)` 메서드를 public으로 노출** — backend-developer가 매칭 수락 시 호출
 - security-developer: WebSocket HandshakeInterceptor에서 JWT 인증 방식 확인
 - qa-reviewer: WebSocket 통합 테스트 방법 공유 (MockMvc or WebSocketStompClient)
 

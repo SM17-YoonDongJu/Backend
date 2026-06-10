@@ -92,6 +92,7 @@ MATCHED              ← 최종 매칭 완료.
 
 ### 수락
 - 수락: 매칭 확정 + WebSocket 채팅 채널 개설 + 양측 FCM/APNs 알림
+- **ChatRoom 생성 책임**: backend-developer가 매칭 수락 서비스 로직 안에서 `ChatService.createRoom(userId, adjusterId)`를 호출한다. realtime-developer는 `ChatService.createRoom()`을 구현하고 노출한다.
 
 ### 제약
 - 보험업법 §189: 협상·합의 대리 기능 미제공. 정보 제공과 사정사 연결만 수행.
@@ -113,14 +114,14 @@ MATCHED              ← 최종 매칭 완료.
 
 ## 8. 구독 플랜 (손해사정사 전용)
 
-| 플랜  | `subscription_plan` 값 | 포함 혜택 |
-|-----|----------------------|---------|
-| 미검증 | `none` | `[미확정]` 미구독자 접근 범위 논의 필요 |
-| 기본  | `basic` | AI 리포트 열람·수정·서명, 케이스 채택 |
-| 프로  | `premium` | 기본 + 검수 리포트 목록 상단 노출 |
+| 플랜  | `subscription_plan` 값 | 포함 혜택                            |
+|-----|----------------------|----------------------------------|
+| 미검증 | `none` | 미검증 손해사정사는 손해 사정 관련 어떤 것도 할 수 없다 |
+| 기본  | `basic` | AI 리포트 열람·수정·서명, 케이스 채택          |
+| 프로  | `premium` | 기본 + 검수 리포트 목록 상단 노출             |
 
 - 결제 주기: MONTHLY
-- PG사: 토스페이먼츠 (확정 `[미확정]`)
+- PG사: 토스페이먼츠
 - 구독 만료 시 상단 노출 혜택 즉시 해제
 
 ---
@@ -166,7 +167,24 @@ MATCHED              ← 최종 매칭 완료.
 
 ---
 
-## 11. ERD 핵심 필드 참조
+## 11. 핵심 테이블 목적 정의
+
+### REPORT_REVIEWS (사정사 검수 테이블)
+- **목적**: 사정사가 AI 초안(REPORTS)을 채택·수정한 내용을 저장하는 작업 공간
+- **생성 시점**: 사정사가 케이스를 채택(`adopt`)할 때 행 생성
+- **publish 흐름**: `검수 수정(PATCH)` → `검수 등록(POST .../publish)` — publish 시 서명 필드(adjuster_license_no, adjuster_name, signed_at) 포함 필수
+- **격리 규칙**: 경쟁 검수 모델에 따라 동일 AI 초안에 여러 사정사의 REPORT_REVIEWS 행이 존재할 수 있음. 조회 시 반드시 `adjuster_id` 필터링
+- **RAG 피드백**: `review` 필드는 AI 개선 피드백 전용 — publish·서명 검증 대상 아님
+
+### ADJUSTER_REVIEW (사용자 평가 테이블)
+- **목적**: 매칭 완료(MATCHED) 후 사용자가 담당 사정사를 평가한 기록
+- **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시
+- **필드**: `score`(정수), `review`(텍스트)
+- **제약**: 사용자 1인 + 사정사 1인 조합으로 중복 평가 방지
+
+---
+
+## 12. ERD 핵심 필드 참조
 
 ### REPORTS
 | 필드 | 타입 | 설명 |
@@ -187,7 +205,7 @@ MATCHED              ← 최종 매칭 완료.
 ### SUBSCRIPTIONS
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `plan` | enum | `BASIC`, `PRO` |
+| `plan` | enum | `basic`, `premium` (ADJUSTER_PROFILES.subscription_plan과 동일 체계) |
 | `billing_cycle` | enum | `MONTHLY` |
 | `status` | enum | `ACTIVE`, `EXPIRED`, `CANCELED` |
 

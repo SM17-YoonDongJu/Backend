@@ -45,3 +45,4 @@ description: "Spring Boot 비즈니스 로직을 구현하는 백엔드 개발 �
 
 ## 협업
 - security-developer: 인증이 필요한 엔드포인트의 권한 어노테이션(@PreAuthorize) 협의, SecurityContext userId 추출 방식 확인
+- realtime-developer: 매칭 수락 처리 중 `ChatService.createRoom(userId, adjusterId)` 호출 — realtime-developer가 구현한 메서드를 사용. 메서드 시그니처는 design.md 또는 realtime-developer에게 확인
