@@ -35,8 +35,6 @@ aws:
     access-key: ${AWS_ACCESS_KEY:}
     secret-key: ${AWS_SECRET_KEY:}
 
-fcm:
-  service-account-path: ${FCM_SERVICE_ACCOUNT_PATH:}
 
 server:
   port: 8080

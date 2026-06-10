@@ -17,11 +17,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/**
- * Authorization: Bearer 헤더의 JWT를 검증하여 SecurityContext에 인증 정보를 주입한다.
- * 만료 토큰 → 401 EXPIRED_TOKEN, 위조·형식 오류 → 401 INVALID_TOKEN 응답.
- * 토큰 없는 요청은 통과 (이후 @PreAuthorize에서 차단).
- */
 @Component
 public class JwtFilter extends OncePerRequestFilter {
 
@@ -29,11 +24,10 @@ public class JwtFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtProvider jwtProvider;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public JwtFilter(JwtProvider jwtProvider, ObjectMapper objectMapper) {
+    public JwtFilter(JwtProvider jwtProvider) {
         this.jwtProvider = jwtProvider;
-        this.objectMapper = objectMapper;
     }
 
     @Override
