@@ -9,10 +9,6 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-/**
- * SecurityContext에 저장되는 인증 주체.
- * userId(UUID)와 role(USER/ADJUSTER/ADMIN)을 담는다.
- */
 @Getter
 @RequiredArgsConstructor
 public class CustomUserDetails implements UserDetails {
