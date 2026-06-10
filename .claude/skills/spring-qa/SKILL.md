@@ -1,6 +1,6 @@
 ---
 name: spring-qa
-description: "Spring Boot 테스트 작성 가이드. JUnit5·Mockito 단위 테스트, @SpringBootTest 통합 테스트, MockMvc API 테스트, TestContainers(PostgreSQL·Redis·Kafka), Spring Security 테스트. 테스트 작성·추가·수정 요청 시 반드시 이 스킬을 참조."
+description: "Spring Boot 테스트 작성 가이드. JUnit5·Mockito 단위 테스트, @SpringBootTest 통합 테스트, MockMvc API 테스트, TestContainers(PostgreSQL·Redis), Spring Security 테스트. 테스트 작성·추가·수정 요청 시 반드시 이 스킬을 참조."
 ---
 
 # Spring QA — 테스트 작성 가이드
@@ -19,31 +19,33 @@ description: "Spring Boot 테스트 작성 가이드. JUnit5·Mockito 단위 테
 
 ```java
 @ExtendWith(MockitoExtension.class)
-class MatchingServiceTest {
+class ReportServiceTest {
 
     @InjectMocks
-    private MatchingService matchingService;
+    private ReportService reportService;
 
     @Mock
-    private MatchingRepository matchingRepository;
+    private ReportRepository reportRepository;
 
     @Mock
     private ChatRoomService chatRoomService;
 
     @Test
-    @DisplayName("매칭 수락 시 채팅 채널이 개설된다")
-    void acceptMatching_ShouldCreateChatRoom() {
+    @DisplayName("사정사 배정 시 리포트 상태가 COUNSELING으로 변경된다")
+    void assignAdjuster_ShouldUpdateStatusToCounseling() {
         // Given
-        UUID matchingId = UUID.randomUUID();
-        Matching matching = createMatchingFixture(MatchingStatus.PENDING);
-        given(matchingRepository.findById(matchingId)).willReturn(Optional.of(matching));
+        UUID reportId = UUID.randomUUID();
+        UUID adjusterId = UUID.randomUUID();
+        Report report = createReportFixture(ReportStatus.AWAITING_ADOPTION);
+        given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
 
         // When
-        matchingService.accept(matchingId);
+        reportService.assignAdjuster(reportId, adjusterId);
 
         // Then
-        assertThat(matching.getStatus()).isEqualTo(MatchingStatus.ACCEPTED);
-        then(chatRoomService).should().createRoom(matchingId, matching.getUserId(), matching.getAdjusterId());
+        assertThat(report.getAdjusterId()).isEqualTo(adjusterId);
+        assertThat(report.getStatus()).isEqualTo(ReportStatus.COUNSELING);
+        then(chatRoomService).should().createRoom(report.getUserId(), adjusterId);
     }
 }
 ```
@@ -54,13 +56,13 @@ class MatchingServiceTest {
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-class MatchingRepositoryTest {
+class ReportRepositoryTest {
 
     @Autowired
-    private MatchingRepository matchingRepository;
+    private ReportRepository reportRepository;
 
     @Test
-    void findPendingByAdjusterId_ShouldReturnOnlyPendingMatchings() {
+    void findByAdjusterIdAndStatus_ShouldReturnMatchedReports() {
         // TestContainers PostgreSQL 사용 (application-test.yml에서 설정)
     }
 }
@@ -79,28 +81,28 @@ class MatchingControllerTest {
 
     @Test
     @WithMockUser(roles = "USER")
-    void requestMatching_WithValidRequest_Returns201() throws Exception { // USER만 매칭 요청 가능
+    void assignAdjuster_WithValidRequest_Returns200() throws Exception { // USER만 사정사 배정 가능
         // Given
-        MatchingRequestDto request = new MatchingRequestDto(adjusterId, description);
+        AdjusterAssignRequestDto request = new AdjusterAssignRequestDto(adjusterId);
 
         // When & Then
-        mockMvc.perform(post("/api/matching")
+        mockMvc.perform(post("/api/reports/{reportId}/adjuster", reportId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.matchingId").exists());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COUNSELING"));
     }
 
     @Test
     @WithMockUser(roles = "CERTIFICATED_ADJUSTER")
-    void requestMatching_AsAdjuster_Returns403() throws Exception {
-        // 사정사 역할의 접근 거부 검증
+    void assignAdjuster_AsAdjuster_Returns403() throws Exception {
+        // 사정사 역할의 직접 배정 시도 → 403 검증
     }
 
     @Test
     @WithMockUser(roles = "UNCERTIFICATED_ADJUSTER")
-    void adoptCase_AsUncertificatedAdjuster_Returns403() throws Exception {
-        // 미인증 사정사 케이스 채택 시도 → 403 검증
+    void assignAdjuster_AsUncertificatedAdjuster_Returns403() throws Exception {
+        // 미인증 사정사 배정 시도 → 403 검증
     }
 }
 ```
@@ -151,11 +153,10 @@ class IntegrationTest {
 
 | 우선순위 | 대상 | 이유 |
 |---------|------|------|
-| 필수 | 매칭 플로우 상태 전이 | 핵심 비즈니스, 버그 비용 높음 |
+| 필수 | 리포트 사정사 배정 및 상태 변경 | 핵심 비즈니스, 버그 비용 높음 |
 | 필수 | 결제 웹훅 멱등성 | 중복 결제 방어 |
 | 필수 | JWT 발급·검증·갱신 | 보안 핵심 |
 | 필수 | RBAC 권한 거부 케이스 | 403이 올바르게 반환되는지 |
-| 권장 | Kafka Producer 발행 검증 | 메시지 스키마 회귀 방어 |
 | 권장 | WebSocket 연결 JWT 검증 | 미인증 연결 차단 확인 |
 
 ## 테스트 작성 원칙

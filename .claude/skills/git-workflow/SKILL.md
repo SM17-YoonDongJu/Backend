@@ -39,16 +39,13 @@ git diff --stat HEAD
 
 **scope 가이드 (이 프로젝트):**
 
-| scope | 해당 영역 |
-|-------|---------|
-| `auth` | JWT, OAuth2, Spring Security |
-| `matching` | 손해사정사 매칭 플로우 |
-| `report` | 검수 리포트, review_feedback |
-| `payment` | 구독·결제, PG 연동 |
-| `chat` | WebSocket 채팅, 챗봇 |
-| `kafka` | Kafka Producer |
-| `user` | 사용자 엔티티, 프로필 |
-| `config` | 설정, 환경변수 |
+| scope      | 해당 영역 |
+|------------|---------|
+| `auth`     | JWT, OAuth2, Spring Security |
+| `adjuster` | 검수 리포트, review_feedback |
+| `chat`     | WebSocket 채팅, 챗봇 |
+| `user`     | 사용자 엔티티, 프로필 |
+| `config`   | 설정, 환경변수 |
 
 **예시:**
 ```
@@ -57,14 +54,8 @@ fix(matching): 매칭 수락 시 중복 채팅방 생성 버그 수정
 test(payment): 결제 웹훅 멱등성 통합 테스트 추가
 ```
 
-### A-3. Co-Authored-By 추가
 
-모든 커밋에 자동으로 추가:
-```
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
-```
-
-### A-4. 커밋 실행
+### A-3. 커밋 실행
 
 ```bash
 git add <staged-files>
@@ -94,17 +85,14 @@ EOF
 
 ### B-2. 라벨 자동 태깅 기준
 
-| 키워드 (요청 또는 변경 파일) | 라벨 |
-|--------------------------|------|
+| 키워드 (요청 또는 변경 파일) | 라벨                |
+|--------------------------|-------------------|
 | auth, JWT, OAuth2, security | `spring-security` |
-| WebSocket, STOMP, 채팅, chatbot | `realtime` |
-| Kafka, producer | `kafka` |
-| Redis | `redis` |
-| 결제, payment, PG | `payment` |
-| 매칭, matching | `matching` |
-| 리포트, report, feedback | `report` |
-| test, 테스트 | `test` |
-| 공통, config, 설정 | `chore` |
+| WebSocket, STOMP, 채팅, chatbot | `realtime`        |
+| Redis | `redis`           |
+| 리포트, report, feedback | `adjuster`        |
+| test, 테스트 | `test`            |
+| 공통, config, 설정 | `chore`           |
 
 ### B-3. 이슈 생성
 

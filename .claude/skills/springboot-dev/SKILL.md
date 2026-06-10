@@ -20,7 +20,7 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 | 팀원 | 타입 | 역할 | 스킬 |
 |------|------|------|------|
 | backend-analyst | general-purpose | 코드 탐색, API 계약·DB 스키마 설계 | — |
-| backend-developer | general-purpose | 비즈니스 로직, 매칭·리포트·결제·FCM | — |
+| backend-developer | general-purpose | 비즈니스 로직, 리포트·FCM | — |
 | security-developer | general-purpose | JWT, OAuth2, Spring Security, RBAC, Redis RT | spring-security-impl |
 | realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | websocket-impl |
 | qa-reviewer | general-purpose | 코드 리뷰, 테스트 작성, CodeRabbit | spring-qa, coderabbit-review |
@@ -45,7 +45,7 @@ Kafka, AI 처리(OCR, LangGraph, RAG) — 이 스킬의 구현 범위에서 제�
    ```
    Agent(
      subagent_type: "backend-analyst",
-     model: "opus",
+     model: "sonnet",
      prompt: "request.md를 읽고 design.md를 작성하라. 경로: _workspace/01_analyst/design.md"
    )
    ```
@@ -61,17 +61,17 @@ Kafka, AI 처리(OCR, LangGraph, RAG) — 이 스킬의 구현 범위에서 제�
 1. 필요한 에이전트만 선택 후 병렬 실행:
    ```
    // 인증 변경 포함 시 — backend-developer + security-developer 병렬
-   Agent(subagent_type: "backend-developer", model: "opus",
+   Agent(subagent_type: "backend-developer", model: "sonnet",
      prompt: "_workspace/01_analyst/design.md를 읽고 비즈니스 로직을 구현하라. 완료 후 _workspace/02_backend/summary.md에 변경 파일 목록을 기록하라.")
    Agent(subagent_type: "security-developer", model: "opus",
      prompt: "_workspace/01_analyst/design.md의 권한 섹션을 읽고 인증·인가·Redis RT를 구현하라. 완료 후 _workspace/02_security/summary.md에 변경 파일 목록을 기록하라.")
 
    // WebSocket 포함 시 — realtime-developer 추가
-   Agent(subagent_type: "realtime-developer", model: "opus",
+   Agent(subagent_type: "realtime-developer", model: "sonnet",
      prompt: "_workspace/01_analyst/design.md를 읽고 WebSocket 채팅 기능을 구현하라. 완료 후 _workspace/02_realtime/summary.md에 변경 파일 목록을 기록하라.")
 
    // 비즈니스 로직만 — backend-developer 단독
-   Agent(subagent_type: "backend-developer", model: "opus",
+   Agent(subagent_type: "backend-developer", model: "sonnet",
      prompt: "_workspace/01_analyst/design.md를 읽고 비즈니스 로직을 구현하라. 완료 후 _workspace/02_backend/summary.md에 변경 파일 목록을 기록하라.")
    ```
 
@@ -85,7 +85,7 @@ Kafka, AI 처리(OCR, LangGraph, RAG) — 이 스킬의 구현 범위에서 제�
    ```
    Agent(
      subagent_type: "qa-reviewer",
-     model: "opus",
+     model: "sonnet",
      prompt: "_workspace/02_*/summary.md를 읽고 코드 리뷰·테스트 작성·CodeRabbit 리뷰를 수행하라. 결과: _workspace/03_qa/review-report.md"
    )
    ```
