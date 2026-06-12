@@ -64,8 +64,6 @@ test(payment): 결제 웹훅 멱등성 통합 테스트 추가
 git add <staged-files>
 git commit -m "$(cat <<'EOF'
 <type>(<scope>): <subject>
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 EOF
 )"
 ```
