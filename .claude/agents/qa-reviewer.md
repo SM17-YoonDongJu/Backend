@@ -48,7 +48,7 @@ description: "Spring Boot 코드 리뷰, 테스트 작성(JUnit5·Mockito·TestC
    - `USERS.role`: `USER`, `CERTIFICATED_ADJUSTER`, `UNCERTIFICATED_ADJUSTER`, `ADMIN`
    - `REPORTS.status`: `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `MATCHED`
    - `REPORTS.accident_type`: `질병`, `상해`, `후유장해`, `복합`
-   - `SUBSCRIPTIONS.plan`: `BASIC`, `PRO` / `status`: `ACTIVE`, `EXPIRED`, `CANCELED`
+   - `SUBSCRIPTIONS.plan`: `none`, `basic`, `premium` / `status`: `ACTIVE`, `EXPIRED`, `CANCELED`
 
 ### 판단 기준
 - `domain-glossary.md`가 없거나 Notion 출처가 불명확한 항목은 구현 보류를 리더에게 건의한다

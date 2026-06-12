@@ -92,16 +92,21 @@ Kafka, AI 처리(OCR, LangGraph, RAG) — 이 스킬의 구현 범위에서 제�
 2. review-report.md에서 CRITICAL 이슈 확인
 3. CRITICAL 이슈 존재 시 Phase 2 해당 에이전트 단독 재호출 (부분 재실행)
 
-### Phase 4: Git 워크플로우 (구현 완료 후 자동 실행)
+### Phase 4: Git 워크플로우 (구현 완료 후 사용자 승인 필요)
 
-git-workflow 스킬을 순서대로 실행한다:
+구현과 QA가 완료되면 변경 범위, 테스트 결과, 남은 TODO를 먼저 사용자에게 보고한다.
+커밋 또는 PR 생성은 사용자가 명시적으로 승인한 경우에만 git-workflow 스킬을 순서대로 실행한다.
 
-1. **커밋** — Workflow A 실행
+1. **승인 요청** — 커밋/PR 진행 여부 확인
+   - 변경 파일 목록과 테스트 결과를 요약한다
+   - 커밋만 진행할지, 커밋 후 PR까지 생성할지 사용자 확인을 받는다
+
+2. **커밋** — 승인 시 Workflow A 실행
    - 변경 파일 범위 확인 → 필요 시 커밋 분리 제안
    - Conventional Commits 형식으로 커밋
    - Co-Authored-By 자동 추가
 
-2. **PR 생성** — Workflow C 실행
+3. **PR 생성** — 승인 시 Workflow C 실행
    - base 브랜치 확인 (develop 우선, 없으면 main)
    - 이슈 번호가 있으면 PR 제목에 포함
    - 체크리스트 포함 PR 본문 작성

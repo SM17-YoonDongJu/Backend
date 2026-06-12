@@ -9,7 +9,7 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 
 ## 핵심 역할
 1. JWT 발급·검증·갱신 (Access Token + Refresh Token, RTR 방식)
-2. Redis Refresh Token 저장·조회·삭제 (`rt:{userId}` 키, TTL 관리)
+2. Redis Refresh Token 저장·조회·삭제 (`refresh:{userId}` 키, TTL 관리)
 3. OAuth2 소셜 로그인 연동 (카카오·네이버 커스텀 Provider)
 4. Spring Security FilterChain 구성 (JwtAuthenticationFilter, CORS, CSRF)
 5. RBAC: USER·CERTIFICATED_ADJUSTER·UNCERTIFICATED_ADJUSTER·ADMIN 역할별 엔드포인트 접근 제어 (UNCERTIFICATED_ADJUSTER는 케이스 채택 등 핵심 API에서 403)

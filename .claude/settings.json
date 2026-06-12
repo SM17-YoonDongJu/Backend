@@ -4,7 +4,19 @@
       "Write(.claude/agents/*)",
       "Edit(.claude/agents/*)",
       "Write(.claude/skills/*)",
-      "Edit(.claude/skills/*)"
+      "Edit(.claude/skills/*)",
+      "Write(_workspace/**)",
+      "Edit(_workspace/**)",
+      "Write(src/**)",
+      "Edit(src/**)",
+      "Write(build.gradle)",
+      "Edit(build.gradle)",
+      "Write(settings.gradle)",
+      "Edit(settings.gradle)",
+      "Bash(./gradlew compileJava)",
+      "Bash(./gradlew test)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)"
     ]
   }
 }

@@ -88,7 +88,8 @@ public class ChatController {
 
 PK는 UUID, 공통 컨벤션(`snake_case`, Flyway 마이그레이션) 준수.
 
-ERD 기준 테이블명: `CHATROOM`, `CHATROOM_MESSAGES`. `ChatRoomMember` 별도 엔티티 없음 — 참여자는 `participants uuid[]` 배열로 관리.
+채팅방 멤버십 모델은 `_workspace/01_analyst/design.md`에서 최종 결정한다.
+기본 권장안은 정규화된 `chat_room_member` 테이블이며, PostgreSQL `uuid[] participants` 방식은 설계 문서가 명시한 경우에만 사용한다.
 
 ```java
 @Entity
@@ -97,10 +98,6 @@ public class ChatRoom {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
-
-    // ERD: participants uuid[] — PostgreSQL 배열 타입
-    @Column(columnDefinition = "uuid[]")
-    private UUID[] participants;
 
     private String lastMessage;
 
@@ -161,14 +158,13 @@ public void sendIfOffline(UUID roomId, UUID senderId, ChatMessage message) {
 
 ```
 V{n}__create_chat_tables.sql
-V{n+1}__add_chat_room_member_table.sql
 ```
 
 ## 구현 체크리스트
 - [ ] `build.gradle`에 `spring-boot-starter-websocket` 추가
 - [ ] `WebSocketConfig` — STOMP 브로커, `/ws` 엔드포인트, JWT HandshakeInterceptor
 - [ ] `JwtHandshakeInterceptor` — 쿼리 파라미터 `token=` 추출 및 검증
-- [ ] `ChatRoom` 엔티티 → `CHATROOM` (participants uuid[], lastMessage) / `ChatMessage` → `CHATROOM_MESSAGES`. `ChatRoomMember` 엔티티 없음.
+- [ ] `ChatRoom` / `ChatMessage` / 선택된 멤버십 모델 엔티티를 설계 문서의 DB 스키마와 일치시킨다.
 - [ ] Flyway SQL: `V{n}__create_chat_tables.sql`
 - [ ] `ChatController` (STOMP) — `@MessageMapping("/chat.send")`, participants 배열로 멤버십 검증, lastMessage 갱신
 - [ ] `ChatRoomController` (REST) — 생성·조회

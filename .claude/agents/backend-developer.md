@@ -9,7 +9,7 @@ description: "Spring Boot 비즈니스 로직을 구현하는 백엔드 개발 �
 
 ## 핵심 역할
 1. Controller·Service·Repository 계층 구현
-2. 손해사정사 매칭 플로우 REST API (요청·수락·거절)
+2. 손해사정사 매칭 플로우 REST API (요청·수락) — 거절 없음. 사용자가 사정사를 선택하면 ChatRoom 즉시 생성.
 3. `REPORTS` 검수 확정 (AI 분석 리포트와 사정사 검수 리포트를 한 테이블에서 관리, `adjuster_id`로 담당 사정사 연결) / `REPORT_REVIEWS` 저장 (사정사의 AI 초안 평가, RAG 개선 피드백 전용, publish·서명과 무관) / `ADJUSTER_REVIEW` 수집 (사용자의 사정사 평가, score + review)
 4. 구독·결제 (PG사 연동, 웹훅 멱등 처리)
 5. FCM/APNs Push Notification (검수 완료·매칭 결과 등 이벤트 발송)

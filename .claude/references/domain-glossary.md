@@ -37,10 +37,11 @@
 AWAITING_INSPECTION  ← 검수 대기. 사정사 채택 가능 목록에 노출됨.
         ↓  (1건 이상 검수 리포트 등록 완료)
 AWAITING_ADOPTION    ← 사용자 선택 대기. 복수 검수 리포트 비교 가능.
-        ↓  (사용자가 매칭 요청
-COUNSELING           ← 채팅 중. WebSocket 채널 개설됨.
-        ↓
-MATCHED              ← 최종 매칭 완료.
+        ↓  (사용자가 사정사 선택 → ChatRoom 즉시 생성)
+COUNSELING           ← 채팅 중. WebSocket 채널 개설됨. 거절 없음.
+        ↓  (사정사가 최종 리포트를 REPORTS 테이블에 등록)
+MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사정사 리포트를
+                       같은 REPORTS 테이블에서 구분하는 enum 값.
 ```
 
 ### 상태별 규칙
@@ -49,7 +50,7 @@ MATCHED              ← 최종 매칭 완료.
 | 검수 대기 | `AWAITING_INSPECTION` | ✅ | ❌ (AI 초안 직접 접근 차단) | ❌ |
 | 채택 대기 | `AWAITING_ADOPTION` | ✅ (계속 채택 가능) | ✅ (검수된 리포트만) | ✅ |
 | 채팅 중 | `COUNSELING` | — | ✅ | ❌ |
-| 매칭 완료 | `MATCHED` | — | ✅ | ❌ |
+| 사정사 리포트 확정 | `MATCHED` | — | ✅ | ❌ |
 
 ---
 
@@ -132,23 +133,23 @@ MATCHED              ← 최종 매칭 완료.
 
 > 로그인은 OAuth2 소셜 로그인만 사용. 자체 로그인 없음.
 
-| 기능 | Method | Path |
-|------|--------|------|
-| 회원가입 | POST | `/api/v1/auth/register` |
-| 소셜 로그인 콜백 | GET | `/api/v1/auth/oauth2/{provider}/callback` |
-| 토큰 갱신 | POST | `/api/v1/auth/refresh` |
-| 로그아웃 | POST | `/api/v1/auth/logout` |
-| 내 정보 조회 | GET | `/api/v1/users/me` |
-| 내 정보 수정 | PATCH | `/api/v1/users/me` |
-| 회원 탈퇴 | DELETE | `/api/v1/users/me` |
-| 사정사 계정 신청 | POST | `/api/v1/users/adjusters/apply` |
-| 리포트 목록 조회 | GET | `/api/v1/reports?status={status}&page={page}` |
-| 리포트 상세 조회 | GET | `/api/v1/reports/{report_id}` |
+| 기능             | Method | Path |
+|----------------|--------|------|
+| 회원가입           | POST | `/api/v1/auth/register` |
+| 소셜 로그인 콜백      | GET | `/api/v1/auth/oauth2/{provider}/callback` |
+| 토큰 갱신          | POST | `/api/v1/auth/refresh` |
+| 로그아웃           | POST | `/api/v1/auth/logout` |
+| 내 정보 조회        | GET | `/api/v1/users/me` |
+| 내 정보 수정        | PATCH | `/api/v1/users/me` |
+| 회원 탈퇴          | DELETE | `/api/v1/users/me` |
+| 사정사 계정 신청      | POST | `/api/v1/users/adjusters/apply` |
+| 리포트 목록 조회      | GET | `/api/v1/reports?status={status}&page={page}` |
+| 리포트 상세 조회      | GET | `/api/v1/reports/{report_id}` |
 | 초안 리포트 검수 및 수정 | PATCH | `/api/v1/reports/{report_id}?status={status}` |
-| 상담 신청 | POST | `/api/v1/match/{report_id}` |
-| 매칭 수락 | POST | `/api/v1/match/{report_id}/accept` |
-| 구독 신청 | POST | `/api/v1/subscriptions` |
-| 결제 내역 조회 | GET | `/api/v1/payments/history` |
+| 상담 신청            | POST | `/api/v1/match/{report_id}` |
+| 매칭 수락          | POST | `/api/v1/match/{report_id}/accept` |
+| 구독 신청          | POST | `/api/v1/subscriptions` |
+| 결제 내역 조회       | GET | `/api/v1/payments/history` |
 
 ---
 
@@ -204,7 +205,7 @@ MATCHED              ← 최종 매칭 완료.
 ### SUBSCRIPTIONS
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `plan` | enum | `basic`, `premium` (ADJUSTER_PROFILES.subscription_plan과 동일 체계) |
+| `plan` | enum | `none`, `basic`, `premium` (ADJUSTER_PROFILES.subscription_plan과 동일 체계) |
 | `billing_cycle` | enum | `MONTHLY` |
 | `status` | enum | `ACTIVE`, `EXPIRED`, `CANCELED` |
 

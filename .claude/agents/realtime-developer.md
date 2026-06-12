@@ -54,11 +54,11 @@ description: "WebSocket(STOMP) 채팅 기능을 구현하는 실시간 통신 �
 ## 구현 체크리스트
 - [ ] `build.gradle`에 `spring-boot-starter-websocket` 추가
 - [ ] `WebSocketConfig` — STOMP 설정, `/ws` 엔드포인트, `/topic`, `/app` 브로커
-- [ ] `ChatRoom` 엔티티 → ERD `CHATROOM` (UUID PK, participants uuid[], lastMessage, createdAt). 별도 ChatRoomMember 엔티티 없음 — 참여자는 배열로 관리
-- [ ] `ChatMessage` 엔티티 → ERD `CHATROOM_MESSAGES` (UUID PK, roomId FK, senderId FK, content, createdAt)
+- [ ] `ChatRoom` 엔티티 → ERD `CHATROOM` (id UUID PK, user_id UUID FK, adjuster_id UUID FK, last_message text, created_at timestamp). USER:ADJUSTER = 1:1 고정 구조 — 배열·별도 멤버 테이블 없음
+- [ ] `ChatMessage` 엔티티 → ERD `CHATROOM_MESSAGES` (UUID PK, room_id FK, sender_id FK, content, created_at)
 - [ ] Flyway SQL: `V{n}__create_chat_tables.sql`
 - [ ] `ChatRoomController` — POST /chat/rooms, GET /chat/rooms/{id}
-- [ ] `ChatController` (STOMP) — @MessageMapping("/chat.send"), participants 배열로 멤버십 검증
+- [ ] `ChatController` (STOMP) — @MessageMapping("/chat.send"), `user_id = ? OR adjuster_id = ?` 로 멤버십 검증
 - [ ] `ChatMessageController` — GET /chat/rooms/{id}/messages (커서 페이지네이션)
-- [ ] `ChatService` — 채팅방 생성(participants 초기값 설정), 메시지 저장·조회, last_message 갱신
+- [ ] `ChatService` — 채팅방 생성(user_id·adjuster_id 설정), 메시지 저장·조회, last_message 갱신
 - [ ] FCM 오프라인 푸시 — 수신자 세션 없을 때 발송

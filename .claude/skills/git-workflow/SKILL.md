@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: "커밋·이슈·PR 워크플로우를 표준화하는 스킬. commit(Conventional Commits 강제, Co-Authored-By 추가), issue([feat]/[bug]/[chore] 템플릿 생성, 라벨 자동 태깅), PR(이슈 번호 포함 제목, 본문 템플릿, CodeRabbit 트리거 확인) 세 가지 워크플로우 제공. '커밋해줘', '이슈 만들어줘', 'PR 올려줘', '커밋하고 PR 생성해줘' 요청 시 반드시 이 스킬을 사용. springboot-dev 구현 완료 후 자동 호출."
+description: "커밋·이슈·PR 워크플로우를 표준화하는 스킬. commit(Conventional Commits 강제, Co-Authored-By 추가), issue([feat]/[bug]/[chore] 템플릿 생성, 라벨 자동 태깅), PR(이슈 번호 포함 제목, 본문 템플릿, CodeRabbit 트리거 확인) 세 가지 워크플로우 제공. '커밋해줘', '이슈 만들어줘', 'PR 올려줘', '커밋하고 PR 생성해줘' 요청 시 반드시 이 스킬을 사용. springboot-dev 구현 완료 후에는 사용자 승인 시에만 실행."
 ---
 
 # Git Workflow — commit · issue · PR 표준화
@@ -72,7 +72,7 @@ EOF
 
 ---
 
-## Workflow B: issue
+## Workflow B: issue + branch
 
 ### B-1. 이슈 제목 형식
 
@@ -83,6 +83,8 @@ EOF
 | `feat` | 새 기능 구현 |
 | `bug` | 버그 |
 | `chore` | 설정·리팩터·의존성 |
+| `settings` | 초기 환경 구축·설정 |
+| `docs` | 문서 |
 
 예시: `[feat] 카카오 OAuth2 소셜 로그인 구현`
 
@@ -120,6 +122,35 @@ EOF
 )" \
   --label "<라벨1>,<라벨2>" \
   --assignee "이동형"
+```
+
+### B-4. 브랜치 생성 및 체크아웃
+
+이슈 생성 직후 반드시 실행한다.
+
+**브랜치 네이밍 규칙:** `<type-lowercase>/<2-3-word-kebab-summary>`
+
+| 이슈 제목 예시 | 브랜치 이름 |
+|--------------|-----------|
+| `[Settings] Spring 기반 프로젝트 초기 환경 구축` | `settings/spring-init` |
+| `[feat] 카카오 OAuth2 소셜 로그인 구현` | `feat/kakao-oauth2` |
+| `[bug] 매칭 수락 시 중복 채팅방 생성` | `bug/match-duplicate-room` |
+| `[chore] Flyway 마이그레이션 초기 스키마 작성` | `chore/flyway-init-schema` |
+
+- type은 이슈 제목의 `[<type>]`에서 추출, 소문자 변환
+- summary는 이슈 설명을 2~3단어로 요약, kebab-case 영문
+
+```bash
+# 이슈 번호 확인
+ISSUE_NUMBER=$(gh issue list --limit 1 --json number --jq '.[0].number')
+
+# main 기준으로 브랜치 생성 후 체크아웃
+git checkout main
+git pull origin main
+git checkout -b <branch-name>
+
+# 원격에 push (트래킹 설정)
+git push -u origin <branch-name>
 ```
 
 ---
@@ -190,14 +221,15 @@ CodeRabbit 리뷰가 완료되면 coderabbit-review 스킬을 사용하여 지�
 
 ## springboot-dev 연동
 
-`springboot-dev` 스킬 Phase 4 완료 후 자동으로 다음 순서로 실행:
+`springboot-dev` 스킬 Phase 4 완료 후 사용자의 명시적 승인이 있으면 다음 순서로 실행:
 
 1. **Workflow A (commit)**: 구현 파일 커밋
 2. **Workflow C (PR)**: PR 생성 + CodeRabbit 트리거
 
 이슈는 작업 시작 전 **Workflow B (issue)** 를 별도 호출하는 패턴으로 사용:
 ```
-[작업 시작 전] git-workflow(issue) → 이슈 생성
-[구현 중] springboot-dev
-[구현 완료] springboot-dev → git-workflow(commit) → git-workflow(PR)
+[작업 시작 전] git-workflow(issue) → 이슈 생성 + 브랜치 생성·체크아웃
+[구현 중]      springboot-dev (이슈 브랜치 위에서 작업)
+[구현 완료]    springboot-dev → 사용자 승인 → git-workflow(commit) → git-workflow(PR)
+               PR base: main, head: <issue-branch>, Closes #<이슈번호>
 ```
