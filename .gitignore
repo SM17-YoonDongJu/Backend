@@ -39,3 +39,4 @@ out/
 
 ### Claude Code ###
 .claude/settings.local.json
+_workspace/
