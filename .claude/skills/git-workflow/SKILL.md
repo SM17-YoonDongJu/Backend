@@ -148,9 +148,9 @@ ISSUE_URL=$(gh issue create \
   --assignee "이동형")
 ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
 
-# main 기준으로 브랜치 생성 후 체크아웃
-git checkout main
-git pull origin main
+# develop 기준으로 브랜치 생성 후 체크아웃
+git checkout develop
+git pull origin develop
 git checkout -b <type>/${ISSUE_NUMBER}-<2-3-word-kebab-summary>
 
 # 원격에 push (트래킹 설정)
@@ -163,12 +163,16 @@ git push -u origin <type>/${ISSUE_NUMBER}-<2-3-word-kebab-summary>
 
 ### C-1. 베이스 브랜치 확인
 
-```bash
-git branch -a | grep -E "main|develop"
+**브랜치 전략: Git Flow (경량화)**
+```
+feature/* → develop  (기능 개발 PR)
+develop   → main     (릴리즈 PR, 태그 필수)
+hotfix/*  → main + develop (긴급 수정)
 ```
 
-- `develop` 브랜치가 있으면 → base: `develop`
-- 없으면 → base: `main`
+- `feature/*`, `fix/*`, `refactor/*` 브랜치 → base: `develop`
+- `hotfix/*` 브랜치 → base: `main` (머지 후 develop에도 동일 머지)
+- `develop → main` 릴리즈 PR → 태그(`v0.x.0`) 함께 생성
 
 ### C-2. PR 제목 형식
 
@@ -232,8 +236,11 @@ CodeRabbit 리뷰가 완료되면 coderabbit-review 스킬을 사용하여 지�
 
 이슈는 작업 시작 전 **Workflow B (issue)** 를 별도 호출하는 패턴으로 사용:
 ```
-[작업 시작 전] git-workflow(issue) → 이슈 생성 + 브랜치 생성·체크아웃
+[작업 시작 전] git-workflow(issue) → 이슈 생성 + 브랜치 생성·체크아웃 (develop 기준)
 [구현 중]      springboot-dev (이슈 브랜치 위에서 작업)
 [구현 완료]    springboot-dev → 사용자 승인 → git-workflow(commit) → git-workflow(PR)
-               PR base: main, head: <issue-branch>, Closes #<이슈번호>
+               PR base: develop, head: <issue-branch>, Closes #<이슈번호>
+
+[릴리즈]       develop → main PR 생성, 태그(v0.x.0) 부여
+[긴급 수정]    hotfix/* → main PR → 머지 후 develop에도 머지
 ```
