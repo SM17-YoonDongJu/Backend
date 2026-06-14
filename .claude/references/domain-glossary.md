@@ -68,47 +68,21 @@ MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사�
 
 ---
 
-## 5. 검수 리포트 확정 조건 (보험업법 §186·§188)
 
-검수 수정과 서명 확정은 `PATCH /reports/{reportID}` 단일 API로 처리한다.
-`status`를 최종 확정 값(`AWAITING_ADOPTION`)으로 변경할 때 **서명 필드 필수:**
+## 5. 매칭 플로우 상세
 
-```json
-{
-  "status": "AWAITING_ADOPTION",
-  "adjuster_license_no": "제2024-0001호",
-  "adjuster_name":       "홍길동",
-  "signed_at":           "2026-06-03T14:00:00Z"
-}
-```
-
-> `signed_at` = `REPORTS.created_at` (사정사가 리포트를 등록한 시각). AI 초안과 사정사 검수본 모두 `REPORTS` 테이블에 저장되므로 각 레코드의 `created_at`이 발행 시각이다. 별도 `published_at` 컬럼 불필요.
-
-- **서명 없이 확정 불가** — status를 확정값으로 변경 시 서명 필드 누락이면 거부
-- **확정 후 수정 불가** — 이미 확정된 리포트에 PATCH 시 `UNSUPPORTED_OPERATION(400)`
-- **보존 기간:** `REPORTS.created_at` 기준 **3년** (보험업법 §188 / 개인정보보호법)
-- **탈퇴 시:** 사용자 식별정보는 익명화, 서명된 리포트·S3 원본은 보존 기간 동안 유지
-
----
-
-## 6. 매칭 플로우 상세
-
-### 매칭 요청
+### 매칭 요청 (즉시 연결)
 - 사용자가 검수 리포트 목록에서 사정사를 **직접 선택** (알고리즘 추천 아님)
+- 선택 즉시 매칭 확정 + WebSocket 채팅 채널 개설 + 양측 FCM/APNs 알림 — **사정사 수락 단계 없음**
+- API 응답에 `chatRoomId` 포함
+- API: `POST /matches/{reportID}` — Body: `{ "adjusterId": "uuid" }`
+- **ChatRoom 생성 책임**: backend-developer가 매칭 서비스 로직 안에서 `ChatService.createRoom(userId, adjusterId)`를 호출한다. realtime-developer는 `ChatService.createRoom()`을 구현하고 노출한다.
 - 동시에 복수 사정사에게 매칭 요청 **불가** (1건씩 순차 요청)
 - 이미 진행 중인 상담이 있으면 `DUPLICATE_RESOURCE(409)` 반환
-- API: `POST /matches/{reportID}` — Body: `{ "adjusterId": "uuid" }`
-
-### 수락
-- 수락: 매칭 확정 + WebSocket 채팅 채널 개설 + 양측 FCM/APNs 알림
-- API 응답에 `chatRoomId` 포함
-- API: `POST /matches/{reportID}/accept` — 요청 본문 없음
-- **ChatRoom 생성 책임**: backend-developer가 매칭 수락 서비스 로직 안에서 `ChatService.createRoom(userId, adjusterId)`를 호출한다. realtime-developer는 `ChatService.createRoom()`을 구현하고 노출한다.
-- **수락 만료:** 매칭 요청 후 **24시간 무응답** 시 자동 만료
-- **거절 엔드포인트 없음:** 현재 명세에 reject API 미존재 — 추가 여부 검토 필요 `[미결]`
 
 ### 제약
 - 보험업법 §189: 협상·합의 대리 기능 미제공. 정보 제공과 사정사 연결만 수행.
+- 거절·수락 엔드포인트 없음 — 사용자가 선택하면 바로 COUNSELING 전이.
 
 ---
 
@@ -211,8 +185,7 @@ MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사�
 ### matching 도메인
 | 기능 | Method | Path |
 |------|--------|------|
-| 상담 신청 (매칭 요청) | POST | `/matches/{reportID}` |
-| 매칭 수락 | POST | `/matches/{reportID}/accept` |
+| 상담 신청 (즉시 매칭) | POST | `/matches/{reportID}` |
 
 ### chat 도메인
 | 기능 | Method | Path |
@@ -392,7 +365,7 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 |------|---------|---------|---------|
 | 회원가입 | 소셜 인증 완료, 미가입 상태 | social_accounts 연결 + 닉네임 등록 + JWT 발급 | 이미 연동된 소셜 계정 → 로그인 처리로 전환; 닉네임 중복 → 거부 |
 | 소셜 로그인 | provider 동의 완료, 인가코드 수신 | 인가코드 → 소셜 토큰 교환 → 기존 회원: JWT 발급, 신규: 가입 플로우 연결; 로그인 시 device token 등록 | 미지원 provider; 인가코드 만료/무효 |
-| 로그아웃 | 로그인 상태 (유효 토큰 보유) | Redis Refresh Token 폐기; 이미 로그아웃 상태여도 멱등 처리 | Access Token은 stateless — 15분 만료 전까지 유효 |
+| 로그아웃 | 로그인 상태 (유효 토큰 보유) | Redis Refresh Token 폐기; 이미 로그아웃 상태여도 멱<br/>등 처리 | Access Token은 stateless — 15분 만료 전까지 유효 |
 | 회원탈퇴 | 로그인 + 본인 확인 | 계정 익명화 + Refresh Token 삭제 + S3 접근 차단 | 진행 중 매칭/상담 처리 정책 미결 `[미결]`; 서명 완료 리포트는 3년 보존 |
 
 ### user
@@ -413,12 +386,9 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 > ⚠️ **미결:** 채택(adopt) 동작을 `PATCH /reports/{reportID}`로 처리하는지, 별도 엔드포인트가 필요한지 확인 필요.
 
 ### matching
-| 기능 | 선행조건 | 핵심 동작 | 주요 예외 |
-|------|---------|---------|---------|
-| 상담 신청 | 검수본 1건 이상(AWAITING_ADOPTION); 로그인(USER) | 선택한 사정사에게 매칭 요청 생성 | 이미 매칭 진행 중/완료; 본인 리포트 아님 |
-| 상담 수락 | 매칭 요청 존재; 로그인(대상 사정사) | 매칭 확정 + 채팅방 개설 + 양측 알림; **24시간 무응답 시 만료** | 대상 사정사 아님; 만료된 요청 |
-
-> ⚠️ **미결:** 거절(reject) 엔드포인트 없음 — 추가 여부 검토 필요.
+| 기능 | 선행조건 | 핵심 동작                   | 주요 예외 |
+|------|---------|-------------------------|---------|
+| 상담 신청 (즉시 매칭) | 검수본 1건 이상(AWAITING_ADOPTION); 로그인(USER) | 사정사 선택 즉시 매칭 확정 + 채팅방 개설 + 양측 알림 — 사정사 수락 단계 없음 | 이미 매칭 진행 중/완료 → 409; 본인 리포트 아님 → 403 |
 
 ### chat
 | 기능 | 선행조건 | 핵심 동작 | 비고 |
@@ -436,8 +406,9 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 
 ## 17. 변경 이력
 
-| 날짜 | 변경 내용 | 사유 |
-|------|----------|------|
-| 2026-06-14 | 기능리스트 20개 페이지 동기화. device token, 로그아웃 멱등, 매칭 24h 만료, 거절 API 미결, 채택 API 미결, 구독 취소 미구현, USER_CLAIMS 선행조건, 기능별 비즈니스 규칙 표(섹션 16) 추가. | 기능리스트 기반 비즈니스 규칙 보완 |
+| 날짜 | 변경 내용                                                                                                                                              | 사유 |
+|------|----------------------------------------------------------------------------------------------------------------------------------------------------|------|
+| 2026-06-14 | 매칭 플로우 수정: 사정사 수락 단계 제거. 사용자가 사정사 선택 시 즉시 COUNSELING 전이. `/matches/{reportID}/accept` API 삭제. 섹션 5·10·16 반영. | 실제 기획 확인 — 수락/거절 없는 즉시 연결 구조 |
+| 2026-06-14 | 기능리스트 20개 페이지 동기화. device token, 로그아웃 멱등, 매칭 24h 만료, 거절 API 미결, 채택 API 미결, 구독 취소 미구현, USER_CLAIMS 선행조건, 기능별 비즈니스 규칙 표(섹션 16) 추가.                   | 기능리스트 기반 비즈니스 규칙 보완 |
 | 2026-06-14 | Notion API 명세서 20개 페이지 전수 동기화. userType/Role 구분, 에러코드 전체, adjuster-applications 플로우, accidentType 불일치 주의, 매칭 경로(/matches), admin API, 결제/구독 상세 추가. | 최초 API 명세 기반 정합성 확보 |
-| 2026-06-09 | 초기 구성 | 환경 세팅 완료 후 하네스 등록 |
+| 2026-06-09 | 초기<br/> 구성                                                                                                                                         | 환경 세팅 완료 후 하네스 등록 |
