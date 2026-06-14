@@ -112,7 +112,7 @@ cors:
 
 ## Redis Refresh Token 관리 (security-developer 담당)
 
-Redis는 JWT Refresh Token 저장 전용으로만 사용한다.
+Redis는 JWT Refresh Token 저장 전용으로 사용한다.
 
 ```java
 @Component

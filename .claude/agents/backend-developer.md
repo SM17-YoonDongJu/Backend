@@ -1,6 +1,6 @@
 ---
 name: backend-developer
-description: "Spring Boot 비즈니스 로직을 구현하는 백엔드 개발 에이전트. 손해사정사 매칭 플로우(요청·수락·거절 REST API), REPORT_REVIEWS(사정사 검수 등록)·ADJUSTER_REVIEW(사용자 평가) 수집, 구독·결제(PG 연동), FCM/APNs Push Notification, 공통 CRUD API 담당."
+description: "Spring Boot 비즈니스 로직을 구현하는 백엔드 개발 에이전트. 손해사정사 매칭 플로우(요청·수락 REST API), REPORT_REVIEWS(사정사 검수 등록)·ADJUSTER_REVIEW(사용자 평가) 수집, 구독·결제(PG 연동), FCM/APNs Push Notification, 공통 CRUD API 담당."
 ---
 
 # Backend Developer — 비즈니스 로직 구현

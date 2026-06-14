@@ -126,29 +126,35 @@ EOF
 
 이슈 생성 직후 반드시 실행한다.
 
-**브랜치 네이밍 규칙:** `<type-lowercase>/<2-3-word-kebab-summary>`
+**브랜치 네이밍 규칙:** `<type-lowercase>/<issue-number>-<2-3-word-kebab-summary>`
 
-| 이슈 제목 예시 | 브랜치 이름 |
-|--------------|-----------|
-| `[Settings] Spring 기반 프로젝트 초기 환경 구축` | `settings/spring-init` |
-| `[feat] 카카오 OAuth2 소셜 로그인 구현` | `feat/kakao-oauth2` |
-| `[bug] 매칭 수락 시 중복 채팅방 생성` | `bug/match-duplicate-room` |
-| `[chore] Flyway 마이그레이션 초기 스키마 작성` | `chore/flyway-init-schema` |
+| 이슈 제목 예시 | 이슈 번호 | 브랜치 이름 |
+|--------------|---------|-----------|
+| `[Settings] Spring 기반 프로젝트 초기 환경 구축` | #3 | `settings/3-spring-init` |
+| `[feat] 카카오 OAuth2 소셜 로그인 구현` | #12 | `feat/12-kakao-oauth2` |
+| `[bug] 매칭 수락 시 중복 채팅방 생성` | #17 | `bug/17-match-duplicate-room` |
+| `[chore] Flyway 마이그레이션 초기 스키마 작성` | #21 | `chore/21-flyway-init-schema` |
 
 - type은 이슈 제목의 `[<type>]`에서 추출, 소문자 변환
+- issue-number는 `gh issue create` 출력에서 추출한 실제 이슈 번호
 - summary는 이슈 설명을 2~3단어로 요약, kebab-case 영문
 
 ```bash
-# 이슈 번호 확인
-ISSUE_NUMBER=$(gh issue list --limit 1 --json number --jq '.[0].number')
+# 이슈 생성 후 번호 캡처
+ISSUE_URL=$(gh issue create \
+  --title "..." \
+  --body "..." \
+  --label "..." \
+  --assignee "이동형")
+ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
 
 # main 기준으로 브랜치 생성 후 체크아웃
 git checkout main
 git pull origin main
-git checkout -b <branch-name>
+git checkout -b <type>/${ISSUE_NUMBER}-<2-3-word-kebab-summary>
 
 # 원격에 push (트래킹 설정)
-git push -u origin <branch-name>
+git push -u origin <type>/${ISSUE_NUMBER}-<2-3-word-kebab-summary>
 ```
 
 ---

@@ -36,15 +36,14 @@ description: "Spring Boot 코드 리뷰, 테스트 작성(JUnit5·Mockito·TestC
 구현 코드에서 아래 항목을 **CRITICAL** 기준으로 검증한다. 위반 발견 시 즉시 리더에게 알리고 구현 에이전트에게 재작업을 요청한다.
 
 ### 필수 확인 항목
-1. **사정사 서명 정보 포함 여부** — `REPORTS`는 AI 분석 리포트와 사정사 검수 리포트를 한 테이블에서 관리한다(`adjuster_id` FK로 담당 사정사 연결). publish API 응답 DTO에 `adjuster_id` → `ADJUSTER_PROFILES(license_no, name)` 조인으로 파생한 `license_no`, `adjuster_name`, `signed_at`(= `REPORTS.created_at`)이 포함되는지 확인. 이 세 값 중 하나라도 누락이면 CRITICAL. `REPORT_REVIEWS`는 RAG 개선 피드백 전용이므로 서명 검증 대상이 아님.
 
-2. **보상금액 단정 표현 금지** — `REPORTS` 테이블의 보상금액은 `claimed_min_amount` / `claimed_max_amount` 범위 쌍으로만 저장된다(`offered_amount`는 보험사 지급 금액으로 단순 사실값). API 응답 DTO에서 이 값들이 범위로 표현되는지 확인. 금지: 단일 확정 금액을 "보상금은 X원입니다" 형태로 조합·노출하는 DTO 필드나 문자열.
+1. **보상금액 단정 표현 금지** — `REPORTS` 테이블의 보상금액은 `claimed_min_amount` / `claimed_max_amount` 범위 쌍으로만 저장된다(`offered_amount`는 보험사 지급 금액으로 단순 사실값). API 응답 DTO에서 이 값들이 범위로 표현되는지 확인. 금지: 단일 확정 금액을 "보상금은 X원입니다" 형태로 조합·노출하는 DTO 필드나 문자열.
 
-3. **법률자문 성격 문자열 금지** — 에러 메시지·API 응답 본문·`CHATBOT_MESSAGES.content` 생성 로직에 법적 판단을 단정하는 문구(`"법적으로 ~"`, `"보상받을 수 있습니다"` 등)가 하드코딩되어 있지 않은지.
+2. **법률자문 성격 문자열 금지** — 에러 메시지·API 응답 본문·`CHATBOT_MESSAGES.content` 생성 로직에 법적 판단을 단정하는 문구(`"법적으로 ~"`, `"보상받을 수 있습니다"` 등)가 하드코딩되어 있지 않은지.
 
-4. **경쟁 검수 모델 격리** — `REPORT_REVIEWS` 조회 API가 `adjuster_id = 로그인한 사정사`로 필터링되는지 확인. 타 사정사의 AI 평가 내용(`review`)이 응답에 포함되면 CRITICAL. (`REPORT_REVIEWS`에 동일 report_id로 다건 존재 가능하므로 WHERE adjuster_id 조건 필수)
+3. **경쟁 검수 모델 격리** — `REPORT_REVIEWS` 조회 API가 `adjuster_id = 로그인한 사정사`로 필터링되는지 확인. 타 사정사의 AI 평가 내용(`review`)이 응답에 포함되면 CRITICAL. (`REPORT_REVIEWS`에 동일 report_id로 다건 존재 가능하므로 WHERE adjuster_id 조건 필수)
 
-5. **도메인 Enum 일관성** — 코드의 Enum 값이 ERD 및 `domain-glossary.md`와 일치하는지 확인:
+4. **도메인 Enum 일관성** — 코드의 Enum 값이 ERD 및 `domain-glossary.md`와 일치하는지 확인:
    - `USERS.role`: `USER`, `CERTIFICATED_ADJUSTER`, `UNCERTIFICATED_ADJUSTER`, `ADMIN`
    - `REPORTS.status`: `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `MATCHED`
    - `REPORTS.accident_type`: `질병`, `상해`, `후유장해`, `복합`
