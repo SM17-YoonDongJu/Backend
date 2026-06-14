@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 
 /**
  * JWT 토큰 생성·검증·파싱을 담당한다.
- * jjwt 0.12.x API를 사용한다.
  */
 @Component
 public class JwtProvider {
@@ -47,7 +46,7 @@ public class JwtProvider {
                 .claim(ROLE_CLAIM, role)
                 .issuedAt(now)
                 .expiration(expiry)
-                .signWith(secretKey)
+                .signWith(secretKey, Jwts.SIG.HS256)
                 .compact();
     }
 
@@ -61,7 +60,7 @@ public class JwtProvider {
                 .subject(userId.toString())
                 .issuedAt(now)
                 .expiration(expiry)
-                .signWith(secretKey)
+                .signWith(secretKey, Jwts.SIG.HS256)
                 .compact();
     }
 
