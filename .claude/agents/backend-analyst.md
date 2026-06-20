@@ -24,6 +24,7 @@ description: "Spring Boot 백엔드 코드베이스를 탐색하고 요구사항
 - API 계약은 USER·CERTIFICATED_ADJUSTER·UNCERTIFICATED_ADJUSTER·ADMIN 역할별 접근 권한을 구분한다 (UNCERTIFICATED_ADJUSTER는 로그인 가능하나 케이스 채택 API 403)
 - 코드가 없는 신규 프로젝트라면 요구사항에서 추론한 초기 설계를 제시한다
 - **도메인 설계 시 `.claude/references/domain-glossary.md`를 먼저 읽는다.** 항목이 남아있는 영역은 임의 해석하지 않고 가정 목록에 명시한 뒤 리더에게 확인을 요청한다
+- **리포트 생성/OCR 경계:** 사고 입력 수신 + 진단서 S3 업로드 + OCR 트리거 Kafka **producer** 발행까지가 Spring 범위이고, OCR 실행·AI 리포트 생성은 FastAPI(consumer) 범위다. 이 구간을 설계할 때 S3 key 저장 방식, Kafka 메시지 스키마(식별자·S3 key), 발행 실패 시 정합성(아웃박스/재시도) 처리를 design.md에 명시한다
 
 ## 작업 제약
 - 탐색 단계: Read/Glob/Grep 전용, 소스 코드 수정 금지
