@@ -36,7 +36,7 @@ Spring Boot 3.4.x/ Java 21 기반 REST API 서버. 레이어드 아키텍처를 
 com.soma.backend
 ├── domain/      # 비즈니스 도메인별 Controller·Service·Repository
 ├── global/      # 전 도메인 공통 (config, exception, security)
-└── infra/       # 외부 시스템 연동 (redis, s3, fcm)
+└── infra/       # 외부 시스템 연동 (redis, s3, fcm, kafka)
 ```
 
 **domain** 패키지 내부는 도메인별로 `controller`, `service`, `dto` 서브패키지로 구성한다. 도메인: `auth`, `user`, `adjuster`, `report`, `match`, `chat`, `payment`, `subscription`.
@@ -62,6 +62,25 @@ DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{
 - 커밋 메시지는 **항상 한국어**로 작성한다.
 - 형식: `<type>(<scope>): <한국어 설명>` (Conventional Commits 준수)
 - 예시: `feat(auth): 카카오 OAuth2 소셜 로그인 구현`, `fix(match): 매칭 수락 시 중복 채팅방 생성 버그 수정`
+
+## Branch Strategy
+
+Git Flow (경량화) 전략을 사용한다.
+
+```
+main      ← 운영 배포 (태그로 버전 관리, 직접 push 금지)
+develop   ← 통합 브랜치, 스테이징 배포 대상 (직접 push 금지)
+feature/* ← 이슈별 기능 개발 (develop 기준으로 분기)
+hotfix/*  ← 운영 긴급 수정 (main 기준으로 분기)
+```
+
+**플로우:**
+- `feature/<issue>-<name>` → PR → `develop` (기능 PR, 1인 이상 approve)
+- `develop` → PR → `main` (릴리즈 PR, 태그 `v0.x.0` 부여)
+- `hotfix/<issue>-<name>` → PR → `main` (긴급 수정 후 `develop`에도 머지)
+
+**브랜치 네이밍:** `<type>/<issue-number>-<2-3-word-kebab-summary>`
+예시: `feat/12-kakao-oauth2`, `bug/17-match-duplicate-room`
 
 ## Code Conventions
 
@@ -106,17 +125,20 @@ Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반
 ## Spring Boot 담당 범위
 
 FastAPI가 담당하는 영역 (Spring Boot 범위 외):
-- 리포트 생성 요청 수신, AI 챗봇 WebSocket
-- OCR 처리, LangGraph 멀티에이전트, RAG
-- Kafka 내부 처리
+- AI 챗봇 WebSocket
+- OCR 실행, LangGraph 멀티에이전트, RAG (AI 리포트 생성 파이프라인)
+- Kafka consumer 측 내부 처리 (OCR 트리거 메시지 소비 이후)
 
 Spring Boot가 담당하는 영역:
 - 인증·회원 (JWT, OAuth2, RBAC)
+- 사고 상황 입력 수신 + 진단서 S3 업로드 + OCR 트리거 Kafka producer 발행 (리포트 생성 요청의 진입점)
 - 손해사정사 매칭 플로우 (요청·수락)
 - 검수 리포트 등록(서명 포함 PATCH), review_feedback 수집
 - 구독·결제 (PG사 연동)
 - FCM Push (검수 완료 시)
 - WebSocket(STOMP) 채팅 (ChatRoom, ChatMessage, 오프라인 FCM 푸시)
+
+> **OCR 처리 경계:** Spring Boot가 사고 정보·진단서를 받아 S3에 저장하고 Kafka로 OCR 트리거 메시지를 **발행(producer)**한다. FastAPI가 이 메시지를 **소비(consumer)**하여 OCR·AI 리포트 생성을 수행한다. OCR 알고리즘 자체는 Spring 범위 외.
 
 ## 하네스: Spring Boot Backend
 
@@ -130,3 +152,4 @@ Spring Boot가 담당하는 영역:
 | 2026-06-09 | 초기 구성 | 전체 | 환경 세팅 완료 후 하네스 등록 |
 | 2026-06-09 | realtime-developer 추가, WebSocket 범위 편입 | agents/realtime-developer.md, springboot-dev SKILL.md | 채팅 기능 추가 요청 |
 | 2026-06-09 | domain-glossary 뼈대 추가, qa-reviewer 컴플라이언스 섹션 추가, backend-analyst glossary 참조 원칙 추가 | references/domain-glossary.md, agents/qa-reviewer.md, agents/backend-analyst.md | 변호사법·보험업법 리스크 대응 |
+| 2026-06-20 | OCR 처리 경계 재정의 — 사고 입력 수신·진단서 S3 업로드·OCR 트리거 Kafka producer를 Spring 범위로 편입 (OCR 실행/Kafka consumer는 FastAPI 유지) | CLAUDE.md 담당 범위, springboot-dev SKILL.md, agents/backend-developer.md, agents/backend-analyst.md, references/domain-glossary.md | 사고 정보 입력~OCR 트리거 구간 Spring 담당 결정 |

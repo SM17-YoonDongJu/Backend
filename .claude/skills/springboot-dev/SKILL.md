@@ -25,8 +25,10 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 | realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | websocket-impl |
 | qa-reviewer | general-purpose | 코드 리뷰, 테스트 작성, CodeRabbit | spring-qa, coderabbit-review |
 
-## 범위 외 (FastAPI 담당)
-Kafka, AI 처리(OCR, LangGraph, RAG) — 이 스킬의 구현 범위에서 제외.
+## OCR 트리거 경계
+- **범위 내 (Spring):** 사고 상황 입력 수신, 진단서 S3 업로드, OCR 트리거 Kafka **producer** 발행
+- **범위 외 (FastAPI):** OCR 실행·LangGraph·RAG 등 AI 처리, Kafka **consumer** 측 내부 처리
+> 즉 "S3 저장 + Kafka로 OCR 트리거 발행"까지는 이 스킬로 구현하고, 그 이후 AI 파이프라인은 FastAPI 담당이다.
 
 ## 워크플로우
 
