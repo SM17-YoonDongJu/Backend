@@ -30,16 +30,38 @@ docker compose --profile app up -d
 
 ## Architecture
 
-Spring Boot 3.4.x/ Java 21 기반 REST API 서버. 레이어드 아키텍처를 따른다.
+Spring Boot 3.4.x/ Java 21 기반 REST API 서버. **전술적 DDD(Tactical DDD)**를 지향한다. 패키지는 **Bounded Context(도메인) 우선**으로 나누고, 각 컨텍스트 내부를 4개 레이어로 구성한다. 의존성은 항상 안쪽(도메인)을 향한다.
 
 ```
 com.soma.backend
-├── domain/      # 비즈니스 도메인별 Controller·Service·Repository
-├── global/      # 전 도메인 공통 (config, exception, security)
-└── infra/       # 외부 시스템 연동 (redis, s3, fcm, kafka)
+├── <context>/                 # Bounded Context = 도메인 (auth, user, adjuster, report, match, chat, payment, subscription)
+│   ├── domain/                # 순수 도메인 — 프레임워크 의존 최소 (JPA 애노테이션까지만 허용)
+│   │   ├── model/             # Aggregate Root, Entity, Value Object
+│   │   ├── repository/        # Repository 인터페이스(포트) — 구현은 infrastructure
+│   │   ├── service/           # Domain Service (여러 Aggregate에 걸친 불변식)
+│   │   └── event/             # 도메인 이벤트
+│   ├── application/           # 유스케이스 오케스트레이션 — @Transactional 경계
+│   │   ├── (*)Service         # Application Service (도메인 조합, 트랜잭션)
+│   │   └── dto/               # Command / Result (유스케이스 입출력, 내부용)
+│   ├── presentation/          # 표현 계층
+│   │   ├── controller/        # ResponseEntity<ApiResponse<T>> 반환, 얇게 유지
+│   │   └── dto/               # Request / Response (API 계약, snake_case)
+│   └── infrastructure/        # 어댑터 — 도메인 포트 구현
+│       └── persistence/       # Spring Data JPA Repository 구현, 매핑
+├── global/                    # 전 컨텍스트 공통 (config, exception, security)
+└── infra/                     # 전역 공유 인프라 (redis, s3, fcm, kafka)
 ```
 
-**domain** 패키지 내부는 도메인별로 `controller`, `service`, `dto` 서브패키지로 구성한다. 도메인: `auth`, `user`, `adjuster`, `report`, `match`, `chat`, `payment`, `subscription`.
+**레이어 의존 규칙 (핵심):**
+- `domain` → 아무것도 의존 안 함 (실용적 예외: JPA 애노테이션). Spring Web/Application/Infra 참조 금지.
+- `application` → `domain`만 의존. 유스케이스 단위로 `@Transactional` 경계를 갖는다.
+- `presentation` → `application`(+ 조회용 도메인 모델).
+- `infrastructure` → `domain`(포트 구현). 프레임워크·외부 SDK는 여기 격리.
+- **의존 방향은 항상 도메인 안쪽으로.** 바깥이 안을 알고, 안은 바깥을 모른다.
+
+**전술적 패턴:** Aggregate(불변식 경계, 외부는 Root 통해서만 접근, Aggregate 간 참조는 ID로) · Value Object(식별자 없는 불변 값은 `record`로 캡슐화) · Repository(인터페이스는 `domain`, 구현은 `infrastructure`, Aggregate 단위 저장/조회) · 트랜잭션(한 트랜잭션 = 한 Aggregate 수정 원칙, 다중 Aggregate는 도메인 이벤트로 결합도 완화) · 유비쿼터스 언어(네이밍은 `.claude/references/domain-glossary.md` 준수).
+
+> **적용 범위:** 신규 코드는 이 구조를 따른다. 기존 `domain/*/{controller,service,dto}` 레이어드 코드는 도메인 단위로 점진적으로 마이그레이션한다. 구현 상세·예시·안티패턴은 `ddd-tactical` 스킬 참조.
 
 **global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다.
 
@@ -156,3 +178,4 @@ Spring Boot가 담당하는 영역:
 | 2026-06-09 | domain-glossary 뼈대 추가, qa-reviewer 컴플라이언스 섹션 추가, backend-analyst glossary 참조 원칙 추가 | references/domain-glossary.md, agents/qa-reviewer.md, agents/backend-analyst.md | 변호사법·보험업법 리스크 대응 |
 | 2026-06-20 | OCR 처리 경계 재정의 — 사고 입력 수신·진단서 S3 업로드·OCR 트리거 Kafka producer를 Spring 범위로 편입 (OCR 실행/Kafka consumer는 FastAPI 유지) | CLAUDE.md 담당 범위, springboot-dev SKILL.md, agents/backend-developer.md, agents/backend-analyst.md, references/domain-glossary.md | 사고 정보 입력~OCR 트리거 구간 Spring 담당 결정 |
 | 2026-07-02 | infra-developer 에이전트 + spring-infra 스킬 추가, 인프라·관측성·배포 하드닝 영역 편입 (actuator·JVM/GC·DB풀·Kafka producer 배선·docker·PII 로깅·smoke test) | agents/infra-developer.md, skills/spring-infra/SKILL.md, springboot-dev SKILL.md | 프로덕션 하드닝 + 로컬 Kafka(docker compose) 작업에 홈이 없어 전담 에이전트/스킬 신설 |
+| 2026-07-02 | 아키텍처를 레이어드 → 전술적 DDD로 전환 (규칙·하네스만, 코드는 점진 마이그레이션), ddd-tactical 스킬 신설 | CLAUDE.md Architecture, skills/ddd-tactical/SKILL.md, agents/backend-analyst.md, agents/backend-developer.md | DDD 기반 개발 체계 도입 결정 |

@@ -19,8 +19,8 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 
 | 팀원 | 타입 | 역할 | 스킬 |
 |------|------|------|------|
-| backend-analyst | general-purpose | 코드 탐색, API 계약·DB 스키마 설계 | — |
-| backend-developer | general-purpose | 비즈니스 로직, 리포트·FCM | — |
+| backend-analyst | general-purpose | 코드 탐색, API 계약·DB 스키마·DDD 도메인 설계 | ddd-tactical |
+| backend-developer | general-purpose | 비즈니스 로직, 리포트·FCM (전술적 DDD 구현) | ddd-tactical |
 | security-developer | general-purpose | JWT, OAuth2, Spring Security, RBAC, Redis RT | spring-security-impl |
 | realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | websocket-impl |
 | infra-developer | general-purpose | 관측성(actuator)·JVM/GC·DB 풀·Kafka producer 배선·docker 하드닝·PII 로깅·smoke test | spring-infra |
