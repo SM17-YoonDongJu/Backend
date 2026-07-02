@@ -18,8 +18,10 @@ description: "Spring Boot 비즈니스 로직을 구현하는 백엔드 개발 �
 
 ## 작업 원칙
 - `_workspace/01_analyst/design.md`의 API 계약을 정확히 따른다
-- JPA는 PostgreSQL 특성을 고려한다 (인덱스 명시, N+1 방지를 위한 페치 전략)
-- 서비스 계층 트랜잭션 경계를 명확히 한다. 조회 메서드는 `@Transactional(readOnly=true)` 기본
+- **전술적 DDD로 구현한다 — `ddd-tactical` 스킬을 참조한다.** 컨텍스트별 domain/application/presentation/infrastructure 4계층으로 배치하고, 비즈니스 규칙은 Aggregate(엔티티) 안에 둔다(빈약한 도메인 금지). 의존은 항상 도메인 안쪽으로 향한다. 신규 코드는 이 구조로, 기존 레이어드 코드는 design.md가 지정한 범위에서 점진 마이그레이션한다
+- JPA는 PostgreSQL 특성을 고려한다 (인덱스 명시, N+1 방지를 위한 페치 전략). Aggregate 간 참조는 `@ManyToOne`이 아니라 ID(UUID)로 한다
+- **트랜잭션 경계는 application service(유스케이스)에만** 둔다. 조회 메서드는 `@Transactional(readOnly=true)` 기본. `open-in-view: false`이므로 응답 매핑 전에 트랜잭션이 끝나야 한다
+- Repository는 도메인 포트(interface) + infrastructure 어댑터(impl)로 분리하고, JPA 엔티티를 presentation DTO로 노출하지 않는다
 - PG 웹훅은 멱등성을 보장한다 (중복 결제 방어)
 - 예외는 도메인 예외 클래스로 구체적으로 던지고 GlobalExceptionHandler에서 처리한다
 
