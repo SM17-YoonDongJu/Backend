@@ -1,6 +1,6 @@
 ---
 name: springboot-dev
-description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC, WebSocket 채팅 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 후속 작업: 결과 수정, 부분 재실행, 업데이트, 보완, 다시 구현, 이전 구현 개선 요청 시에도 사용."
+description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC, WebSocket 채팅 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 인프라·관측성·배포 하드닝(actuator 헬스체크, JVM/GC, DB 커넥션 풀, Kafka producer 설정·배선, docker healthcheck, PII 로깅, smoke test)도 이 스킬로 조율(infra-developer 담당). 후속 작업: 결과 수정, 부분 재실행, 업데이트, 보완, 다시 구현, 이전 구현 개선 요청 시에도 사용."
 ---
 
 # Spring Boot Dev Orchestrator
@@ -23,6 +23,7 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 | backend-developer | general-purpose | 비즈니스 로직, 리포트·FCM | — |
 | security-developer | general-purpose | JWT, OAuth2, Spring Security, RBAC, Redis RT | spring-security-impl |
 | realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | websocket-impl |
+| infra-developer | general-purpose | 관측성(actuator)·JVM/GC·DB 풀·Kafka producer 배선·docker 하드닝·PII 로깅·smoke test | spring-infra |
 | qa-reviewer | general-purpose | 코드 리뷰, 테스트 작성, CodeRabbit | spring-qa, coderabbit-review |
 
 ## OCR 트리거 경계
@@ -54,7 +55,10 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 3. `_workspace/01_analyst/design.md` 검토 후 구현 범위 확인
 4. 구현에 필요한 전문가 판단:
    - 인증/권한/Redis RT 변경 포함 → security-developer 포함
+   - WebSocket(STOMP) 채팅 포함 → realtime-developer 포함
+   - 인프라/관측성/배포/JVM·GC/DB 풀/Kafka producer 설정·배선/docker·헬스체크/PII 로깅/smoke test → infra-developer 포함
    - 비즈니스 로직만 → backend-developer 단독
+   > 순수 인프라 하드닝 요청(피처 아님)은 분석(Phase 1)·QA(Phase 3)를 축약하고 infra-developer 단독 실행 후 컴파일·`docker compose config`로 검증할 수 있다.
 
 ### Phase 2: 구현 (에이전트 팀)
 
@@ -71,6 +75,10 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
    // WebSocket 포함 시 — realtime-developer 추가
    Agent(subagent_type: "realtime-developer", model: "sonnet",
      prompt: "_workspace/01_analyst/design.md를 읽고 WebSocket 채팅 기능을 구현하라. 완료 후 _workspace/02_realtime/summary.md에 변경 파일 목록을 기록하라.")
+
+   // 인프라/관측성/배포 하드닝 포함 시 — infra-developer 추가 (spring-infra 스킬 참조)
+   Agent(subagent_type: "infra-developer", model: "sonnet",
+     prompt: "spring-infra 스킬을 참조해 관측성·JVM·DB풀·Kafka producer 배선·docker 하드닝을 구현하라. 완료 후 _workspace/02_infra/summary.md에 변경 파일 목록과 설정 값 근거를 기록하라.")
 
    // 비즈니스 로직만 — backend-developer 단독
    Agent(subagent_type: "backend-developer", model: "sonnet",
@@ -128,13 +136,13 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 ```
 request.md → [backend-analyst] → design.md
                                     ↓
-          [backend-developer] ←→ [security-developer]
-                  ↓                      ↓
-          _workspace/02_backend/  _workspace/02_security/
-                         ↘      ↙
-                    [qa-reviewer]
-                          ↓
-                  review-report.md
+   [backend-developer] ←→ [security-developer] ←→ [infra-developer]
+           ↓                    ↓                       ↓
+   02_backend/summary   02_security/summary     02_infra/summary
+                         ↘        ↓        ↙
+                          [qa-reviewer]
+                                ↓
+                        review-report.md
 ```
 
 ## 에러 핸들링
