@@ -27,6 +27,36 @@ services:
       timeout: 3s
       retries: 10
 
+  # 로컬 Kafka (KRaft 모드, zookeeper 불필요). 운영은 추후 MSK로 전환.
+  kafka:
+    image: apache/kafka:3.9.0
+    ports:
+      # host(로컬 bootRun)용 external 리스너 → localhost:9092
+      - "${KAFKA_PORT:-9092}:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # INTERNAL(kafka:9094): 컨테이너 간 통신 / EXTERNAL(localhost:9092): 호스트에서 접근
+      KAFKA_LISTENERS: CONTROLLER://0.0.0.0:9093,INTERNAL://0.0.0.0:9094,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9094,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # 단일 브로커 → 복제 계수 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   app:
     profiles: [app]
     build: .
@@ -39,13 +69,28 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SPRING_PROFILES_ACTIVE: oauth
+      # 컨테이너 내부에서는 INTERNAL 리스너로 접속 (env_file .env 값보다 우선)
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9094
+      KAFKA_SECURITY_PROTOCOL: PLAINTEXT
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: on-failure
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 1g            # JVM MaxRAMPercentage=75% → 힙 약 768m
+    volumes:
+      - ./logs:/app/logs     # GC 로그·힙덤프 호스트 보존
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s      # 앱 부팅 대기
 
 volumes:
   postgres_data:
   redis_data:
+  kafka_data:
