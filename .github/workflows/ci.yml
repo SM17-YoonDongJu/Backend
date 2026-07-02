@@ -69,6 +69,7 @@ jobs:
         run: ./gradlew test
         env:
           SPRING_PROFILES_ACTIVE: test
+          LOG_DIR: /tmp/logs
           DB_HOST: localhost
           DB_PORT: 5432
           DB_NAME: test_db

@@ -6,13 +6,13 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: create-drop   # 테스트마다 스키마 생성
+      ddl-auto: create-drop
     show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
-    enabled: false            # 테스트에선 Flyway 비활성
+    enabled: false
   data:
     redis:
       host: localhost
@@ -31,6 +31,10 @@ spring:
           naver:
             client-id: dummy
             client-secret: dummy
+
+logging:
+  file:
+    path: /tmp/logs
 
 jwt:
   secret: testsecretkeyforcitestingonly32chars!!
