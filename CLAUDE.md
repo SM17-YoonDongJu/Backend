@@ -87,7 +87,7 @@ hotfix/*  ← 운영 긴급 수정 (main 기준으로 분기)
 Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반 시 빌드 실패.
 
 **포맷**
-- 들여쓰기: 스페이스만 사용 (탭 금지)
+- 들여쓰기: 스페이스 2칸 (탭 금지)
 - 최대 줄 길이: 120자 (package·import·URL 제외)
 - 파일 마지막 줄: 빈 줄 필수
 
@@ -96,10 +96,12 @@ Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반
 - 메서드·파라미터·지역변수·필드: `camelCase`
 - 상수(`static final`): `UPPER_SNAKE_CASE`
 - 패키지: 소문자, 숫자·언더스코어 금지
+- 파라미터·변수명 1글자 금지 (최소 2자, 예: `catch (Exception ex)`)
 
 **임포트**
 - 와일드카드 임포트(`*`) 금지
 - 미사용·중복 임포트 금지
+- 그룹 순서: `java` → `javax` → `org` → `net` → `com`(외부) → 기타(`io`·`jakarta`·`lombok` 등) → `com.soma`(자사), 그룹 간 빈 줄 1개·그룹 내 알파벳 정렬
 
 **블록**
 - 모든 `if`/`for`/`while` 등에 중괄호 필수 (한 줄이라도)
