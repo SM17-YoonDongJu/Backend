@@ -6,6 +6,14 @@ spring:
     username: ${DB_USER:soma}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: soma-hikari
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 30000   # 커넥션 대기 30초 초과 시 예외
+      idle-timeout: 600000        # 유휴 커넥션 10분 후 회수
+      max-lifetime: 1740000       # 커넥션 최대 수명 29분 (DB 타임아웃보다 짧게)
+      keepalive-time: 300000      # 5분마다 keepalive
   jpa:
     hibernate:
       ddl-auto: validate
@@ -25,6 +33,18 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     security:
       protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+    # OCR 트리거 producer 안전 설정 (consumer는 FastAPI 담당 → 미설정)
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all                   # 모든 ISR 복제 확인 후 성공 처리
+      retries: 3
+      properties:
+        enable.idempotence: true  # 중복/재전송 방지 (정확히 한 번 전송 보장)
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        request.timeout.ms: 30000
+        linger.ms: 10
 
 jwt:
   secret: ${JWT_SECRET:localdevonlysecretkeyatleast32chars!!}
@@ -42,3 +62,28 @@ aws:
 
 server:
   port: 8080
+  shutdown: graceful   # 진행 중 요청 처리 후 종료
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info   # health/info만 노출 (env·beans 등 민감 엔드포인트 차단)
+  endpoint:
+    health:
+      show-details: never          # 상세는 외부 노출 안 함 (PII·인프라 정보 보호)
+      probes:
+        enabled: true              # liveness/readiness 프로브 활성화
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+logging:
+  level:
+    # PII 유출 방지: SQL 바인드 파라미터·요청 본문 로깅 억제
+    org.hibernate.SQL: warn
+    org.hibernate.orm.jdbc.bind: warn
+    org.hibernate.type.descriptor.sql: warn
+    org.springframework.web.filter.CommonsRequestLoggingFilter: warn

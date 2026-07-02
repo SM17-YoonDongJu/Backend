@@ -25,6 +25,12 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 
+	// Observability (health check, metrics)
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+	// Kafka (OCR 트리거 producer)
+	implementation 'org.springframework.kafka:spring-kafka'
+
 	// Security & Auth
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
