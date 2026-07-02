@@ -1,0 +1,120 @@
+package com.soma.backend.report.application;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.report.application.dto.ReviewedReportStatsResult;
+import com.soma.backend.report.domain.repository.ReportReviewQueryRepository;
+
+/** API#5 내 검수 내역 통계 유스케이스 단위 테스트(§10 경계 케이스). */
+@ExtendWith(MockitoExtension.class)
+class ReviewedReportQueryServiceTest {
+
+  @Mock
+  private ReportReviewQueryRepository reportReviewQueryRepository;
+
+  @InjectMocks
+  private ReviewedReportQueryService service;
+
+  private UUID adjusterId;
+
+  @BeforeEach
+  void setUp() {
+    adjusterId = UUID.randomUUID();
+  }
+
+  @Test
+  @DisplayName("total_count=0이면 conversion_rate는 0으로 가드된다(0 나눗셈 방지)")
+  void conversionRateZeroGuard() {
+    given(reportReviewQueryRepository.countByAdjusterId(adjusterId)).willReturn(0L);
+    given(reportReviewQueryRepository.countConsultationConvertedByAdjusterId(adjusterId)).willReturn(0L);
+
+    ReviewedReportStatsResult stats = service.getStats(adjusterId, "2026-05");
+
+    assertThat(stats.consultationConversionRate()).isZero();
+    assertThat(stats.totalCount()).isZero();
+  }
+
+  @Test
+  @DisplayName("conversion_rate = converted / total 로 계산된다")
+  void conversionRateComputed() {
+    given(reportReviewQueryRepository.countByAdjusterId(adjusterId)).willReturn(4L);
+    given(reportReviewQueryRepository.countConsultationConvertedByAdjusterId(adjusterId)).willReturn(1L);
+
+    ReviewedReportStatsResult stats = service.getStats(adjusterId, "2026-05");
+
+    assertThat(stats.consultationConversionRate()).isEqualTo(0.25);
+    assertThat(stats.consultationConvertedCount()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("previous_month는 연도 경계를 넘어 1월→전년 12월로 계산된다")
+  void previousMonthYearBoundary() {
+    given(reportReviewQueryRepository.countByAdjusterId(adjusterId)).willReturn(0L);
+    given(reportReviewQueryRepository.countConsultationConvertedByAdjusterId(adjusterId)).willReturn(0L);
+
+    service.getStats(adjusterId, "2026-01");
+
+    LocalDateTime januaryStart = YearMonth.of(2026, 1).atDay(1).atStartOfDay();
+    LocalDateTime februaryStart = YearMonth.of(2026, 2).atDay(1).atStartOfDay();
+    LocalDateTime decemberStart = YearMonth.of(2025, 12).atDay(1).atStartOfDay();
+
+    // 이번 달(2026-01) 범위 [2026-01-01, 2026-02-01)
+    verify(reportReviewQueryRepository)
+        .countByAdjusterIdAndCreatedAtBetween(adjusterId, januaryStart, februaryStart);
+    // 직전 달(2025-12) 범위 [2025-12-01, 2026-01-01) — 연도 경계
+    verify(reportReviewQueryRepository)
+        .countByAdjusterIdAndCreatedAtBetween(adjusterId, decemberStart, januaryStart);
+  }
+
+  @Test
+  @DisplayName("month 미지정 시 현재월 기준으로 통계를 낸다")
+  void nullMonthUsesCurrent() {
+    given(reportReviewQueryRepository.countByAdjusterId(adjusterId)).willReturn(0L);
+    given(reportReviewQueryRepository.countConsultationConvertedByAdjusterId(adjusterId)).willReturn(0L);
+
+    service.getStats(adjusterId, null);
+
+    YearMonth current = YearMonth.now();
+    LocalDateTime currentStart = current.atDay(1).atStartOfDay();
+    LocalDateTime nextStart = current.plusMonths(1).atDay(1).atStartOfDay();
+    verify(reportReviewQueryRepository)
+        .countByAdjusterIdAndCreatedAtBetween(adjusterId, currentStart, nextStart);
+  }
+
+  @Test
+  @DisplayName("미래월을 지정하면 VALIDATION_ERROR(400)")
+  void futureMonthRejected() {
+    YearMonth future = YearMonth.now().plusMonths(1);
+
+    assertThatThrownBy(() -> service.getStats(adjusterId, future.toString()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.VALIDATION_ERROR);
+  }
+
+  @Test
+  @DisplayName("형식이 잘못된 month면 VALIDATION_ERROR(400)")
+  void malformedMonthRejected() {
+    assertThatThrownBy(() -> service.getStats(adjusterId, "2026/01"))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.VALIDATION_ERROR);
+  }
+}
