@@ -14,7 +14,7 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.report.dto.ReviewedReportListResponse;
-import com.soma.backend.domain.report.entity.ReviewOutcome;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.ReviewedReportRow;
 import com.soma.backend.global.exception.BusinessException;
@@ -70,7 +70,7 @@ public class ReviewedReportQueryService {
       return null;
     }
     try {
-      return ReviewOutcome.valueOf(status).name();
+      return ReviewStatus.valueOf(status).name();
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }

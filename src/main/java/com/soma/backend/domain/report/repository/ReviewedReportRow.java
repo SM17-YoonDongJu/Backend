@@ -16,7 +16,7 @@ public interface ReviewedReportRow {
 
   String getRegion();
 
-  String getOutcome();
+  String getStatus();
 
   LocalDateTime getReviewedAt();
 }

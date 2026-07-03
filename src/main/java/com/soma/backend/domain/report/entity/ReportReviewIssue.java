@@ -18,6 +18,7 @@ import com.soma.backend.domain.common.entity.BaseEntity;
 /**
  * REPORT_REVIEW_ISSUES — ReportReview Aggregate 하위, issue별 검수 결과.
  * 경쟁 검수 격리(사정사마다 별도 행)를 위해 REPORT_ISSUES를 직접 수정하지 않는다.
+ * reportIssueId는 nullable — null이면 사정사가 신규로 추가한 쟁점(reviewStatus=ADDED)이며 title/description을 담는다.
  */
 @Entity
 @Table(name = "report_review_issues")
@@ -32,8 +33,14 @@ public class ReportReviewIssue extends BaseEntity {
   @Column(name = "report_review_id", nullable = false)
   private UUID reportReviewId;
 
-  @Column(name = "report_issue_id", nullable = false)
+  @Column(name = "report_issue_id")
   private UUID reportIssueId;
+
+  @Column(name = "title")
+  private String title;
+
+  @Column(name = "description")
+  private String description;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "review_status", nullable = false, length = 30)
@@ -48,10 +55,12 @@ public class ReportReviewIssue extends BaseEntity {
   @Column(name = "excluded_reason")
   private String excludedReason;
 
-  public ReportReviewIssue(UUID reportReviewId, UUID reportIssueId, IssueReviewStatus reviewStatus,
-      String adjusterOpinion, String modifiedReason, String excludedReason) {
+  public ReportReviewIssue(UUID reportReviewId, UUID reportIssueId, String title, String description,
+      IssueReviewStatus reviewStatus, String adjusterOpinion, String modifiedReason, String excludedReason) {
     this.reportReviewId = reportReviewId;
     this.reportIssueId = reportIssueId;
+    this.title = title;
+    this.description = description;
     this.reviewStatus = reviewStatus;
     this.adjusterOpinion = adjusterOpinion;
     this.modifiedReason = modifiedReason;

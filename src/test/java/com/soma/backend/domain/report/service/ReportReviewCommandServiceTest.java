@@ -78,7 +78,7 @@ class ReportReviewCommandServiceTest {
   }
 
   private ReviewReportRequest request(String status, List<ReviewReportRequest.IssueReview> issues) {
-    return new ReviewReportRequest(List.of(), List.of(), issues, "피드백", status);
+    return new ReviewReportRequest(1_000_000L, 3_000_000L, List.of(), List.of(), List.of(), issues, "피드백", status);
   }
 
   @Test
@@ -124,7 +124,24 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        UUID.randomUUID(), "ACCEPTED", "의견", null, null);
+        UUID.randomUUID(), "ACCEPTED", null, null, "의견", null, null);
+
+    assertThatThrownBy(
+        () -> service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue))))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.REPORT_ISSUE_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName("ACCEPTED/MODIFIED/EXCLUDED인데 issue_id가 없으면 REPORT_ISSUE_NOT_FOUND(404)")
+  void existingStatusRequiresIssueId() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportWithStatus(ReportStatus.AWAITING_INSPECTION)));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+
+    ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
+        null, "ACCEPTED", null, null, "의견", null, null);
 
     assertThatThrownBy(
         () -> service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue))))
@@ -142,7 +159,7 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issueWithId(issueId)));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        issueId, "MODIFIED", "의견", null, null);
+        issueId, "MODIFIED", null, null, "의견", null, null);
 
     assertThatThrownBy(
         () -> service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue))))
@@ -160,7 +177,7 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issueWithId(issueId)));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        issueId, "EXCLUDED", "의견", null, null);
+        issueId, "EXCLUDED", null, null, "의견", null, null);
 
     assertThatThrownBy(
         () -> service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue))))
@@ -170,19 +187,74 @@ class ReportReviewCommandServiceTest {
   }
 
   @Test
-  @DisplayName("MATCHED(종료) report에 재검수 target 지정 시 INVALID_STATUS_TRANSITION(400)")
-  void invalidTransitionOnMatched() {
+  @DisplayName("review_status=ADDED인데 title/description이 없으면 MISSING_REQUIRED_FIELD(400)")
+  void addedRequiresTitleAndDescription() {
     given(reportRepository.findById(reportId))
-        .willReturn(Optional.of(reportWithStatus(ReportStatus.MATCHED)));
+        .willReturn(Optional.of(reportWithStatus(ReportStatus.AWAITING_INSPECTION)));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+
+    ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
+        null, "ADDED", null, null, "의견", null, null);
+
+    assertThatThrownBy(
+        () -> service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue))))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD);
+  }
+
+  @Test
+  @DisplayName("review_status=ADDED이고 issue_id=null이며 title/description이 있으면 신규 쟁점으로 저장된다")
+  void addedIssueWithoutIssueIdPersists() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
+        .willReturn(Optional.empty());
+    given(reportReviewRepository.save(any(ReportReview.class))).willReturn(persistedReview());
+    given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
+
+    ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
+        null, "ADDED", "신규 쟁점 제목", "신규 쟁점 설명", null, null, null);
+
+    ReviewReportResponse result =
+        service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue)));
+
+    assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
+    verify(reportReviewIssueRepository).deleteAllByReportReviewId(any(UUID.class));
+    verify(reportReviewIssueRepository).saveAll(any());
+  }
+
+  @Test
+  @DisplayName("CLOSED(종료) report에 재검수 target 지정 시 INVALID_STATUS_TRANSITION(400)")
+  void invalidTransitionOnClosed() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.empty());
     given(reportReviewRepository.save(any(ReportReview.class))).willAnswer(inv -> inv.getArgument(0));
 
-    assertThatThrownBy(() -> service.review(adjusterId, reportId, request("MATCHED", List.of())))
+    assertThatThrownBy(() -> service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of())))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("COUNSELING → CLOSED 전이는 허용된다")
+  void counselingToClosedAllowed() {
+    Report report = reportWithStatus(ReportStatus.COUNSELING);
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
+        .willReturn(Optional.empty());
+    given(reportReviewRepository.save(any(ReportReview.class))).willReturn(persistedReview());
+    given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
+
+    ReviewReportResponse result = service.review(adjusterId, reportId, request("CLOSED", List.of()));
+
+    assertThat(result.status()).isEqualTo(ReportStatus.CLOSED.name());
   }
 
   @Test
@@ -198,7 +270,7 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        issueId, "ACCEPTED", "의견", null, null);
+        issueId, "ACCEPTED", null, null, "의견", null, null);
 
     ReviewReportResponse result =
         service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue)));

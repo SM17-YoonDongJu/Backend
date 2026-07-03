@@ -2,11 +2,16 @@ package com.soma.backend.domain.report.entity;
 
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -24,6 +29,7 @@ import com.soma.backend.global.exception.ErrorCode;
 /**
  * REPORTS Aggregate Root. AI 초안 리포트와 사정사 검수 확정 상태를 함께 관리한다.
  * 상태 전이는 {@link #applyReviewTransition(ReportStatus)}로만 허용한다(design.md §4).
+ * region 컬럼은 없다 — user_id로 users.region을 조인해서 조회한다(§1).
  */
 @Entity
 @Table(name = "reports")
@@ -34,11 +40,13 @@ public class Report extends BaseEntity {
   private static final Map<ReportStatus, Set<ReportStatus>> ALLOWED_TRANSITIONS = new EnumMap<>(ReportStatus.class);
 
   static {
-    ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_INSPECTION, EnumSet.of(ReportStatus.AWAITING_ADOPTION));
-    ALLOWED_TRANSITIONS.put(
-        ReportStatus.AWAITING_ADOPTION, EnumSet.of(ReportStatus.AWAITING_ADOPTION, ReportStatus.MATCHED));
-    ALLOWED_TRANSITIONS.put(ReportStatus.COUNSELING, EnumSet.of(ReportStatus.MATCHED));
-    ALLOWED_TRANSITIONS.put(ReportStatus.MATCHED, EnumSet.noneOf(ReportStatus.class));
+    ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_INSPECTION,
+        EnumSet.of(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION));
+    ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_ADOPTION,
+        EnumSet.of(ReportStatus.AWAITING_ADOPTION, ReportStatus.COUNSELING));
+    ALLOWED_TRANSITIONS.put(ReportStatus.COUNSELING,
+        EnumSet.of(ReportStatus.COUNSELING, ReportStatus.CLOSED));
+    ALLOWED_TRANSITIONS.put(ReportStatus.CLOSED, EnumSet.of(ReportStatus.CLOSED));
   }
 
   @Id
@@ -51,22 +59,25 @@ public class Report extends BaseEntity {
   @Column(name = "adjuster_id")
   private UUID adjusterId;
 
+  @Column(name = "product_id")
+  private UUID productId;
+
+  @Column(name = "claim_id")
+  private UUID claimId;
+
   @Column(name = "case_no", nullable = false, length = 100)
   private String caseNo;
 
   @Column(name = "title")
   private String title;
 
-  @Enumerated(EnumType.STRING)
+  @Convert(converter = AccidentTypeConverter.class)
   @Column(name = "accident_type", nullable = false, length = 30)
   private AccidentType accidentType;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 30)
   private ReportStatus status;
-
-  @Column(name = "region", length = 100)
-  private String region;
 
   @Column(name = "claimed_min_amount")
   private Long claimedMinAmount;
@@ -76,6 +87,24 @@ public class Report extends BaseEntity {
 
   @Column(name = "offered_amount")
   private Long offeredAmount;
+
+  @JdbcTypeCode(SqlTypes.ARRAY)
+  @Column(name = "applicable_guarantees", columnDefinition = "text[]")
+  private List<String> applicableGuarantees;
+
+  @JdbcTypeCode(SqlTypes.ARRAY)
+  @Column(name = "omitted_special_contract", columnDefinition = "text[]")
+  private List<String> omittedSpecialContract;
+
+  @JdbcTypeCode(SqlTypes.ARRAY)
+  @Column(name = "basis_terms_precedents", columnDefinition = "text[]")
+  private List<String> basisTermsPrecedents;
+
+  @Column(name = "treatment")
+  private String treatment;
+
+  @Column(name = "question")
+  private String question;
 
   public AmountRange amountRange() {
     return new AmountRange(claimedMinAmount, claimedMaxAmount, offeredAmount);

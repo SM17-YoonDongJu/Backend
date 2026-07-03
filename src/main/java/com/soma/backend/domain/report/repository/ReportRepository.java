@@ -27,20 +27,22 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
   long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
 
   @Query(value = "SELECT r.id AS reportId, r.case_no AS caseNo, r.title AS title, "
-      + "r.accident_type AS accidentType, r.region AS region, r.status AS status, "
+      + "r.accident_type AS accidentType, u.region AS region, r.status AS status, "
       + "r.claimed_min_amount AS claimedMinAmount, r.claimed_max_amount AS claimedMaxAmount, "
       + "r.offered_amount AS offeredAmount, "
       + "(SELECT COUNT(*) FROM report_issues ri WHERE ri.report_id = r.id) AS issueCount, "
       + "EXISTS(SELECT 1 FROM report_holds rh WHERE rh.report_id = r.id AND rh.adjuster_id = :adjusterId) AS held "
       + "FROM reports r "
+      + "JOIN users u ON u.id = r.user_id "
       + "WHERE (:status IS NULL OR r.status = :status) "
       + "AND (:accidentType IS NULL OR r.accident_type = :accidentType) "
-      + "AND (:region IS NULL OR r.region = :region) "
+      + "AND (:region IS NULL OR u.region = :region) "
       + "ORDER BY r.created_at DESC",
       countQuery = "SELECT COUNT(*) FROM reports r "
+          + "JOIN users u ON u.id = r.user_id "
           + "WHERE (:status IS NULL OR r.status = :status) "
           + "AND (:accidentType IS NULL OR r.accident_type = :accidentType) "
-          + "AND (:region IS NULL OR r.region = :region)",
+          + "AND (:region IS NULL OR u.region = :region)",
       nativeQuery = true)
   Page<PendingReviewRow> findPendingReviewRows(
       @Param("status") String status,

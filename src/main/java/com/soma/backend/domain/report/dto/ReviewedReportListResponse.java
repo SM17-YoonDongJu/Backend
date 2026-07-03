@@ -29,13 +29,13 @@ public record ReviewedReportListResponse(
 
   /** 목록 아이템. */
   public record Item(
-      UUID reportId, String caseNo, String title, String accidentType, String region, String outcome,
+      UUID reportId, String caseNo, String title, String accidentType, String region, String status,
       LocalDateTime reviewedAt) {
 
     public static Item from(ReviewedReportRow row) {
       return new Item(
           row.getReportId(), row.getCaseNo(), row.getTitle(), row.getAccidentType(), row.getRegion(),
-          row.getOutcome(), row.getReviewedAt());
+          row.getStatus(), row.getReviewedAt());
     }
   }
 }

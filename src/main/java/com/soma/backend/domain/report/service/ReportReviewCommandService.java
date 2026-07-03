@@ -3,6 +3,7 @@ package com.soma.backend.domain.report.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -30,12 +31,15 @@ import com.soma.backend.global.exception.ErrorCode;
 /**
  * API#4 검수 반영 유스케이스. 리더 확정(★#2)에 따라 "채택 사정사" 게이팅은 수행하지 않는다.
  * role == CERTIFICATED_ADJUSTER면(@ActiveAdjuster에서 이미 검증) 허용하고, 본인 REPORT_REVIEWS 행이
- * 없으면 최초 호출 시 upsert(생성)한다.
+ * 없으면 최초 호출 시 upsert(생성)한다. issues는 report_review_issues 전량 삭제 후 재삽입한다.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class ReportReviewCommandService {
+
+  private static final Set<IssueReviewStatus> REQUIRES_EXISTING_ISSUE =
+      Set.of(IssueReviewStatus.ACCEPTED, IssueReviewStatus.MODIFIED, IssueReviewStatus.EXCLUDED);
 
   private final ReportRepository reportRepository;
   private final ReportReviewRepository reportReviewRepository;
@@ -61,7 +65,8 @@ public class ReportReviewCommandService {
     ReportReview reportReview = reportReviewRepository
         .findByReportIdAndAdjusterId(reportId, adjusterId)
         .orElseGet(() -> new ReportReview(reportId, adjusterId));
-    reportReview.updateReviewContent(request.applicableGuarantees(), request.omittedSpecialContract(),
+    reportReview.updateReviewContent(request.estimateMinAmount(), request.estimateMaxAmount(),
+        request.applicableGuarantees(), request.omittedSpecialContract(), request.basisTermsPrecedents(),
         request.review());
     reportReview = reportReviewRepository.save(reportReview);
 
@@ -69,9 +74,9 @@ public class ReportReviewCommandService {
     reportReviewIssueRepository.deleteAllByReportReviewId(reportReviewId);
     if (!issuesToPersist.isEmpty()) {
       List<ReportReviewIssue> rebound = issuesToPersist.stream()
-          .map(issue -> new ReportReviewIssue(reportReviewId, issue.getReportIssueId(),
-              issue.getReviewStatus(), issue.getAdjusterOpinion(), issue.getModifiedReason(),
-              issue.getExcludedReason()))
+          .map(issue -> new ReportReviewIssue(reportReviewId, issue.getReportIssueId(), issue.getTitle(),
+              issue.getDescription(), issue.getReviewStatus(), issue.getAdjusterOpinion(),
+              issue.getModifiedReason(), issue.getExcludedReason()))
           .collect(Collectors.toList());
       reportReviewIssueRepository.saveAll(rebound);
     }
@@ -80,7 +85,7 @@ public class ReportReviewCommandService {
     report = reportRepository.save(report);
 
     return new ReviewReportResponse(
-        report.getId(), report.getStatus().name(), reportReview.getId(), reportReview.getOutcome().name());
+        report.getId(), report.getStatus().name(), reportReview.getId(), reportReview.getStatus().name());
   }
 
   private ReportStatus parseStatus(String status) {
@@ -96,18 +101,26 @@ public class ReportReviewCommandService {
 
   private ReportReviewIssue toReportReviewIssue(
       ReviewReportRequest.IssueReview issueRequest, Map<UUID, ReportIssue> reportIssuesById) {
-    if (!reportIssuesById.containsKey(issueRequest.issueId())) {
-      throw new BusinessException(ErrorCode.REPORT_ISSUE_NOT_FOUND);
-    }
     IssueReviewStatus reviewStatus = parseIssueReviewStatus(issueRequest.reviewStatus());
+
+    if (reviewStatus == IssueReviewStatus.ADDED) {
+      if (!StringUtils.hasText(issueRequest.title()) || !StringUtils.hasText(issueRequest.description())) {
+        throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
+      }
+    } else if (REQUIRES_EXISTING_ISSUE.contains(reviewStatus)) {
+      if (issueRequest.issueId() == null || !reportIssuesById.containsKey(issueRequest.issueId())) {
+        throw new BusinessException(ErrorCode.REPORT_ISSUE_NOT_FOUND);
+      }
+    }
+
     if (reviewStatus == IssueReviewStatus.MODIFIED && !StringUtils.hasText(issueRequest.modifiedReason())) {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
     if (reviewStatus == IssueReviewStatus.EXCLUDED && !StringUtils.hasText(issueRequest.excludedReason())) {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
-    return new ReportReviewIssue(null, issueRequest.issueId(), reviewStatus, issueRequest.adjusterOpinion(),
-        issueRequest.modifiedReason(), issueRequest.excludedReason());
+    return new ReportReviewIssue(null, issueRequest.issueId(), issueRequest.title(), issueRequest.description(),
+        reviewStatus, issueRequest.adjusterOpinion(), issueRequest.modifiedReason(), issueRequest.excludedReason());
   }
 
   private IssueReviewStatus parseIssueReviewStatus(String reviewStatus) {
