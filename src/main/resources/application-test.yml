@@ -1,0 +1,50 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:postgresql://localhost:5432/test_db
+    username: test
+    password: test
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      username: test
+      password: test
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  kafka:
+    bootstrap-servers: localhost:9092
+    security:
+      protocol: PLAINTEXT
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: dummy
+            client-secret: dummy
+          naver:
+            client-id: dummy
+            client-secret: dummy
+
+logging:
+  file:
+    path: /tmp/logs
+
+jwt:
+  secret: testsecretkeyforcitestingonly32chars!!
+
+aws:
+  region: ap-northeast-2
+  s3:
+    bucket: test-bucket
