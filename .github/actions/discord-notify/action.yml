@@ -59,6 +59,13 @@ runs:
           exit 0
         fi
 
+        # 값 노출 없는 진단: 길이와 https 스킴 여부만 출력
+        case "$WEBHOOK" in
+          https://*) SCHEME_OK=yes ;;
+          *) SCHEME_OK=no ;;
+        esac
+        echo "::notice::webhook 진단 — 길이=${#WEBHOOK}, https_시작=${SCHEME_OK}"
+
         case "$STATUS" in
           success)
             COLOR=3066993
