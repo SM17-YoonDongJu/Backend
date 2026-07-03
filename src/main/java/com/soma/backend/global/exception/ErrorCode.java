@@ -31,8 +31,8 @@ public enum ErrorCode {
   // 409 Conflict — 리소스 상태 충돌
   DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "이미 존재하는 리소스입니다."),
 
-  // 422 Unprocessable Entity — 비즈니스 규칙 위반
-  PAYMENT_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "결제 처리에 실패했습니다."),
+  // 422 Unprocessable Content — 비즈니스 규칙 위반
+  PAYMENT_FAILED(HttpStatus.UNPROCESSABLE_CONTENT, "결제 처리에 실패했습니다."),
 
   // 500 Internal Server Error — 서버 내부 오류
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),

@@ -2,8 +2,8 @@ package com.soma.backend.global.security;
 
 import java.io.IOException;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
-import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -11,13 +11,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import tools.jackson.databind.json.JsonMapper;
 
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorResponse;
@@ -30,7 +29,7 @@ public class JwtFilter extends OncePerRequestFilter {
   private static final String BEARER_PREFIX = "Bearer ";
 
   private final JwtProvider jwtProvider;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
 
   @Override
   protected void doFilterInternal(
@@ -63,7 +62,7 @@ public class JwtFilter extends OncePerRequestFilter {
     response.setStatus(ex.getErrorCode().getStatus().value());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
     response.setCharacterEncoding("UTF-8");
-    objectMapper.writeValue(response.getWriter(), ErrorResponse.of(ex.getErrorCode()));
+    jsonMapper.writeValue(response.getWriter(), ErrorResponse.of(ex.getErrorCode()));
   }
 
   private String resolveToken(HttpServletRequest request) {
