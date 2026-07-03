@@ -77,4 +77,4 @@ management:
 logging:
   level:
     root: ${LOG_LEVEL:INFO}
-    com.brbs: DEBUG
+    com.soma.backend: DEBUG
