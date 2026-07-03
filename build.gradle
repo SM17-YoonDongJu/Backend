@@ -28,6 +28,9 @@ dependencies {
 	// Observability (health check, metrics)
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3'
+
 	// Kafka (OCR 트리거 producer)
 	implementation 'org.springframework.kafka:spring-kafka'
 
