@@ -70,14 +70,6 @@ jobs:
         env:
           SPRING_PROFILES_ACTIVE: test
           LOG_DIR: /tmp/logs
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_NAME: test_db
-          DB_USER: test
-          DB_PASSWORD: test
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          KAFKA_BOOTSTRAP_SERVERS: localhost:9092
           JWT_SECRET: testsecretkeyforcitestingonly32chars!!
 
       - name: Upload test results
@@ -90,10 +82,10 @@ jobs:
             build/test-results/
           retention-days: 7
 
-  notify-failure:
-    name: Notify on Failure
+  notify:
+    name: Notify CI Result
     needs: test
-    if: failure()
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -102,8 +94,8 @@ jobs:
       - name: Notify Discord
         uses: ./.github/actions/discord-notify
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK_FAILURES }}
-          status: failure
-          title: 'Backend CI 실패'
+          webhook: ${{ needs.test.result == 'success' && secrets.DISCORD_WEBHOOK_CI || secrets.DISCORD_WEBHOOK_FAILURES }}
+          status: ${{ needs.test.result }}
+          title: 'Backend CI ${{ needs.test.result == ''success'' && ''성공'' || ''실패'' }}'
           service: backend
           environment: dev
