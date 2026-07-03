@@ -94,7 +94,7 @@ jobs:
       - name: Notify Discord
         uses: ./.github/actions/discord-notify
         with:
-          webhook: ${{ needs.test.result == 'success' && secrets.DISCORD_WEBHOOK_CI || secrets.DISCORD_WEBHOOK_FAILURES }}
+          webhook: ${{ needs.test.result == 'success' && secrets.DISCORD_WEBHOOK_CI_BUILDS || secrets.DISCORD_WEBHOOK_CI_FAILURES }}
           status: ${{ needs.test.result }}
           title: 'Backend CI ${{ needs.test.result == ''success'' && ''성공'' || ''실패'' }}'
           service: backend

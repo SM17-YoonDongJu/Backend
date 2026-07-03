@@ -54,6 +54,11 @@ runs:
         WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
       run: |
+        if [ -z "$WEBHOOK" ]; then
+          echo "::warning::Discord webhook 미설정 — 알림을 건너뜁니다."
+          exit 0
+        fi
+
         case "$STATUS" in
           success)
             COLOR=3066993
@@ -121,7 +126,7 @@ runs:
         END
         )
         
-        RESPONSE=$(curl -s -w "\n%{http_code}" -H "Content-Type: application/json" -d "$JSON" "$WEBHOOK")
+        RESPONSE=$(curl -s -w "\n%{http_code}" -H "Content-Type: application/json" -d "$JSON" "$WEBHOOK" || true)
         HTTP_CODE=$(echo "$RESPONSE" | tail -1)
         
         if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "200" ]; then

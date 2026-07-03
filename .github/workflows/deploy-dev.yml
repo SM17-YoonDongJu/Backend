@@ -182,7 +182,7 @@ jobs:
       - name: Notify
         uses: ./.github/actions/discord-notify
         with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK_DEPLOY }}
+          webhook: ${{ secrets.DISCORD_WEBHOOK_DEPLOYMENT }}
           status: ${{ (needs.build-and-push.result == 'success' && needs.deploy-to-ec2.result == 'success') && 'success' || 'failure' }}
           title: 'Backend Dev 배포 ${{ (needs.build-and-push.result == ''success'' && needs.deploy-to-ec2.result == ''success'') && ''완료'' || ''실패'' }}'
           service: backend
