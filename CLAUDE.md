@@ -30,7 +30,7 @@ docker compose --profile app up -d
 
 ## Architecture
 
-Spring Boot 3.4.x/ Java 21 기반 REST API 서버. **전술적 DDD(Tactical DDD)**를 지향하되, 패키지는 **실용적 레이어드 구조**로 구성한다. `domain/` 아래 **Bounded Context(도메인) 우선**으로 나누고, 각 컨텍스트 내부를 `controller / dto / entity / repository / service` 레이어로 구성한다. DDD의 색깔(리치 도메인 모델·VO·불변식)은 **폴더가 아니라 `entity` 안**에서 챙긴다.
+Spring Boot 4.0.x(현재 4.0.6) / Java 21 기반 REST API 서버. **전술적 DDD(Tactical DDD)**를 지향하되, 패키지는 **실용적 레이어드 구조**로 구성한다. `domain/` 아래 **Bounded Context(도메인) 우선**으로 나누고, 각 컨텍스트 내부를 `controller / dto / entity / repository / service` 레이어로 구성한다. DDD의 색깔(리치 도메인 모델·VO·불변식)은 **폴더가 아니라 `entity` 안**에서 챙긴다.
 
 ```
 com.soma.backend
@@ -54,6 +54,8 @@ com.soma.backend
 **전술적 패턴 (`entity` 안에서 지킨다):** Aggregate(불변식 경계, 외부는 Root 메서드 통해서만 상태 변경, Aggregate 간 참조는 객체가 아니라 ID로) · Value Object(식별자 없는 불변 값은 `record`로 캡슐화) · 리치 도메인 모델(로직을 `service`가 아니라 엔티티 메서드에, setter 남발 금지) · 트랜잭션(한 트랜잭션 = 한 Aggregate 수정 원칙, 다중 Aggregate는 도메인 이벤트로 결합도 완화) · 유비쿼터스 언어(네이밍은 `.claude/references/domain-glossary.md` 준수).
 
 > **적용 범위:** 신규 코드는 이 구조를 따른다. 구현 상세·예시·안티패턴은 `ddd-tactical` 스킬 참조.
+
+> **Spring Boot 4 주의 (Boot 3와 다름):** JSON 매퍼 기본값은 **Jackson 3(`tools.jackson`)** 다 — 구 `com.fasterxml.jackson...ObjectMapper` 빈은 자동구성되지 않으므로 주입하지 말 것(`tools.jackson.databind.json.JsonMapper` 사용). Nullness 애노테이션은 **JSpecify(`org.jspecify.annotations`)**, 구 `org.springframework.lang.NonNull`은 deprecated. HTTP 422는 `HttpStatus.UNPROCESSABLE_CONTENT`(구 `UNPROCESSABLE_ENTITY` deprecated). 기반은 Spring Framework 7.
 
 **global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다.
 
