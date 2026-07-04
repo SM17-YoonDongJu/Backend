@@ -8,13 +8,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
 
-import com.soma.backend.domain.report.dto.HoldToggleResponse;
+import com.soma.backend.domain.report.dto.HoldResponse;
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
 import com.soma.backend.domain.report.dto.ReviewReportRequest;
@@ -26,7 +27,7 @@ import com.soma.backend.global.response.ApiResponse;
 import com.soma.backend.global.security.ActiveAdjuster;
 
 /**
- * 검수 대기 요약(API#1)·목록(API#2)·보류 토글(API#3)·검수 반영(API#4) 컨트롤러.
+ * 검수 대기 요약(API#1)·목록(API#2)·보류 추가(API#3)·검수 반영(API#4) 컨트롤러.
  * 인가 가드는 {@link ActiveAdjuster}(@ActiveAdjuster)가 담당(401/403).
  */
 @RestController
@@ -56,10 +57,10 @@ public class PendingReviewController {
     return ResponseEntity.ok(ApiResponse.ok(result));
   }
 
-  @PatchMapping("/reports/{reportId}/hold")
-  public ResponseEntity<ApiResponse<HoldToggleResponse>> toggleHold(
+  @PostMapping("/reports/{reportId}/hold")
+  public ResponseEntity<ApiResponse<HoldResponse>> addHold(
       @ActiveAdjuster UUID adjusterId, @PathVariable UUID reportId) {
-    HoldToggleResponse result = reportHoldCommandService.toggle(reportId, adjusterId);
+    HoldResponse result = reportHoldCommandService.addHold(reportId, adjusterId);
     return ResponseEntity.ok(ApiResponse.ok(result));
   }
 

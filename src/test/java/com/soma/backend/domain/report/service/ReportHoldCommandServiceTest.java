@@ -7,7 +7,6 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -17,17 +16,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.BeanUtils;
 
-import com.soma.backend.domain.report.dto.HoldToggleResponse;
-import com.soma.backend.domain.report.entity.Report;
-import com.soma.backend.domain.report.entity.ReportHold;
+import com.soma.backend.domain.report.dto.HoldResponse;
 import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
-/** API#3 보류 토글 유스케이스 단위 테스트(§10 경계 케이스). */
+/** API#3 보류 추가 유스케이스 단위 테스트(멱등·404 경계). */
 @ExtendWith(MockitoExtension.class)
 class ReportHoldCommandServiceTest {
 
@@ -49,43 +45,26 @@ class ReportHoldCommandServiceTest {
   }
 
   @Test
-  @DisplayName("존재하지 않는 reportId면 REPORT_NOT_FOUND(404)")
-  void reportNotFound() {
-    given(reportRepository.findById(reportId)).willReturn(Optional.empty());
+  @DisplayName("존재하지 않는 reportId 추가 시 REPORT_NOT_FOUND(404), insert 안 함")
+  void addReportNotFound() {
+    given(reportRepository.existsById(reportId)).willReturn(false);
 
-    assertThatThrownBy(() -> service.toggle(reportId, adjusterId))
+    assertThatThrownBy(() -> service.addHold(reportId, adjusterId))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.REPORT_NOT_FOUND);
-    verify(reportHoldRepository, never()).save(any());
+    verify(reportHoldRepository, never()).insertIfAbsent(any(), any());
   }
 
   @Test
-  @DisplayName("hold가 없으면 생성하고 held=true 반환")
-  void toggleCreatesHold() {
-    given(reportRepository.findById(reportId)).willReturn(Optional.of(BeanUtils.instantiateClass(Report.class)));
-    given(reportHoldRepository.findByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(Optional.empty());
+  @DisplayName("보류 추가는 멱등 insert 호출 후 held=true")
+  void addHoldIdempotent() {
+    given(reportRepository.existsById(reportId)).willReturn(true);
 
-    HoldToggleResponse result = service.toggle(reportId, adjusterId);
+    HoldResponse result = service.addHold(reportId, adjusterId);
 
     assertThat(result.held()).isTrue();
     assertThat(result.reportId()).isEqualTo(reportId);
-    verify(reportHoldRepository).save(any(ReportHold.class));
-    verify(reportHoldRepository, never()).delete(any());
-  }
-
-  @Test
-  @DisplayName("hold가 이미 있으면 삭제하고 held=false 반환(토글 왕복)")
-  void toggleDeletesHold() {
-    ReportHold existing = new ReportHold(reportId, adjusterId);
-    given(reportRepository.findById(reportId)).willReturn(Optional.of(BeanUtils.instantiateClass(Report.class)));
-    given(reportHoldRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.of(existing));
-
-    HoldToggleResponse result = service.toggle(reportId, adjusterId);
-
-    assertThat(result.held()).isFalse();
-    verify(reportHoldRepository).delete(existing);
-    verify(reportHoldRepository, never()).save(any());
+    verify(reportHoldRepository).insertIfAbsent(reportId, adjusterId);
   }
 }
