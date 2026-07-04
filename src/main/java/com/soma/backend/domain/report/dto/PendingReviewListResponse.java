@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 
+import com.soma.backend.domain.report.entity.AmountRange;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
 
 /** API#2 응답(item + page 메타). */
@@ -32,8 +33,8 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
       boolean held) {
 
     public static Item from(PendingReviewRow row) {
-      long claimedMax = row.getClaimedMaxAmount() == null ? 0L : row.getClaimedMaxAmount();
-      long offered = row.getOfferedAmount() == null ? 0L : row.getOfferedAmount();
+      long offerHeadroom = new AmountRange(
+          row.getClaimedMinAmount(), row.getClaimedMaxAmount(), row.getOfferedAmount()).offerHeadroom();
       long issueCount = row.getIssueCount() == null ? 0L : row.getIssueCount();
       boolean held = Boolean.TRUE.equals(row.getHeld());
       return new Item(
@@ -46,7 +47,7 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
           row.getClaimedMinAmount(),
           row.getClaimedMaxAmount(),
           row.getOfferedAmount(),
-          claimedMax - offered,
+          offerHeadroom,
           issueCount,
           held);
     }
