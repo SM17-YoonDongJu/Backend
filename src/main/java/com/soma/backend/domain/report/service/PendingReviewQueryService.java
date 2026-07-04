@@ -7,13 +7,18 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
+import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
 import com.soma.backend.domain.report.repository.ReportRepository;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 
 /**
  * API#1(요약)·API#2(목록) 조회 전용 유스케이스(CQRS). Aggregate 로딩을 우회해 파생 필드를 조회한다.
@@ -40,8 +45,34 @@ public class PendingReviewQueryService {
 
   public PendingReviewListResponse getPendingReviewList(
       String status, String accidentType, String region, UUID adjusterId, Pageable pageable) {
+    validateStatus(status);
+    validateAccidentType(accidentType);
     Page<PendingReviewRow> rows =
         reportRepository.findPendingReviewRows(status, accidentType, region, adjusterId, pageable);
     return PendingReviewListResponse.from(rows);
+  }
+
+  /** 잘못된 status 필터 값은 조용한 빈 결과 대신 400으로 거른다. */
+  private void validateStatus(String status) {
+    if (!StringUtils.hasText(status)) {
+      return;
+    }
+    try {
+      ReportStatus.valueOf(status);
+    } catch (IllegalArgumentException ex) {
+      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    }
+  }
+
+  /** 잘못된 accidentType 필터 값은 400으로 거른다(DB는 소문자 값). */
+  private void validateAccidentType(String accidentType) {
+    if (!StringUtils.hasText(accidentType)) {
+      return;
+    }
+    try {
+      AccidentType.from(accidentType);
+    } catch (IllegalArgumentException ex) {
+      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    }
   }
 }

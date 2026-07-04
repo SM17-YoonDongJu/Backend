@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
@@ -25,6 +26,8 @@ import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
 import com.soma.backend.domain.report.repository.ReportRepository;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 
 /** API#1(요약)·API#2(목록) 조회 유스케이스 단위 테스트. */
 @ExtendWith(MockitoExtension.class)
@@ -89,6 +92,26 @@ class PendingReviewQueryServiceTest {
     assertThat(item.offerHeadroom()).isZero();
     assertThat(item.issueCount()).isZero();
     assertThat(item.held()).isFalse();
+  }
+
+  @Test
+  @DisplayName("잘못된 status 필터 값은 조용한 빈 결과 대신 VALIDATION_ERROR(400)로 거른다")
+  void invalidStatusRejected() {
+    Pageable pageable = PageRequest.of(0, 20);
+    assertThatThrownBy(
+        () -> service.getPendingReviewList("NOT_A_STATUS", null, null, UUID.randomUUID(), pageable))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode").isEqualTo(ErrorCode.VALIDATION_ERROR);
+  }
+
+  @Test
+  @DisplayName("잘못된 accidentType 필터 값(구 한글 값 등)은 VALIDATION_ERROR(400)로 거른다")
+  void invalidAccidentTypeRejected() {
+    Pageable pageable = PageRequest.of(0, 20);
+    assertThatThrownBy(
+        () -> service.getPendingReviewList(null, "질병", null, UUID.randomUUID(), pageable))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode").isEqualTo(ErrorCode.VALIDATION_ERROR);
   }
 
   private static PendingReviewRow row(
