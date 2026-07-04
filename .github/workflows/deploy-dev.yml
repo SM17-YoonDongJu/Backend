@@ -82,12 +82,15 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-      
+
       - name: Find dev EC2 instance
         id: find-instance
         run: |
@@ -112,6 +115,9 @@ jobs:
           REGION: ${{ secrets.AWS_REGION }}
           SHORT_SHA: ${{ needs.build-and-push.outputs.short_sha }}
         run: |
+          # 리포의 배포 compose를 base64로 인코딩해 SSM 커맨드로 EC2에 그대로 기록(드리프트 차단)
+          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.dev.yml)
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -120,6 +126,8 @@ jobs:
               \"commands\": [
                 \"set -e\",
                 \"cd $EC2_HOME/backend\",
+                \"echo '===== compose 동기화(리포 기준) ====='\",
+                \"echo $COMPOSE_B64 | base64 -d > docker-compose.yml\",
                 \"echo '===== ECR 로그인 ====='\",
                 \"aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REGISTRY\",
                 \"echo '===== 이미지 pull ====='\",
