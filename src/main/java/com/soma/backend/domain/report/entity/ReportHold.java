@@ -11,8 +11,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.soma.backend.domain.common.entity.BaseEntity;
-
 /**
  * REPORT_HOLDS — 사정사별 보류 토글(junction). (report_id, adjuster_id) UK.
  */
@@ -20,7 +18,7 @@ import com.soma.backend.domain.common.entity.BaseEntity;
 @Table(name = "report_holds")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class ReportHold extends BaseEntity {
+public class ReportHold extends CreatedAtEntity {
 
   @Id
   @GeneratedValue

@@ -13,8 +13,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.soma.backend.domain.common.entity.BaseEntity;
-
 /**
  * REPORT_REVIEW_ISSUES — ReportReview Aggregate 하위, issue별 검수 결과.
  * 경쟁 검수 격리(사정사마다 별도 행)를 위해 REPORT_ISSUES를 직접 수정하지 않는다.
@@ -24,7 +22,7 @@ import com.soma.backend.domain.common.entity.BaseEntity;
 @Table(name = "report_review_issues")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class ReportReviewIssue extends BaseEntity {
+public class ReportReviewIssue extends CreatedAtEntity {
 
   @Id
   @GeneratedValue
