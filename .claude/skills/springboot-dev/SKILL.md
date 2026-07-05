@@ -1,6 +1,7 @@
 ---
 name: springboot-dev
-description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC, WebSocket 채팅 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 인프라·관측성·배포 하드닝(actuator 헬스체크, JVM/GC, DB 커넥션 풀, Kafka producer 설정·배선, docker healthcheck, PII 로깅, smoke test)도 이 스킬로 조율(infra-developer 담당). 후속 작업: 결과 수정, 부분 재실행, 업데이트, 보완, 다시 구현, 이전 구현 개선 요청 시에도 사용."
+description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC, WebSocket 채팅 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 인프라·관측성·배포 하드닝(actuator 헬스체크, JVM/GC, DB 커넥션 풀, Kafka producer 설정·배선, docker healthcheck, PII 로깅, smoke test)도 이 스킬로 조율(infra-developer 담당). 
+후속 작업: 결과 수정, 부분 재실행, 업데이트, 보완, 다시 구현, 이전 구현 개선 요청 시에도 사용."
 ---
 
 # Spring Boot Dev Orchestrator

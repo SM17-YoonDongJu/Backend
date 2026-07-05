@@ -50,6 +50,8 @@ public enum ErrorCode {
 
   // Report (도메인 특화)
   REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트를 찾을 수 없습니다."),
+  REPORT_ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트 쟁점을 찾을 수 없습니다."),
+  INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "허용되지 않는 상태 전이입니다."),
 
   // Matching (도메인 특화)
   MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),

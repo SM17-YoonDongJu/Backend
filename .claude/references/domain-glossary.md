@@ -266,11 +266,23 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 ## 13. 핵심 테이블 목적 정의
 
 ### REPORT_REVIEWS (사정사 검수 테이블)
-- **목적**: 사정사가 AI 초안(REPORTS)을 채택·수정한 내용을 저장하는 작업 공간
-- **생성 시점**: 사정사가 케이스를 채택(`adopt`)할 때 행 생성
-- **확정 흐름**: `검수 수정(PATCH, 서명 필드 없이)` → `서명 확정(PATCH, status=AWAITING_ADOPTION + 서명 필드)` — 단일 API로 처리
-- **격리 규칙**: 경쟁 검수 모델에 따라 동일 AI 초안에 여러 사정사의 REPORT_REVIEWS 행이 존재할 수 있음. 조회 시 반드시 `adjuster_id` 필터링
-- **RAG 피드백**: `review` 필드는 AI 개선 피드백 전용 — publish·서명 검증 대상 아님
+- **목적**: 사정사가 리포트에 남기는 **고객 제공 최종 검수 내용**(의견·예상금액·보장/특약/근거 수정본). AI 초안(REPORTS)과 **별개 테이블**로 격리.
+- **생성 시점**: 사정사가 검수(PATCH /reports/{id})를 최초 반영할 때 행 upsert (채택 게이팅은 현재 미적용 — role=CERTIFICATED_ADJUSTER면 허용)
+- **격리 규칙**: 경쟁 검수 모델 — 동일 AI 초안에 여러 사정사의 REPORT_REVIEWS 행이 존재. 조회 시 반드시 `adjuster_id` 필터링. **AI 초안(REPORTS/REPORT_ISSUES)은 절대 덮어쓰지 않음.**
+- **주요 필드**: `review`(사정사 최종 의견, 고객 노출), `estimate_min_amount`/`estimate_max_amount`, `applicable_guarantees[]`/`omitted_special_contract[]`/`basis_terms_precedents[]`(사정사 수정본), `status`(SENT/CONSULTATION/NOT_SELECTED/CLOSED)
+- **RAG 피드백**: AI 개선 피드백은 본 범위 제외(다음 티켓). 현재 `review`는 고객 노출 최종 의견 용도.
+
+### REPORT_REVIEW_ISSUES (사정사별 쟁점 검수 테이블)
+- **목적**: 사정사가 쟁점(REPORT_ISSUES=AI 초안)을 검수·수정하거나 **신규 추가(ADDED)** 한 결과를 사정사별로 격리 저장
+- **생성 시점**: 검수 반영(PATCH) 시 해당 REPORT_REVIEWS 하위로 쟁점 전량 교체 저장
+- **주요 필드**: `report_issue_id`(nullable — null이면 사정사 신규 쟁점), `title`/`description`(신규·수정 내용), `review_status`(ACCEPTED/MODIFIED/EXCLUDED/**ADDED**), `adjuster_opinion`/`modified_reason`/`excluded_reason`
+- **관계**: REPORT_REVIEWS 1:N REPORT_REVIEW_ISSUES, REPORT_ISSUES 1:N REPORT_REVIEW_ISSUES(nullable)
+
+### ADJUSTER_REVIEW (사용자 평가 테이블)
+- **목적**: 매칭 완료(MATCHED) 후 사용자가 담당 사정사를 평가한 기록
+- **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시
+- **필드**: `score`(정수), `review`(텍스트)
+- **제약**: 사용자 1인 + 사정사 1인 조합으로 중복 평가 방지
 
 ### ADJUSTER_REVIEW (사용자 평가 테이블)
 - **목적**: 매칭 완료(MATCHED) 후 사용자가 담당 사정사를 평가한 기록
@@ -282,21 +294,24 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 
 ## 14. ERD 핵심 필드 참조
 
-### REPORTS
+### REPORTS (AI 초안 — 불변)
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `accident_type` | enum | `질병`, `상해`, `후유장해`, `복합` ⚠️ |
-| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `MATCHED` |
+| `accident_type` | enum | `medical_indemnity, traffic, disability, cancer_diagnosis, fire, liability, other` (영문) |
+| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `MATCHED`, `CLOSED` |
 | `claimed_min_amount` | bigint | 최소 청구 금액 (단정 표현 금지 — 범위로 표현) |
 | `claimed_max_amount` | bigint | 최대 청구 금액 |
 | `offered_amount` | bigint | 보험사 지급 금액 |
-| `applicable_guarantees` | string[] | 적용 가능 보장 목록 |
-| `omitted_special_contract` | string[] | 누락 가능 특약 목록 |
-| `basis_terms_precedents` | string[] | 근거 약관·판례 |
-| `issue` | string[] | 검토 쟁점 목록 |
+| `applicable_guarantees` | string[] | 적용 가능 보장 목록 (AI 원본 — 사정사 수정본은 REPORT_REVIEWS) |
+| `omitted_special_contract` | string[] | 누락 가능 특약 목록 (AI 원본) |
+| `basis_terms_precedents` | string[] | 근거 약관·판례 (AI 원본) |
+| `treatment` | text | 질병명 |
+| `question` | text | 사용자 질문 입력 |
 | `adjuster_id` | uuid | 담당 사정사 ID (매칭 전 null) |
 
-> ⚠️ **불일치 주의:** DB의 `accident_type` enum 값은 `질병/상해/후유장해/복합`이나, `POST /reports` API 요청 파라미터 `accidentType`은 `신체/교통`으로 명세됨. 서버 내부에서 매핑 처리하는지 확인 필요. `ADJUSTER_PROFILES.speciality`의 `신체/교통`과 동일 체계일 가능성 있음.
+> 쟁점은 `REPORTS.issue[]` 배열이 아니라 **REPORT_ISSUES 테이블**로 분리(AI 초안). 사정사 검수 결과는 **REPORT_REVIEW_ISSUES**(격리).
+> `region`은 REPORTS에 없음 → 검수 화면 노출 시 `USERS.region` 조인(비식별).
+> ⚠️ `POST /reports` 요청 파라미터 `accidentType`(신체/교통 명세)과 DB enum(영문) 매핑은 서버 내부 처리.
 
 ### ADJUSTER_PROFILES
 | 필드 | 타입 | 설명 |
