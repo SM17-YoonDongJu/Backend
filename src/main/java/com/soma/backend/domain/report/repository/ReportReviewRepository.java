@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +17,16 @@ import com.soma.backend.domain.report.entity.ReportReview;
 public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID> {
 
   Optional<ReportReview> findByReportIdAndAdjusterId(UUID reportId, UUID adjusterId);
+
+  /**
+   * 검수 행 멱등 생성(스켈레톤). UK(report_id, adjuster_id) 충돌 시 DB가 무시하므로,
+   * 같은 사정사의 최초 검수 동시 제출에도 UK 충돌 500이 나지 않는다. 이후 SELECT→UPDATE로 내용 갱신.
+   */
+  @Modifying
+  @Query(value = "INSERT INTO report_reviews (id, report_id, adjuster_id, status, created_at) "
+      + "VALUES (gen_random_uuid(), :reportId, :adjusterId, 'SENT', now()) "
+      + "ON CONFLICT (report_id, adjuster_id) DO NOTHING", nativeQuery = true)
+  void insertIfAbsent(@Param("reportId") UUID reportId, @Param("adjusterId") UUID adjusterId);
 
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId")
   long countByAdjusterId(@Param("adjusterId") UUID adjusterId);

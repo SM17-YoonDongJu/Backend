@@ -28,7 +28,6 @@ import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
-import com.soma.backend.domain.report.repository.ReportReviewIssueRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -43,8 +42,6 @@ class ReportReviewCommandServiceTest {
   private ReportReviewRepository reportReviewRepository;
   @Mock
   private ReportIssueRepository reportIssueRepository;
-  @Mock
-  private ReportReviewIssueRepository reportReviewIssueRepository;
 
   @InjectMocks
   private ReportReviewCommandService service;
@@ -207,11 +204,11 @@ class ReportReviewCommandServiceTest {
   @DisplayName("review_status=ADDED이고 issue_id=null이며 title/description이 있으면 신규 쟁점으로 저장된다")
   void addedIssueWithoutIssueIdPersists() {
     Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+    ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.empty());
-    given(reportReviewRepository.save(any(ReportReview.class))).willReturn(persistedReview());
+        .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
@@ -221,8 +218,10 @@ class ReportReviewCommandServiceTest {
         service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of(issue)));
 
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
-    verify(reportReviewIssueRepository).deleteAllByReportReviewId(any(UUID.class));
-    verify(reportReviewIssueRepository).saveAll(any());
+    assertThat(review.getIssues()).hasSize(1);
+    assertThat(review.getIssues().get(0).getTitle()).isEqualTo("신규 쟁점 제목");
+    verify(reportReviewRepository).insertIfAbsent(reportId, adjusterId);
+    verify(reportReviewRepository).save(review);
   }
 
   @Test
@@ -232,8 +231,7 @@ class ReportReviewCommandServiceTest {
         .willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.empty());
-    given(reportReviewRepository.save(any(ReportReview.class))).willAnswer(inv -> inv.getArgument(0));
+        .willReturn(Optional.of(persistedReview()));
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request("AWAITING_ADOPTION", List.of())))
         .isInstanceOf(BusinessException.class)
@@ -248,8 +246,7 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.empty());
-    given(reportReviewRepository.save(any(ReportReview.class))).willReturn(persistedReview());
+        .willReturn(Optional.of(persistedReview()));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportResponse result = service.review(adjusterId, reportId, request("CLOSED", List.of()));
@@ -258,15 +255,15 @@ class ReportReviewCommandServiceTest {
   }
 
   @Test
-  @DisplayName("본인 REPORT_REVIEWS 행이 없으면 upsert 생성 후 상태 전이 및 결과 반환")
+  @DisplayName("본인 REPORT_REVIEWS 행을 멱등 생성 후 쟁점 교체·상태 전이 및 결과 반환")
   void upsertNewReviewAndTransition() {
     Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+    ReportReview review = persistedReview();
     UUID issueId = UUID.randomUUID();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issueWithId(issueId)));
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.empty());
-    given(reportReviewRepository.save(any(ReportReview.class))).willReturn(persistedReview());
+        .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
@@ -277,8 +274,9 @@ class ReportReviewCommandServiceTest {
 
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
-    verify(reportReviewIssueRepository).deleteAllByReportReviewId(any(UUID.class));
-    verify(reportReviewIssueRepository).saveAll(any());
+    assertThat(review.getIssues()).hasSize(1);
+    verify(reportReviewRepository).insertIfAbsent(reportId, adjusterId);
+    verify(reportReviewRepository).save(review);
     verify(reportRepository).save(report);
   }
 }

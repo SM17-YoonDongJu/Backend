@@ -14,8 +14,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * REPORT_REVIEW_ISSUES — ReportReview Aggregate 하위, issue별 검수 결과.
- * 경쟁 검수 격리(사정사마다 별도 행)를 위해 REPORT_ISSUES를 직접 수정하지 않는다.
+ * REPORT_REVIEW_ISSUES — ReportReview Aggregate 내부 Entity(issue별 검수 결과).
+ * report_review_id FK는 소유 Aggregate(ReportReview)의 @OneToMany가 관리한다(자식 직접 저장 금지).
  * reportIssueId는 nullable — null이면 사정사가 신규로 추가한 쟁점(reviewStatus=ADDED)이며 title/description을 담는다.
  */
 @Entity
@@ -27,9 +27,6 @@ public class ReportReviewIssue extends CreatedAtEntity {
   @Id
   @GeneratedValue
   private UUID id;
-
-  @Column(name = "report_review_id", nullable = false)
-  private UUID reportReviewId;
 
   @Column(name = "report_issue_id")
   private UUID reportIssueId;
@@ -53,10 +50,20 @@ public class ReportReviewIssue extends CreatedAtEntity {
   @Column(name = "excluded_reason")
   private String excludedReason;
 
-  public ReportReviewIssue(UUID reportReviewId, UUID reportIssueId, String title, String description,
+  public ReportReviewIssue(UUID reportIssueId, String title, String description,
       IssueReviewStatus reviewStatus, String adjusterOpinion, String modifiedReason, String excludedReason) {
-    this.reportReviewId = reportReviewId;
     this.reportIssueId = reportIssueId;
+    this.title = title;
+    this.description = description;
+    this.reviewStatus = reviewStatus;
+    this.adjusterOpinion = adjusterOpinion;
+    this.modifiedReason = modifiedReason;
+    this.excludedReason = excludedReason;
+  }
+
+  /** 재검수 시 같은 쟁점(report_issue_id) 행을 삭제·재삽입하지 않고 값만 갱신(부분 UK 충돌 회피). */
+  void updateContent(String title, String description, IssueReviewStatus reviewStatus,
+      String adjusterOpinion, String modifiedReason, String excludedReason) {
     this.title = title;
     this.description = description;
     this.reviewStatus = reviewStatus;
