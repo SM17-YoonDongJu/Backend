@@ -7,7 +7,8 @@ dev EC2 배포의 단일 진실원. compose는 이 디렉터리를 PR로 수정�
 
 | 구성요소 | 형태 | 비고 |
 |----------|------|------|
-| `backend` / `ai` | 컨테이너(ECR 이미지) | CD가 `--no-deps`로 앱만 재기동 |
+| `backend` | 컨테이너(ECR 이미지) | CD가 `--no-deps`로 앱만 재기동 |
+| `report` / `chatbot` | 컨테이너(ECR 이미지, AI 레포) | AI 레포가 두 이미지로 배포. `repository_dispatch`(deploy-report/deploy-chatbot)로 자동 CD |
 | PostgreSQL | **외부 RDS** | `.env.dev`의 `DB_HOST`로 연결 |
 | Redis / Kafka | **컨테이너** | `restart: unless-stopped`로 상주. **8월 전까지 컨테이너 유지**, 이후 ElastiCache/MSK 재검토 |
 
