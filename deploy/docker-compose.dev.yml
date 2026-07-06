@@ -46,32 +46,73 @@ services:
     networks:
       - brbs-net
 
-  ai:
-    image: ${ECR_REGISTRY}/soma/ai:${AI_TAG:-dev}
-    container_name: brbs-ai
+  # Kafka 워커(report-job 소비 · LangGraph · RAG). HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  report:
+    image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-dev}
+    container_name: brbs-report
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     environment:
-      ENV: ${ENV}
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
       LOG_LEVEL: ${LOG_LEVEL}
+      SERVICE_NAME: report-worker
+      INSTANCE_ID: ${INSTANCE_ID:-}
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
       KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
-      KAFKA_OCR_JOB_TOPIC: ${KAFKA_OCR_JOB_TOPIC}
       KAFKA_REPORT_JOB_TOPIC: ${KAFKA_REPORT_JOB_TOPIC}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP}
+      KAFKA_DLQ_SUFFIX: ${KAFKA_DLQ_SUFFIX:-.dlq}
+      KAFKA_MAX_RETRIES: ${KAFKA_MAX_RETRIES:-3}
       AI_BASE_URL: ${AI_BASE_URL}
       AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
       LLM_MODEL: ${LLM_MODEL}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       EMBEDDING_DIM: ${EMBEDDING_DIM}
-      BACKEND_URL: ${BACKEND_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      AWS_REGION: ${AWS_REGION}
-      S3_BUCKET: ${S3_BUCKET}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
+      TZ: Asia/Seoul
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). Kafka·S3 없음, Redis 필수.
+  chatbot:
+    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-dev}
+    container_name: brbs-chatbot
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SERVICE_NAME: chatbot
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
+      REDIS_URL: ${REDIS_URL}
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
       TZ: Asia/Seoul
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
