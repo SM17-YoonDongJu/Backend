@@ -46,43 +46,38 @@ services:
     networks:
       - brbs-net
 
-  # AI 레포는 chatbot(WebSocket AI 챗봇) / reportworker(OCR·리포트 Kafka consumer) 두 이미지로 배포된다.
-  # env 블록은 둘 다 동일(기존 ai와 동일 전체 세트) — 이미지·컨테이너명·포트만 다름.
-  chatbot:
-    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-dev}
-    container_name: brbs-chatbot
+  # Kafka 워커(report-job 소비 · LangGraph · RAG). HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  report:
+    image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-dev}
+    container_name: brbs-report
     restart: unless-stopped
-    ports:
-      # WebSocket 클라이언트용. 호스트 8000은 이미 사용 중이라 8001로 매핑.
-      # 컨테이너 내부 포트는 AI 레포 Dockerfile의 EXPOSE에 맞춘다(기본 8000 가정).
-      - "8001:8000"
     environment:
-      ENV: ${ENV}
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
       LOG_LEVEL: ${LOG_LEVEL}
+      SERVICE_NAME: report-worker
+      INSTANCE_ID: ${INSTANCE_ID:-}
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
       KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
-      KAFKA_OCR_JOB_TOPIC: ${KAFKA_OCR_JOB_TOPIC}
       KAFKA_REPORT_JOB_TOPIC: ${KAFKA_REPORT_JOB_TOPIC}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP}
+      KAFKA_DLQ_SUFFIX: ${KAFKA_DLQ_SUFFIX:-.dlq}
+      KAFKA_MAX_RETRIES: ${KAFKA_MAX_RETRIES:-3}
       AI_BASE_URL: ${AI_BASE_URL}
       AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
       LLM_MODEL: ${LLM_MODEL}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       EMBEDDING_DIM: ${EMBEDDING_DIM}
-      BACKEND_URL: ${BACKEND_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      AWS_REGION: ${AWS_REGION}
-      S3_BUCKET: ${S3_BUCKET}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
       TZ: Asia/Seoul
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
     logging:
       driver: json-file
       options:
@@ -91,33 +86,33 @@ services:
     networks:
       - brbs-net
 
-  reportworker:
-    image: ${ECR_REGISTRY}/soma/reportworker:${REPORTWORKER_TAG:-dev}
-    container_name: brbs-reportworker
+  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). Kafka·S3 없음, Redis 필수.
+  chatbot:
+    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-dev}
+    container_name: brbs-chatbot
     restart: unless-stopped
     ports:
-      # Kafka consumer라 외부 트래픽 없음. 헬스 엔드포인트만 로컬(127.0.0.1)로 노출.
-      - "127.0.0.1:8002:8000"
+      - "8001:8000"
     environment:
-      ENV: ${ENV}
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
       LOG_LEVEL: ${LOG_LEVEL}
+      SERVICE_NAME: chatbot
+      INSTANCE_ID: ${INSTANCE_ID:-}
       DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
-      KAFKA_OCR_JOB_TOPIC: ${KAFKA_OCR_JOB_TOPIC}
-      KAFKA_REPORT_JOB_TOPIC: ${KAFKA_REPORT_JOB_TOPIC}
       AI_BASE_URL: ${AI_BASE_URL}
       AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
       LLM_MODEL: ${LLM_MODEL}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       EMBEDDING_DIM: ${EMBEDDING_DIM}
-      BACKEND_URL: ${BACKEND_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      AWS_REGION: ${AWS_REGION}
-      S3_BUCKET: ${S3_BUCKET}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
       TZ: Asia/Seoul
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

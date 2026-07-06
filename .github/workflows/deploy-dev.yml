@@ -1,9 +1,31 @@
 name: Deploy to Dev
 
 on:
+  # backend: develop push 시 자동 빌드·배포
   push:
     branches: [develop]
+  # report/chatbot: FastAPI 리포 CD가 이미지 push 후 아래 이벤트로 호출
+  #   event_type: deploy-report | deploy-chatbot
+  #   client_payload: { "tag": "<short_sha>" }  (선택, 없으면 dev 태그 사용)
+  repository_dispatch:
+    types: [deploy-report, deploy-chatbot]
+  # 수동 배포 (임의 서비스 재배포)
   workflow_dispatch:
+    inputs:
+      service:
+        description: '재배포할 서비스'
+        type: choice
+        required: true
+        default: backend
+        options:
+          - backend
+          - report
+          - chatbot
+      tag:
+        description: '배포할 이미지 태그 (비우면 dev)'
+        type: string
+        required: false
+        default: ''
 
 concurrency:
   group: deploy-dev
@@ -14,41 +36,101 @@ permissions:
   contents: read
 
 env:
-  ECR_REPOSITORY: soma/backend
-  IMAGE_TAG: ${{ github.sha }}
   EC2_INSTANCE_NAME: brbs-backend-dev
   EC2_USER: ubuntu
   EC2_HOME: /home/ubuntu
 
 jobs:
+  # 이벤트를 배포 대상(서비스/ECR repo/태그 env/빌드 필요 여부)으로 정규화
+  resolve:
+    name: Resolve deploy target
+    runs-on: ubuntu-latest
+    outputs:
+      service: ${{ steps.resolve.outputs.service }}
+      ecr_repository: ${{ steps.resolve.outputs.ecr_repository }}
+      tag_env: ${{ steps.resolve.outputs.tag_env }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      needs_build: ${{ steps.resolve.outputs.needs_build }}
+    steps:
+      - name: Resolve
+        id: resolve
+        run: |
+          case "${{ github.event_name }}" in
+            push)
+              SERVICE=backend
+              TAG=""
+              ;;
+            workflow_dispatch)
+              SERVICE="${{ inputs.service }}"
+              TAG="${{ inputs.tag }}"
+              ;;
+            repository_dispatch)
+              case "${{ github.event.action }}" in
+                deploy-report)  SERVICE=report ;;
+                deploy-chatbot) SERVICE=chatbot ;;
+                *) echo "::error::Unknown dispatch action ${{ github.event.action }}"; exit 1 ;;
+              esac
+              TAG="${{ github.event.client_payload.tag }}"
+              ;;
+            *)
+              echo "::error::Unsupported event ${{ github.event_name }}"; exit 1 ;;
+          esac
+
+          case "$SERVICE" in
+            backend) ECR_REPOSITORY=soma/backend; TAG_ENV=BACKEND_TAG ;;
+            report)  ECR_REPOSITORY=soma/report;  TAG_ENV=REPORT_TAG ;;
+            chatbot) ECR_REPOSITORY=soma/chatbot; TAG_ENV=CHATBOT_TAG ;;
+            *) echo "::error::Unknown service $SERVICE"; exit 1 ;;
+          esac
+
+          # backend만 이 리포에서 이미지를 빌드한다. report/chatbot은 외부 리포가 빌드·push.
+          if [ "$SERVICE" = "backend" ]; then
+            NEEDS_BUILD=true
+          else
+            NEEDS_BUILD=false
+          fi
+
+          echo "service=$SERVICE"               >> $GITHUB_OUTPUT
+          echo "ecr_repository=$ECR_REPOSITORY"  >> $GITHUB_OUTPUT
+          echo "tag_env=$TAG_ENV"                >> $GITHUB_OUTPUT
+          echo "tag=$TAG"                        >> $GITHUB_OUTPUT
+          echo "needs_build=$NEEDS_BUILD"        >> $GITHUB_OUTPUT
+
+          echo "===== 배포 대상 ====="
+          echo "service=$SERVICE ecr=$ECR_REPOSITORY tag_env=$TAG_ENV tag=${TAG:-dev} needs_build=$NEEDS_BUILD"
+
   build-and-push:
     name: Build & Push to ECR
+    needs: resolve
+    if: needs.resolve.outputs.needs_build == 'true'
     runs-on: ubuntu-latest
     outputs:
       short_sha: ${{ steps.build.outputs.short_sha }}
-      image_uri: ${{ steps.build.outputs.image_uri }}
-    
+    env:
+      ECR_REPOSITORY: ${{ needs.resolve.outputs.ecr_repository }}
+      IMAGE_TAG: ${{ github.sha }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: gradle
-      
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-      
+
       - name: Login to ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
-      
+
       - name: Build & push Docker image
         id: build
         env:
@@ -56,31 +138,32 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           IMAGE_URI="$REGISTRY/$ECR_REPOSITORY"
-          
+
           echo "Building: $IMAGE_URI"
-          
+
           docker build \
             --tag $IMAGE_URI:$IMAGE_TAG \
             --tag $IMAGE_URI:$SHORT_SHA \
             --tag $IMAGE_URI:dev \
             .
-          
+
           docker push $IMAGE_URI:$IMAGE_TAG
           docker push $IMAGE_URI:$SHORT_SHA
           docker push $IMAGE_URI:dev
-          
+
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
-          
+
           echo "===== Pushed ====="
           echo "$IMAGE_URI:$SHORT_SHA"
           echo "$IMAGE_URI:dev"
-  
+
   deploy-to-ec2:
     name: Deploy to EC2 via SSM
-    needs: build-and-push
+    needs: [resolve, build-and-push]
+    # build이 스킵되어도(외부 이미지) 배포는 진행. resolve 성공이면 실행.
+    if: always() && needs.resolve.result == 'success' && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,21 +182,24 @@ jobs:
                       "Name=instance-state-name,Values=running" \
             --query 'Reservations[0].Instances[0].InstanceId' \
             --output text)
-          
+
           if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" == "None" ]; then
             echo "::error::Running instance with tag Name=$EC2_INSTANCE_NAME not found"
             exit 1
           fi
-          
+
           echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
           echo "Found: $INSTANCE_ID"
-      
+
       - name: Deploy via SSM
         env:
           INSTANCE_ID: ${{ steps.find-instance.outputs.instance_id }}
           REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
           REGION: ${{ secrets.AWS_REGION }}
-          SHORT_SHA: ${{ needs.build-and-push.outputs.short_sha }}
+          SERVICE: ${{ needs.resolve.outputs.service }}
+          TAG_ENV: ${{ needs.resolve.outputs.tag_env }}
+          # build이 있었으면 short_sha, 아니면 dispatch/입력 태그, 그것도 없으면 dev
+          DEPLOY_TAG: ${{ needs.build-and-push.outputs.short_sha || needs.resolve.outputs.tag || 'dev' }}
         run: |
           # 리포의 배포 compose를 base64로 인코딩해 SSM 커맨드로 EC2에 그대로 기록(드리프트 차단)
           COMPOSE_B64=$(base64 -w0 deploy/docker-compose.dev.yml)
@@ -121,19 +207,21 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy soma/backend $SHORT_SHA" \
+            --comment "Deploy $SERVICE $DEPLOY_TAG" \
             --parameters "{
               \"commands\": [
                 \"set -e\",
                 \"cd $EC2_HOME/backend\",
                 \"echo '===== compose 동기화(리포 기준) ====='\",
                 \"echo $COMPOSE_B64 | base64 -d > docker-compose.yml\",
+                \"echo '===== 배포 대상: $SERVICE ($TAG_ENV=$DEPLOY_TAG) ====='\",
+                \"export $TAG_ENV=$DEPLOY_TAG\",
                 \"echo '===== ECR 로그인 ====='\",
                 \"aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REGISTRY\",
                 \"echo '===== 이미지 pull ====='\",
-                \"docker compose --env-file .env.dev pull backend\",
+                \"docker compose --env-file .env.dev pull $SERVICE\",
                 \"echo '===== 컨테이너 재시작 ====='\",
-                \"docker compose --env-file .env.dev up -d --no-deps backend\",
+                \"docker compose --env-file .env.dev up -d --no-deps $SERVICE\",
                 \"echo '===== 이미지 정리 ====='\",
                 \"docker image prune -f\",
                 \"echo '===== 배포 완료 ====='\"
@@ -142,18 +230,18 @@ jobs:
             }" \
             --output text \
             --query 'Command.CommandId')
-          
+
           echo "Command ID: $COMMAND_ID"
-          
+
           for i in $(seq 1 60); do
             STATUS=$(aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" \
               --instance-id "$INSTANCE_ID" \
               --query 'Status' \
               --output text 2>/dev/null || echo "Pending")
-            
+
             echo "[$i/60] Status: $STATUS"
-            
+
             case "$STATUS" in
               Success)
                 echo "Deploy 성공"
@@ -174,25 +262,25 @@ jobs:
                 exit 1
                 ;;
             esac
-            
+
             sleep 5
           done
-  
+
   notify:
     name: Notify Discord
-    needs: [build-and-push, deploy-to-ec2]
+    needs: [resolve, build-and-push, deploy-to-ec2]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Notify
         uses: ./.github/actions/discord-notify
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_DEPLOYMENT }}
-          status: ${{ (needs.build-and-push.result == 'success' && needs.deploy-to-ec2.result == 'success') && 'success' || 'failure' }}
-          title: 'Backend Dev 배포 ${{ (needs.build-and-push.result == ''success'' && needs.deploy-to-ec2.result == ''success'') && ''완료'' || ''실패'' }}'
-          service: backend
+          status: ${{ needs.deploy-to-ec2.result == 'success' && 'success' || 'failure' }}
+          title: '${{ needs.resolve.outputs.service }} Dev 배포 ${{ needs.deploy-to-ec2.result == ''success'' && ''완료'' || ''실패'' }}'
+          service: ${{ needs.resolve.outputs.service }}
           environment: dev
-          image_tag: ${{ needs.build-and-push.outputs.short_sha }}
+          image_tag: ${{ needs.build-and-push.outputs.short_sha || needs.resolve.outputs.tag || 'dev' }}
