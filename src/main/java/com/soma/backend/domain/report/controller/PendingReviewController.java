@@ -29,22 +29,25 @@ import com.soma.backend.global.security.ActiveAdjuster;
 
 /**
  * 검수 대기 요약(API#1)·목록(API#2)·보류 추가(API#3)·검수 반영(API#4) 컨트롤러.
- * 인가 가드는 {@link ActiveAdjuster}(@ActiveAdjuster)가 담당(401/403).
+ *
+ * <p>인가: 열람(GET)은 인증·미인증 사정사 모두 허용, 사정 기능(hold·검수 반영)은
+ * {@code CERTIFICATED_ADJUSTER}만 허용한다. {@link ActiveAdjuster}는 userId 주입 전용.
  */
 @RestController
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
 public class PendingReviewController {
 
   private final PendingReviewQueryService pendingReviewQueryService;
   private final ReportHoldCommandService reportHoldCommandService;
   private final ReportReviewCommandService reportReviewCommandService;
 
+  @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/reports/pending-review/summary")
   public ResponseEntity<ApiResponse<PendingReviewSummaryResponse>> summary(@ActiveAdjuster UUID adjusterId) {
     return ResponseEntity.ok(ApiResponse.ok(pendingReviewQueryService.getSummary()));
   }
 
+  @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/reports/pending-review")
   public ResponseEntity<ApiResponse<PendingReviewListResponse>> pendingReview(
       @ActiveAdjuster UUID adjusterId,
@@ -59,6 +62,7 @@ public class PendingReviewController {
     return ResponseEntity.ok(ApiResponse.ok(result));
   }
 
+  @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
   @PostMapping("/reports/{reportId}/hold")
   public ResponseEntity<ApiResponse<HoldResponse>> addHold(
       @ActiveAdjuster UUID adjusterId, @PathVariable UUID reportId) {
@@ -66,6 +70,7 @@ public class PendingReviewController {
     return ResponseEntity.ok(ApiResponse.ok(result));
   }
 
+  @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
   @PatchMapping("/reports/{reportId}")
   public ResponseEntity<ApiResponse<ReviewReportResponse>> reviewReport(
       @ActiveAdjuster UUID adjusterId, @PathVariable UUID reportId, @RequestBody ReviewReportRequest request) {
