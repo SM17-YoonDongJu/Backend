@@ -41,6 +41,10 @@ logging:
   file:
     path: /tmp/logs
 
+app:
+  cookie:
+    secure: false
+
 jwt:
   secret: testsecretkeyforcitestingonly32chars!!
 

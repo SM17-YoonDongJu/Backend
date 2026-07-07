@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 public class SecurityConfig {
 
   private final JwtFilter jwtFilter;
+  private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+  private final RestAccessDeniedHandler restAccessDeniedHandler;
 
   @Bean
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -27,8 +29,11 @@ public class SecurityConfig {
         .sessionManagement(session ->
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/ws/**").permitAll()
-            .anyRequest().permitAll())
+            .requestMatchers("/auth/**", "/ws/**", "/actuator/health", "/actuator/health/**").permitAll()
+            .anyRequest().authenticated())
+        .exceptionHandling(ex -> ex
+            .authenticationEntryPoint(restAuthenticationEntryPoint)
+            .accessDeniedHandler(restAccessDeniedHandler))
         .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }

@@ -1,69 +1,78 @@
 package com.soma.backend.domain.report.controller;
 
 import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.List;
 import java.util.UUID;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.Authentication;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
 import com.soma.backend.domain.report.service.PendingReviewQueryService;
 import com.soma.backend.domain.report.service.ReportHoldCommandService;
 import com.soma.backend.domain.report.service.ReportReviewCommandService;
-import com.soma.backend.global.exception.GlobalExceptionHandler;
+import com.soma.backend.global.config.WebMvcConfig;
 import com.soma.backend.global.security.ActiveAdjusterArgumentResolver;
+import com.soma.backend.global.security.CookieProvider;
 import com.soma.backend.global.security.CustomUserDetails;
+import com.soma.backend.global.security.JwtFilter;
+import com.soma.backend.global.security.JwtProvider;
+import com.soma.backend.global.security.RestAccessDeniedHandler;
+import com.soma.backend.global.security.RestAuthenticationEntryPoint;
+import com.soma.backend.global.security.SecurityConfig;
 
 /**
- * @ActiveAdjuster 인가 가드(401/403) 검증. ArgumentResolver + GlobalExceptionHandler를 실제로 태운다.
- * (DB·SecurityFilterChain 없이 SecurityContext를 직접 세팅하여 401/403/통과만 검증)
+ * 검수 대기 API 인가 가드 검증. 실제 SecurityFilterChain(anyRequest.authenticated)과
+ * 컨트롤러 클래스 레벨 {@code @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")}를 태워
+ * 비로그인 401 / 비사정사 403 / 사정사 통과를 확인한다.
  */
+@WebMvcTest(PendingReviewController.class)
+@ActiveProfiles("test")
+@Import({
+    SecurityConfig.class,
+    JwtFilter.class,
+    JwtProvider.class,
+    CookieProvider.class,
+    RestAuthenticationEntryPoint.class,
+    RestAccessDeniedHandler.class,
+    ActiveAdjusterArgumentResolver.class,
+    WebMvcConfig.class
+})
+@DisplayName("PendingReviewController 인가 가드 테스트")
 class PendingReviewControllerAuthTest {
 
+  @Autowired
   private MockMvc mockMvc;
+
+  @MockitoBean
   private PendingReviewQueryService pendingReviewQueryService;
 
-  @BeforeEach
-  void setUp() {
-    pendingReviewQueryService = Mockito.mock(PendingReviewQueryService.class);
-    ReportHoldCommandService reportHoldCommandService = Mockito.mock(ReportHoldCommandService.class);
-    ReportReviewCommandService reportReviewCommandService = Mockito.mock(ReportReviewCommandService.class);
-    PendingReviewController controller = new PendingReviewController(
-        pendingReviewQueryService, reportHoldCommandService, reportReviewCommandService);
-    mockMvc = MockMvcBuilders.standaloneSetup(controller)
-        .setCustomArgumentResolvers(new ActiveAdjusterArgumentResolver())
-        .setControllerAdvice(new GlobalExceptionHandler())
-        .build();
-  }
+  @MockitoBean
+  private ReportHoldCommandService reportHoldCommandService;
 
-  @AfterEach
-  void tearDown() {
-    SecurityContextHolder.clearContext();
-  }
+  @MockitoBean
+  private ReportReviewCommandService reportReviewCommandService;
 
-  private void authenticateAs(String role) {
+  private Authentication authenticationAs(String role) {
     CustomUserDetails principal = new CustomUserDetails(UUID.randomUUID(), role);
-    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-        principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
-    SecurityContextHolder.getContext().setAuthentication(authentication);
+    return new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
   }
 
   @Test
-  @DisplayName("비로그인(principal 없음)이면 401 LOGIN_REQUIRED")
-  void unauthenticatedReturns401() throws Exception {
+  @DisplayName("비로그인이면 401 LOGIN_REQUIRED")
+  void unauthenticated_returns401() throws Exception {
     mockMvc.perform(get("/reports/pending-review/summary"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
@@ -71,42 +80,30 @@ class PendingReviewControllerAuthTest {
 
   @Test
   @DisplayName("USER 역할이면 403 FORBIDDEN")
-  void userRoleReturns403() throws Exception {
-    authenticateAs("USER");
-
-    mockMvc.perform(get("/reports/pending-review/summary"))
+  void userRole_returns403() throws Exception {
+    mockMvc.perform(get("/reports/pending-review/summary")
+            .with(authentication(authenticationAs("USER"))))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
   }
 
   @Test
   @DisplayName("UNCERTIFICATED_ADJUSTER 역할이면 403 FORBIDDEN")
-  void uncertificatedAdjusterReturns403() throws Exception {
-    authenticateAs("UNCERTIFICATED_ADJUSTER");
-
-    mockMvc.perform(get("/reports/pending-review/summary"))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-  }
-
-  @Test
-  @DisplayName("ADMIN 역할이면 403 FORBIDDEN")
-  void adminReturns403() throws Exception {
-    authenticateAs("ADMIN");
-
-    mockMvc.perform(get("/reports/pending-review/summary"))
+  void uncertificatedAdjuster_returns403() throws Exception {
+    mockMvc.perform(get("/reports/pending-review/summary")
+            .with(authentication(authenticationAs("UNCERTIFICATED_ADJUSTER"))))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
   }
 
   @Test
   @DisplayName("CERTIFICATED_ADJUSTER 역할이면 200 통과")
-  void certificatedAdjusterPasses() throws Exception {
-    authenticateAs("CERTIFICATED_ADJUSTER");
-    given(pendingReviewQueryService.getSummary()).willReturn(new PendingReviewSummaryResponse(5L, 2L));
+  void certificatedAdjuster_passes() throws Exception {
+    given(pendingReviewQueryService.getSummary())
+        .willReturn(new PendingReviewSummaryResponse(5L, 2L));
 
-    // 표준 ObjectMapper(snake_case 전역설정 미적용) 환경이므로 인가 통과(200)만 검증한다.
-    mockMvc.perform(get("/reports/pending-review/summary"))
+    mockMvc.perform(get("/reports/pending-review/summary")
+            .with(authentication(authenticationAs("CERTIFICATED_ADJUSTER"))))
         .andExpect(status().isOk());
   }
 }

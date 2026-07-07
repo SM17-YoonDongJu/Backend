@@ -27,9 +27,20 @@ public class JwtFilter extends OncePerRequestFilter {
 
   private static final String AUTH_HEADER = "Authorization";
   private static final String BEARER_PREFIX = "Bearer ";
+  private static final String AUTH_PATH_PREFIX = "/auth/";
 
   private final JwtProvider jwtProvider;
   private final JsonMapper jsonMapper;
+  private final CookieProvider cookieProvider;
+
+  /**
+   * {@code /auth/**} 경로는 access 토큰 검증을 건너뛴다. 재발급·로그아웃 요청에 만료된 access 쿠키가
+   * 딸려와도 EXPIRED_TOKEN으로 막히면 안 되기 때문이다(해당 경로는 refresh 쿠키로 동작).
+   */
+  @Override
+  protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+    return request.getServletPath().startsWith(AUTH_PATH_PREFIX);
+  }
 
   @Override
   protected void doFilterInternal(
@@ -70,6 +81,8 @@ public class JwtFilter extends OncePerRequestFilter {
     if (StringUtils.hasText(header) && header.startsWith(BEARER_PREFIX)) {
       return header.substring(BEARER_PREFIX.length());
     }
-    return null;
+    return cookieProvider.readCookie(request, CookieProvider.ACCESS_TOKEN_COOKIE)
+        .filter(StringUtils::hasText)
+        .orElse(null);
   }
 }

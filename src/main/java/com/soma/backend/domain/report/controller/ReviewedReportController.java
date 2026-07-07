@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,6 +20,7 @@ import com.soma.backend.global.security.ActiveAdjuster;
 /** API#5 내 검수 내역 + 상단 통계 컨트롤러. */
 @RestController
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
 public class ReviewedReportController {
 
   private final ReviewedReportQueryService reviewedReportQueryService;

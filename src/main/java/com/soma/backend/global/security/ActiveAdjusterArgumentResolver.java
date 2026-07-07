@@ -17,13 +17,12 @@ import com.soma.backend.global.exception.ErrorCode;
 /**
  * {@link ActiveAdjuster} 파라미터 해석기.
  *
- * <p>SecurityContext에서 {@link CustomUserDetails}를 꺼내 401/403 가드를 수행하고,
- * 통과 시 활성 사정사의 userId(UUID)를 반환한다.
+ * <p>SecurityContext에서 {@link CustomUserDetails}를 꺼내 userId(UUID)를 주입하는 전용 리졸버다.
+ * role 기반 인가(403)는 컨트롤러 메서드의 {@code @PreAuthorize}가 담당한다. principal이 없는 경우는
+ * SecurityConfig에서 이미 401로 처리되지만, 방어적으로 {@code LOGIN_REQUIRED}를 던진다.
  */
 @Component
 public class ActiveAdjusterArgumentResolver implements HandlerMethodArgumentResolver {
-
-  private static final String ACTIVE_ADJUSTER_ROLE = "CERTIFICATED_ADJUSTER";
 
   @Override
   public boolean supportsParameter(MethodParameter parameter) {
@@ -41,9 +40,6 @@ public class ActiveAdjusterArgumentResolver implements HandlerMethodArgumentReso
     CustomUserDetails principal = extractPrincipal();
     if (principal == null) {
       throw new BusinessException(ErrorCode.LOGIN_REQUIRED);
-    }
-    if (!ACTIVE_ADJUSTER_ROLE.equals(principal.getRole())) {
-      throw new BusinessException(ErrorCode.FORBIDDEN);
     }
     return principal.getUserId();
   }

@@ -52,6 +52,11 @@ jwt:
   access-token-expiry: 1800000    # 30분
   refresh-token-expiry: 1209600000 # 14일
 
+app:
+  cookie:
+    secure: ${COOKIE_SECURE:true}      # 운영 https 기본값. 로컬 http는 프로파일에서 false
+    same-site: ${COOKIE_SAME_SITE:Lax}
+
 aws:
   region: ${AWS_REGION:ap-northeast-2}
   s3:
