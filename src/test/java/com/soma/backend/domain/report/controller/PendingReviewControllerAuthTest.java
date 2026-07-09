@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -20,6 +21,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.soma.backend.domain.report.dto.HoldResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
 import com.soma.backend.domain.report.service.PendingReviewQueryService;
 import com.soma.backend.domain.report.service.ReportHoldCommandService;
@@ -117,5 +119,17 @@ class PendingReviewControllerAuthTest {
             .with(authentication(authenticationAs("UNCERTIFICATED_ADJUSTER"))))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+  }
+
+  @Test
+  @DisplayName("사정 기능(hold): CERTIFICATED_ADJUSTER 역할이면 200 통과")
+  void certificatedAdjuster_writePasses() throws Exception {
+    UUID reportId = UUID.randomUUID();
+    given(reportHoldCommandService.addHold(any(UUID.class), any(UUID.class)))
+        .willReturn(new HoldResponse(reportId, true));
+
+    mockMvc.perform(post("/reports/{reportId}/hold", reportId)
+            .with(authentication(authenticationAs("CERTIFICATED_ADJUSTER"))))
+        .andExpect(status().isOk());
   }
 }

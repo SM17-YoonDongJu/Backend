@@ -1,14 +1,17 @@
 package com.soma.backend.domain.auth.service.provider;
 
+import java.time.Duration;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -28,6 +31,8 @@ public class RestClientOAuthClient implements OAuthClient {
   private static final String KAKAO = "kakao";
   private static final String NAVER = "naver";
   private static final String BASE_URL_PLACEHOLDER = "{baseUrl}";
+  private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
+  private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
   private final ClientRegistrationRepository clientRegistrationRepository;
   private final RestClient restClient;
@@ -37,7 +42,10 @@ public class RestClientOAuthClient implements OAuthClient {
       ClientRegistrationRepository clientRegistrationRepository,
       @Value("${app.oauth.base-url:http://localhost:8080}") String baseUrl) {
     this.clientRegistrationRepository = clientRegistrationRepository;
-    this.restClient = RestClient.create();
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(CONNECT_TIMEOUT);
+    factory.setReadTimeout(READ_TIMEOUT);
+    this.restClient = RestClient.builder().requestFactory(factory).build();
     this.baseUrl = baseUrl;
   }
 
@@ -81,7 +89,8 @@ public class RestClientOAuthClient implements OAuthClient {
         throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
       }
       return body;
-    } catch (RestClientResponseException ex) {
+    } catch (RestClientResponseException | ResourceAccessException ex) {
+      // RestClientResponseException = HTTP 오류 응답, ResourceAccessException = 타임아웃·연결 실패·DNS 오류
       throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
     }
   }
@@ -104,6 +113,9 @@ public class RestClientOAuthClient implements OAuthClient {
       if (ex.getStatusCode().is4xxClientError()) {
         throw new BusinessException(ErrorCode.INVALID_REQUEST);
       }
+      throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
+    } catch (ResourceAccessException ex) {
+      // 타임아웃·연결 실패·DNS 오류
       throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
     }
   }

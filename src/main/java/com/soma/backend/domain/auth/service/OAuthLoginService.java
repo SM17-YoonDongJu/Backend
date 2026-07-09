@@ -1,7 +1,6 @@
 package com.soma.backend.domain.auth.service;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -35,10 +34,10 @@ public class OAuthLoginService {
   private final SignupTicketProvider signupTicketProvider;
   private final AuthTokenService authTokenService;
 
-  @Transactional(readOnly = true)
   public OAuthCallbackResponse handleCallback(
       HttpServletResponse response, String provider, String code, String state) {
 
+    // 외부 OAuth 프로필 조회는 트랜잭션 밖에서 수행한다(HTTP 지연 시 DB 커넥션 점유·풀 고갈 방지).
     OAuthProfile profile = oAuthClient.fetchProfile(provider, code, state);
 
     return socialAccountRepository
