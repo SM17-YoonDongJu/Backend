@@ -28,7 +28,6 @@ public class SignupTicketProvider {
   private static final String PURPOSE_CLAIM = "purpose";
   private static final String PURPOSE_SIGNUP = "signup";
   private static final String PROVIDER_CLAIM = "provider";
-  private static final String EMAIL_CLAIM = "email";
   private static final long TICKET_EXPIRY_MILLIS = 5 * 60 * 1000L;
 
   private final SecretKey secretKey;
@@ -38,16 +37,15 @@ public class SignupTicketProvider {
   }
 
   /**
-   * 가입 티켓을 발급한다. subject=providerUserId, provider·email 클레임 포함.
+   * 가입 티켓을 발급한다. subject=providerUserId, provider 클레임 포함.
    */
-  public String issue(String provider, String providerUserId, String email) {
+  public String issue(String provider, String providerUserId) {
     Date now = new Date();
     Date expiry = new Date(now.getTime() + TICKET_EXPIRY_MILLIS);
     return Jwts.builder()
         .subject(providerUserId)
         .claim(PURPOSE_CLAIM, PURPOSE_SIGNUP)
         .claim(PROVIDER_CLAIM, provider)
-        .claim(EMAIL_CLAIM, email)
         .issuedAt(now)
         .expiration(expiry)
         .signWith(secretKey, Jwts.SIG.HS256)
@@ -69,8 +67,7 @@ public class SignupTicketProvider {
       }
       return new SignupTicket(
           claims.get(PROVIDER_CLAIM, String.class),
-          claims.getSubject(),
-          claims.get(EMAIL_CLAIM, String.class));
+          claims.getSubject());
     } catch (JwtException | IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.INVALID_TOKEN);
     }

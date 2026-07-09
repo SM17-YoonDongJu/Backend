@@ -42,14 +42,14 @@ public class AuthRegisterService {
         .existsByProviderAndProviderUserId(ticket.provider(), ticket.providerUserId())) {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
-    if (userRepository.existsByNickname(request.nickname())) {
+    if (userRepository.existsByPhoneNumber(request.phoneNumber())) {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
 
     Role role = UserType.from(request.userType()).toRole();
-    String email = ticket.email() != null ? ticket.email() : request.email();
 
-    User user = User.create(request.nickname(), email, role);
+    User user = User.create(
+        request.nickname(), request.birthDate(), request.phoneNumber(), role);
     userRepository.save(user);
 
     SocialAccount account = SocialAccount.create(

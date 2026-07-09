@@ -8,6 +8,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
+import java.time.LocalDate;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,8 +52,11 @@ class AuthRegisterServiceTest {
   @Mock
   private HttpServletResponse response;
 
+  private static final String PHONE = "010-1234-5678";
+
   private RegisterRequest request(String userType) {
-    return new RegisterRequest("kakao", "ticket", "nickname", userType, null);
+    return new RegisterRequest(
+        "kakao", "ticket", "홍길동", LocalDate.of(1990, 1, 1), PHONE, userType);
   }
 
   @Test
@@ -59,16 +64,16 @@ class AuthRegisterServiceTest {
   void register_valid_createsUserAndIssuesTokens() {
     // Given
     given(signupTicketProvider.parse("ticket"))
-        .willReturn(new SignupTicket("kakao", "kakao-1", "user@test.com"));
+        .willReturn(new SignupTicket("kakao", "kakao-1"));
     given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
         .willReturn(false);
-    given(userRepository.existsByNickname("nickname")).willReturn(false);
+    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(false);
 
     // When
     RegisterResponse result = authRegisterService.register(response, request("insured_person"));
 
     // Then
-    assertThat(result.nickname()).isEqualTo("nickname");
+    assertThat(result.nickname()).isEqualTo("홍길동");
     assertThat(result.role()).isEqualTo(Role.USER.name());
     then(userRepository).should().save(any(User.class));
     then(socialAccountRepository).should().save(any(SocialAccount.class));
@@ -80,10 +85,10 @@ class AuthRegisterServiceTest {
   void register_adjuster_mapsToUncertificatedAdjuster() {
     // Given
     given(signupTicketProvider.parse("ticket"))
-        .willReturn(new SignupTicket("kakao", "kakao-1", "user@test.com"));
+        .willReturn(new SignupTicket("kakao", "kakao-1"));
     given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
         .willReturn(false);
-    given(userRepository.existsByNickname("nickname")).willReturn(false);
+    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(false);
 
     // When
     RegisterResponse result = authRegisterService.register(response, request("adjuster"));
@@ -97,7 +102,7 @@ class AuthRegisterServiceTest {
   void register_providerMismatch_throwsInvalidToken() {
     // Given
     given(signupTicketProvider.parse("ticket"))
-        .willReturn(new SignupTicket("naver", "naver-1", "user@test.com"));
+        .willReturn(new SignupTicket("naver", "naver-1"));
 
     // When & Then
     assertThatThrownBy(() -> authRegisterService.register(response, request("insured_person")))
@@ -112,7 +117,7 @@ class AuthRegisterServiceTest {
   void register_duplicateSocialAccount_throwsConflict() {
     // Given
     given(signupTicketProvider.parse("ticket"))
-        .willReturn(new SignupTicket("kakao", "kakao-1", "user@test.com"));
+        .willReturn(new SignupTicket("kakao", "kakao-1"));
     given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
         .willReturn(true);
 
@@ -125,14 +130,14 @@ class AuthRegisterServiceTest {
   }
 
   @Test
-  @DisplayName("이미 사용 중인 닉네임이면 DUPLICATE_RESOURCE를 던진다")
-  void register_duplicateNickname_throwsConflict() {
+  @DisplayName("이미 가입된 전화번호면 DUPLICATE_RESOURCE를 던진다")
+  void register_duplicatePhoneNumber_throwsConflict() {
     // Given
     given(signupTicketProvider.parse("ticket"))
-        .willReturn(new SignupTicket("kakao", "kakao-1", "user@test.com"));
+        .willReturn(new SignupTicket("kakao", "kakao-1"));
     given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
         .willReturn(false);
-    given(userRepository.existsByNickname("nickname")).willReturn(true);
+    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(true);
 
     // When & Then
     assertThatThrownBy(() -> authRegisterService.register(response, request("insured_person")))

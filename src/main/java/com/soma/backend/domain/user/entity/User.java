@@ -20,7 +20,7 @@ import com.soma.backend.domain.common.entity.BaseEntity;
  * USERS Aggregate Root. 회원 계정 정보를 관리한다.
  *
  * <p>소셜 계정(provider/providerUserId)은 별도 Aggregate(SocialAccount)로 분리하고
- * user_id(UUID)로만 연결한다. 신규 가입은 {@link #create(String, String, Role)}로만 만든다.
+ * user_id(UUID)로만 연결한다. 신규 가입은 {@link #create(String, LocalDate, String, Role)}로만 만든다.
  */
 @Entity
 @Table(name = "users")
@@ -32,14 +32,15 @@ public class User extends BaseEntity {
   @GeneratedValue
   private UUID id;
 
-  @Column(name = "nickname", nullable = false, unique = true)
+  /** 이름(실명). 동명이인이 가능하므로 UNIQUE를 두지 않는다. */
+  @Column(name = "nickname", nullable = false)
   private String nickname;
 
-  @Column(name = "email")
-  private String email;
+  @Column(name = "phone_number", nullable = false, unique = true)
+  private String phoneNumber;
 
-  @Column(name = "email_verified", nullable = false)
-  private boolean emailVerified;
+  @Column(name = "phone_number_verified", nullable = false)
+  private boolean phoneNumberVerified;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "role", nullable = false, length = 30)
@@ -55,21 +56,22 @@ public class User extends BaseEntity {
   @Column(name = "region")
   private String region;
 
-  @Column(name = "birth_date")
+  @Column(name = "birth_date", nullable = false)
   private LocalDate birthDate;
 
   @Column(name = "avatar_url")
   private String avatarUrl;
 
   /**
-   * 소셜 로그인 신규 가입 시 사용하는 정적 팩터리. 상태는 ACTIVE로 시작하고,
-   * email이 있으면 verified로 간주한다.
+   * 소셜 로그인 신규 가입 시 사용하는 정적 팩터리. 이름·생년월일·전화번호를 받고
+   * 상태는 ACTIVE로 시작한다. 전화번호 인증은 별도 절차이므로 미인증으로 생성한다.
    */
-  public static User create(String nickname, String email, Role role) {
+  public static User create(String nickname, LocalDate birthDate, String phoneNumber, Role role) {
     User user = new User();
     user.nickname = nickname;
-    user.email = email;
-    user.emailVerified = email != null && !email.isBlank();
+    user.birthDate = birthDate;
+    user.phoneNumber = phoneNumber;
+    user.phoneNumberVerified = false;
     user.role = role;
     user.status = UserStatus.ACTIVE;
     return user;

@@ -64,7 +64,7 @@ class OAuthLoginServiceTest {
   void handleCallback_existingUser_issuesTokens() {
     // Given
     UUID userId = UUID.randomUUID();
-    OAuthProfile profile = new OAuthProfile("kakao", "kakao-1", "user@test.com", "nick");
+    OAuthProfile profile = new OAuthProfile("kakao", "kakao-1");
     SocialAccount account = mock(SocialAccount.class);
     User user = mock(User.class);
     given(oAuthClient.fetchProfile("kakao", "code", "state")).willReturn(profile);
@@ -83,18 +83,18 @@ class OAuthLoginServiceTest {
     assertThat(result.userId()).isEqualTo(userId);
     assertThat(result.signupTicket()).isNull();
     then(authTokenService).should().issueTokens(response, userId, "USER");
-    then(signupTicketProvider).should(never()).issue(anyString(), anyString(), anyString());
+    then(signupTicketProvider).should(never()).issue(anyString(), anyString());
   }
 
   @Test
   @DisplayName("신규 회원이면 쿠키 없이 가입 티켓을 반환하고 isNewUser=true를 반환한다")
   void handleCallback_newUser_returnsSignupTicket() {
     // Given
-    OAuthProfile profile = new OAuthProfile("naver", "naver-9", "new@test.com", "nick");
+    OAuthProfile profile = new OAuthProfile("naver", "naver-9");
     given(oAuthClient.fetchProfile("naver", "code", null)).willReturn(profile);
     given(socialAccountRepository.findByProviderAndProviderUserId("naver", "naver-9"))
         .willReturn(Optional.empty());
-    given(signupTicketProvider.issue("naver", "naver-9", "new@test.com")).willReturn("ticket-jwt");
+    given(signupTicketProvider.issue("naver", "naver-9")).willReturn("ticket-jwt");
 
     // When
     OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, "naver", "code", null);
@@ -111,7 +111,7 @@ class OAuthLoginServiceTest {
   void handleCallback_socialWithoutUser_throwsUserNotFound() {
     // Given
     UUID userId = UUID.randomUUID();
-    OAuthProfile profile = new OAuthProfile("kakao", "kakao-2", "user@test.com", "nick");
+    OAuthProfile profile = new OAuthProfile("kakao", "kakao-2");
     SocialAccount account = mock(SocialAccount.class);
     given(oAuthClient.fetchProfile("kakao", "code", "state")).willReturn(profile);
     given(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-2"))

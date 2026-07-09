@@ -131,19 +131,7 @@ public class RestClientOAuthClient implements OAuthClient {
     if (id == null) {
       throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
     }
-    String email = null;
-    String nickname = null;
-    Object accountObj = userInfo.get("kakao_account");
-    if (accountObj instanceof Map<?, ?> account) {
-      Object emailObj = account.get("email");
-      email = emailObj == null ? null : emailObj.toString();
-      Object profileObj = account.get("profile");
-      if (profileObj instanceof Map<?, ?> profile) {
-        Object nicknameObj = profile.get("nickname");
-        nickname = nicknameObj == null ? null : nicknameObj.toString();
-      }
-    }
-    return new OAuthProfile(KAKAO, id.toString(), email, nickname);
+    return new OAuthProfile(KAKAO, id.toString());
   }
 
   private OAuthProfile parseNaver(Map<String, Object> userInfo) {
@@ -155,10 +143,6 @@ public class RestClientOAuthClient implements OAuthClient {
     if (id == null) {
       throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
     }
-    Object emailObj = response.get("email");
-    Object nicknameObj = response.get("nickname");
-    String email = emailObj == null ? null : emailObj.toString();
-    String nickname = nicknameObj == null ? null : nicknameObj.toString();
-    return new OAuthProfile(NAVER, id.toString(), email, nickname);
+    return new OAuthProfile(NAVER, id.toString());
   }
 }

@@ -8,5 +8,5 @@ import com.soma.backend.domain.user.entity.User;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
-  boolean existsByNickname(String nickname);
+  boolean existsByPhoneNumber(String phoneNumber);
 }

@@ -55,8 +55,7 @@ public class OAuthLoginService {
   }
 
   private OAuthCallbackResponse issueSignupTicket(OAuthProfile profile) {
-    String ticket = signupTicketProvider.issue(
-        profile.provider(), profile.providerUserId(), profile.email());
+    String ticket = signupTicketProvider.issue(profile.provider(), profile.providerUserId());
     return OAuthCallbackResponse.newUser(ticket);
   }
 }

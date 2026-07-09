@@ -26,10 +26,10 @@ class SignupTicketProviderTest {
   private final SignupTicketProvider provider = new SignupTicketProvider(SECRET);
 
   @Test
-  @DisplayName("issue로 발급한 티켓을 parse하면 provider·providerUserId·email이 복원된다")
+  @DisplayName("issue로 발급한 티켓을 parse하면 provider·providerUserId가 복원된다")
   void issueThenParse_restoresClaims() {
     // Given
-    String token = provider.issue("kakao", "kakao-123", "user@test.com");
+    String token = provider.issue("kakao", "kakao-123");
 
     // When
     SignupTicket ticket = provider.parse(token);
@@ -37,7 +37,6 @@ class SignupTicketProviderTest {
     // Then
     assertThat(ticket.provider()).isEqualTo("kakao");
     assertThat(ticket.providerUserId()).isEqualTo("kakao-123");
-    assertThat(ticket.email()).isEqualTo("user@test.com");
   }
 
   @Test
@@ -85,7 +84,6 @@ class SignupTicketProviderTest {
         .subject("kakao-123")
         .claim("purpose", purpose)
         .claim("provider", "kakao")
-        .claim("email", "user@test.com")
         .issuedAt(new Date(System.currentTimeMillis() - 5000L))
         .expiration(expiry)
         .signWith(key, Jwts.SIG.HS256)

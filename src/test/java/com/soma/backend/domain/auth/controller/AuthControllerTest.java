@@ -129,7 +129,8 @@ class AuthControllerTest {
     }).given(authRegisterService).register(any(HttpServletResponse.class), any());
 
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"nickname\",\"user_type\":\"insured_person\"}";
+        + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
+        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")
@@ -144,14 +145,15 @@ class AuthControllerTest {
   }
 
   @Test
-  @DisplayName("register-닉네임 중복이면 409 DUPLICATE_RESOURCE")
+  @DisplayName("register-전화번호 중복이면 409 DUPLICATE_RESOURCE")
   void register_duplicate_returns409() throws Exception {
     // Given
     willThrow(new BusinessException(ErrorCode.DUPLICATE_RESOURCE))
         .given(authRegisterService).register(any(HttpServletResponse.class), any());
 
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"nickname\",\"user_type\":\"insured_person\"}";
+        + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
+        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")
@@ -169,7 +171,8 @@ class AuthControllerTest {
         .given(authRegisterService).register(any(HttpServletResponse.class), any());
 
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"nickname\",\"user_type\":\"insured_person\"}";
+        + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
+        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")
@@ -180,11 +183,12 @@ class AuthControllerTest {
   }
 
   @Test
-  @DisplayName("register-@Valid 실패(빈 닉네임)면 400 BAD_REQUEST")
+  @DisplayName("register-@Valid 실패(빈 이름)면 400 BAD_REQUEST")
   void register_validationFail_returns400() throws Exception {
     // Given
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"\",\"user_type\":\"insured_person\"}";
+        + "\"nickname\":\"\",\"birth_date\":\"1990-01-01\","
+        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")
