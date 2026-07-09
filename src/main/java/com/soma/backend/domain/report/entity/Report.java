@@ -106,8 +106,51 @@ public class Report extends BaseEntity {
   @Column(name = "question")
   private String question;
 
+  @Column(name = "confidence_level", length = 10)
+  private String confidenceLevel;
+
+  @Column(name = "is_masked")
+  private Boolean isMasked;
+
+  /**
+   * 리포트 생성 진입점(design.md §3). OCR·AI 분석 전 상태이므로 status=AWAITING_INSPECTION으로 시작한다.
+   */
+  public static Report createPending(UUID userId, UUID productId, UUID claimId, AccidentType accidentType,
+      String question, String caseNo) {
+    Report report = new Report();
+    report.userId = userId;
+    report.productId = productId;
+    report.claimId = claimId;
+    report.accidentType = accidentType;
+    report.question = question;
+    report.caseNo = caseNo;
+    report.status = ReportStatus.AWAITING_INSPECTION;
+    return report;
+  }
+
   public AmountRange amountRange() {
     return new AmountRange(claimedMinAmount, claimedMaxAmount, offeredAmount);
+  }
+
+  /**
+   * 사용자가 제안(REPORT_REVIEWS)을 채택해 담당 사정사를 확정한다(design.md §6 decide).
+   * COUNSELING 상태에서만 허용 — 이미 CLOSED면 REPORT_ALREADY_CLOSED, 그 외 상태면
+   * INVALID_STATUS_TRANSITION(예: 아직 상담 전).
+   */
+  public void accept(UUID adjusterId) {
+    if (this.status == ReportStatus.CLOSED) {
+      throw new BusinessException(ErrorCode.REPORT_ALREADY_CLOSED);
+    }
+    if (this.status != ReportStatus.COUNSELING) {
+      throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+    }
+    this.adjusterId = adjusterId;
+    applyReviewTransition(ReportStatus.CLOSED);
+  }
+
+  /** 리포트 소유자(요청 사용자) 여부 — 상세/제안/decide 인가 가드에 사용(design.md §8). */
+  public boolean isOwnedBy(UUID userId) {
+    return this.userId != null && this.userId.equals(userId);
   }
 
   /**

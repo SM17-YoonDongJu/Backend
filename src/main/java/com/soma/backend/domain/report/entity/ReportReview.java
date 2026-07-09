@@ -83,6 +83,16 @@ public class ReportReview extends BaseEntity {
     this.status = ReviewStatus.SENT;
   }
 
+  /** 사용자가 이 제안을 채택. 리포트 종결과 함께 호출된다(design.md §6 decide). */
+  public void accept() {
+    this.status = ReviewStatus.ACCEPTED;
+  }
+
+  /** 사용자가 이 제안을 거절. 목록에서 제외된다(리포트 상태는 유지). */
+  public void reject() {
+    this.status = ReviewStatus.REJECTED;
+  }
+
   /** 검수 내용 갱신(estimate·배열3·review). 서명 개념 없음 — status 전이와 무관하게 upsert된다. */
   public void updateReviewContent(Long estimateMinAmount, Long estimateMaxAmount,
       List<String> applicableGuarantees, List<String> omittedSpecialContract,

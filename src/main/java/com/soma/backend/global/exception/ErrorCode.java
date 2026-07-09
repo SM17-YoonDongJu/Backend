@@ -52,6 +52,9 @@ public enum ErrorCode {
   REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트를 찾을 수 없습니다."),
   REPORT_ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트 쟁점을 찾을 수 없습니다."),
   INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "허용되지 않는 상태 전이입니다."),
+  PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "제안을 찾을 수 없습니다."),
+  REPORT_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종결된 리포트입니다."),
+  CLAIM_DETAILS_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "청구 상세 유형이 사고 유형과 일치하지 않습니다."),
 
   // Matching (도메인 특화)
   MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),
