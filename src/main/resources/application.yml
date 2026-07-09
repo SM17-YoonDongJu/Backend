@@ -55,7 +55,14 @@ jwt:
 app:
   cookie:
     secure: ${COOKIE_SECURE:true}      # 운영 https 기본값. 로컬 http는 프로파일에서 false
+    # 프론트(Vercel)와 백엔드가 다른 사이트(cross-site)로 배포되면 쿠키가 XHR에 실리도록
+    # 운영에선 COOKIE_SAME_SITE=None + COOKIE_SECURE=true(https 필수)로 주입한다. 로컬은 Lax.
     same-site: ${COOKIE_SAME_SITE:Lax}
+  cors:
+    # 쿠키 인증이라 와일드카드(*) 불가 → 패턴 목록으로 관리. 로컬 기본값만 채우고
+    # 운영/프리뷰 오리진은 CORS_ALLOWED_ORIGIN_PATTERNS로 주입(쉼표 구분).
+    # 예: https://앱운영도메인,https://*.vercel.app
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000}
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}
