@@ -151,7 +151,7 @@ services:
       - brbs-net
 
   kafka:
-    image: apache/kafka:3.9.0
+    image: apache/kafka:4.3.1
     container_name: brbs-kafka
     restart: unless-stopped
     ports:
