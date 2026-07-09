@@ -37,9 +37,6 @@ class UserClaimJsonbRoundtripTest {
   @Test
   void medicalIndemnityDetails_roundtrips_through_jsonb() {
     UUID userId = UUID.randomUUID();
-    entityManager.createNativeQuery("INSERT INTO users (id, role) VALUES (:id, 'USER')")
-        .setParameter("id", userId)
-        .executeUpdate();
 
     ClaimDetails details = new MedicalIndemnityDetails(
         List.of("급성 충수염", "복막염"),
