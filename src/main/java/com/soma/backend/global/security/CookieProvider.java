@@ -23,6 +23,7 @@ public class CookieProvider {
   public static final String REFRESH_TOKEN_COOKIE = "refresh_token";
 
   private static final String ROOT_PATH = "/";
+  private static final String AUTH_PATH = "/auth";
 
   private final Duration accessTokenMaxAge;
   private final Duration refreshTokenMaxAge;
@@ -41,31 +42,33 @@ public class CookieProvider {
   }
 
   /**
-   * Access Token 쿠키를 생성한다.
+   * Access Token 쿠키를 생성한다. Path는 모든 보호 API에서 검증돼야 하므로 루트로 둔다.
    */
   public ResponseCookie buildAccessTokenCookie(String token) {
-    return baseCookie(ACCESS_TOKEN_COOKIE, token, accessTokenMaxAge);
+    return baseCookie(ACCESS_TOKEN_COOKIE, token, accessTokenMaxAge, ROOT_PATH);
   }
 
   /**
-   * Refresh Token 쿠키를 생성한다. Path는 reissue/logout에서 읽을 수 있도록 루트로 넓게 둔다.
+   * Refresh Token 쿠키를 생성한다. Path를 {@code /auth}로 좁혀 reissue/logout 요청에만 전송되게 한다
+   * (일반 API 요청에 장기 크리덴셜이 딸려가지 않도록 노출 표면 축소).
    */
   public ResponseCookie buildRefreshTokenCookie(String token) {
-    return baseCookie(REFRESH_TOKEN_COOKIE, token, refreshTokenMaxAge);
+    return baseCookie(REFRESH_TOKEN_COOKIE, token, refreshTokenMaxAge, AUTH_PATH);
   }
 
   /**
-   * Access Token 만료 쿠키(로그아웃용, Max-Age=0)를 생성한다.
+   * Access Token 만료 쿠키(로그아웃용, Max-Age=0)를 생성한다. 삭제되려면 발급 시 Path와 일치해야 한다.
    */
   public ResponseCookie expireAccessTokenCookie() {
-    return baseCookie(ACCESS_TOKEN_COOKIE, "", Duration.ZERO);
+    return baseCookie(ACCESS_TOKEN_COOKIE, "", Duration.ZERO, ROOT_PATH);
   }
 
   /**
-   * Refresh Token 만료 쿠키(로그아웃용, Max-Age=0)를 생성한다.
+   * Refresh Token 만료 쿠키(로그아웃용, Max-Age=0)를 생성한다. 발급 시 Path({@code /auth})와 일치해야
+   * 브라우저가 매칭해 삭제한다.
    */
   public ResponseCookie expireRefreshTokenCookie() {
-    return baseCookie(REFRESH_TOKEN_COOKIE, "", Duration.ZERO);
+    return baseCookie(REFRESH_TOKEN_COOKIE, "", Duration.ZERO, AUTH_PATH);
   }
 
   /**
@@ -84,12 +87,12 @@ public class CookieProvider {
     return Optional.empty();
   }
 
-  private ResponseCookie baseCookie(String name, String value, Duration maxAge) {
+  private ResponseCookie baseCookie(String name, String value, Duration maxAge, String path) {
     return ResponseCookie.from(name, value)
         .httpOnly(true)
         .secure(secure)
         .sameSite(sameSite)
-        .path(ROOT_PATH)
+        .path(path)
         .maxAge(maxAge)
         .build();
   }
