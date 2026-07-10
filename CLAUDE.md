@@ -57,17 +57,19 @@ com.soma.backend
 
 > **Spring Boot 4 주의 (Boot 3와 다름):** JSON 매퍼 기본값은 **Jackson 3(`tools.jackson`)** 다 — 구 `com.fasterxml.jackson...ObjectMapper` 빈은 자동구성되지 않으므로 주입하지 말 것(`tools.jackson.databind.json.JsonMapper` 사용). Nullness 애노테이션은 **JSpecify(`org.jspecify.annotations`)**, 구 `org.springframework.lang.NonNull`은 deprecated. HTTP 422는 `HttpStatus.UNPROCESSABLE_CONTENT`(구 `UNPROCESSABLE_ENTITY` deprecated). 기반은 Spring Framework 7.
 
-**global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다.
+**global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다. 인증 전송은 **HttpOnly 쿠키 기반**이다 — `JwtFilter`는 `Authorization` 헤더가 아니라 `access_token` 쿠키에서 토큰을 읽고, `CookieProvider`가 `access_token`/`refresh_token` 쿠키를 생성·만료·조회하며 `AuthTokenService`가 발급을 오케스트레이션한다. `/auth/**`는 access 검증을 건너뛴다(`shouldNotFilter`, 재발급·로그아웃은 refresh 쿠키로 동작). 인증 실패(401)는 `RestAuthenticationEntryPoint`, 인가 거부(403)는 `RestAccessDeniedHandler`가 `ErrorResponse`로 응답한다. 쿠키 인증이라 CORS는 `allowCredentials(true)` + `app.cors.allowed-origin-patterns`(와일드카드 `*` 불가, 패턴 목록)로 구성한다.
 
 **global/exception** — 모든 예외는 `BusinessException(ErrorCode)`으로 던지고 `GlobalExceptionHandler`가 `ErrorResponse` (`{ "status": "400", "code": "ERROR_CODE", "message": "..." }`) 형태로 응답한다.
 
-**infra/redis** — `RefreshTokenRepository`가 `RedisTemplate<String, String>`으로 Refresh Token을 `refresh:{userId}` 키로 관리한다 (TTL은 `jwt.refresh-token-expiry` 재사용, 기본 14일). RTR 재발급 시 `save`로 기존 값을 덮어써 이전 토큰을 무효화한다.
+**infra/redis** — `RefreshTokenRepository`가 `RedisTemplate<String, String>`으로 Refresh Token을 `refresh:{userId}` 키로 관리한다 (TTL은 `jwt.refresh-token-expiry` 재사용, 기본 14일). RTR 재발급은 `rotate(userId, oldToken, newToken)`가 **Lua 스크립트로 `GET`→비교→`SET`(PX)/`DEL`을 원자적 CAS**로 수행한다 — 저장값이 제시한 old 토큰과 일치할 때만 교체(`RotateResult.ROTATED`)하므로 동시 재발급 경쟁 창(race window)이 없다. 불일치(`MISMATCH`, 이미 회전됨·탈취 의심)면 키를 삭제해 토큰을 무효화하고, 저장값 없음은 `NOT_FOUND`(만료·미존재)다. 최초·소셜 로그인은 `save`로 덮어쓴다.
 
 **infra/s3** — `S3Client` Bean은 `infra/s3/S3Config`에서 `aws.*` 프로퍼티로 직접 구성한다 (Spring Cloud AWS 미사용).
 
 ## Key Configuration
 
 환경변수는 `.env.example` 참고. 필수값: `DB_PASSWORD`, `JWT_SECRET`, `AWS_*`, `KAKAO_*`, `NAVER_*`.
+
+쿠키 인증·CORS는 프로퍼티로 분리한다(기본값 있어 필수 아님): `COOKIE_SECURE`(기본 `true`, 로컬 http는 `false`), `COOKIE_SAME_SITE`(기본 `Lax`, cross-site 운영은 `None`+https), `CORS_ALLOWED_ORIGIN_PATTERNS`(기본 `http://localhost:3000`, 쉼표 구분 패턴 목록 — 예 `https://앱도메인,https://*.vercel.app`).
 
 로컬 개발 시 DB/Redis 기본값이 적용되므로 `docker compose up -d`만 실행하면 된다.
 
@@ -174,3 +176,5 @@ Spring Boot가 담당하는 영역:
 | 2026-07-02 | infra-developer 에이전트 + spring-infra 스킬 추가, 인프라·관측성·배포 하드닝 영역 편입 (actuator·JVM/GC·DB풀·Kafka producer 배선·docker·PII 로깅·smoke test) | agents/infra-developer.md, skills/spring-infra/SKILL.md, springboot-dev SKILL.md | 프로덕션 하드닝 + 로컬 Kafka(docker compose) 작업에 홈이 없어 전담 에이전트/스킬 신설 |
 | 2026-07-02 | 아키텍처를 레이어드 → 전술적 DDD로 전환 (규칙·하네스만, 코드는 점진 마이그레이션), ddd-tactical 스킬 신설 | CLAUDE.md Architecture, skills/ddd-tactical/SKILL.md, agents/backend-analyst.md, agents/backend-developer.md | DDD 기반 개발 체계 도입 결정 |
 | 2026-07-02 | 패키지 구조를 4계층(domain/application/presentation/infrastructure)에서 실용적 레이어드(`domain/<context>/{controller,dto,entity,repository,service}`)로 단순화. DDD 색깔(리치 모델·VO·불변식)은 `entity` 안에서 유지 | CLAUDE.md Architecture, skills/ddd-tactical/SKILL.md | 전술 DDD 이점은 유지하되 폴더 4계층 과함 → 실용적 5-패키지로 합의 |
+| 2026-07-10 | RefreshToken RTR을 `save` 덮어쓰기·비원자적 `getAndDelete`에서 **Lua 원자적 CAS `rotate`**(저장값==oldToken일 때만 교체, `RotateResult` ROTATED/NOT_FOUND/MISMATCH, 불일치 시 키 삭제=재사용·탈취 탐지)로 변경 반영. 재발급 서비스는 서명·만료 검증(1단계)과 Redis 원자 회전(2단계)으로 분리 | CLAUDE.md infra/redis, skills/spring-security-impl(SKILL.md·references/jwt-impl.md), agents/security-developer.md | 동시 재발급 경쟁 창 제거 + 토큰 재사용 탐지 강화 (코드 선반영 → 하네스 동기화) |
+| 2026-07-10 | spring-security-impl 스킬을 **HttpOnly 쿠키 인증 + 수동 REST OAuth** 현행 구조로 동기화 — 헤더(Bearer)·바디 토큰·`oauth2Login`·리다이렉트-쿼리토큰 서술 제거, `access_token`/`refresh_token` 쿠키·`JwtFilter`(쿠키 우선, `/auth/**` shouldNotFilter)·`CookieProvider`·`AuthTokenService`·`OAuthLoginService`+`SignupTicket`+`AuthRegisterService`·`allowedOriginPatterns` CORS·Boot 4로 갱신 | skills/spring-security-impl(SKILL.md·references/jwt-impl.md·references/oauth2-providers.md) | 스킬이 헤더/바디·Spring oauth2Login 가정으로 stale → 실제 쿠키 기반 구현과 정합 |
