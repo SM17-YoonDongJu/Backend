@@ -133,7 +133,7 @@ config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 config.setAllowCredentials(true);
 ```
 
-**쿠키 동작 프로퍼티**: `app.cookie.secure`(기본 `true`, 로컬 http는 `false`), `app.cookie.same-site`(기본 `Lax`, cross-site 운영은 `None`+https). 쿠키는 HttpOnly·Path `/`로 발급한다.
+**쿠키 동작 프로퍼티**: `app.cookie.secure`(기본 `true`, 로컬 http는 `false`), `app.cookie.same-site`(기본 `Lax`, cross-site 운영은 `None`+https). 쿠키는 모두 HttpOnly로 발급하되 Path는 나눈다 — `access_token`은 모든 보호 API에서 검증돼야 하므로 Path `/`, `refresh_token`은 재발급·로그아웃(`/auth/**`)에만 전송되도록 Path `/auth`로 좁혀 장기 크리덴셜의 노출 표면을 줄인다. 만료 쿠키(Max-Age=0)도 발급 시 Path와 일치해야 브라우저가 매칭해 삭제한다.
 
 ## Redis Refresh Token 관리 (security-developer 담당)
 
