@@ -16,6 +16,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -70,6 +71,7 @@ class ReportCommandServiceTest {
     given(reportRepository.countByCaseNoStartingWith(anyString())).willReturn(0L);
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    given(reportAttachmentRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
 
     CreateReportRequest.Document pdf =
         new CreateReportRequest.Document("https://bucket.s3.ap-northeast-2.amazonaws.com/uploads/a.pdf",
@@ -86,7 +88,17 @@ class ReportCommandServiceTest {
     assertThat(response.status()).isEqualTo(ReportStatus.AWAITING_INSPECTION);
     assertThat(response.reportId()).isNotNull();
     verify(reportAttachmentRepository, times(2)).save(any());
-    verify(ocrJobOutboxPort, times(2)).enqueue(any(OcrJob.class));
+
+    ArgumentCaptor<OcrJob> jobCaptor = ArgumentCaptor.forClass(OcrJob.class);
+    verify(ocrJobOutboxPort, times(2)).enqueue(jobCaptor.capture());
+    OcrJob published = jobCaptor.getValue();
+    assertThat(published.claimId()).isNotNull();
+    assertThat(published.reportId()).isNotNull();
+    assertThat(published.attachmentId()).isNotNull();
+
+    List<OcrJob> jobs = jobCaptor.getAllValues();
+    assertThat(jobs).extracting(OcrJob::docIndex).containsExactly(1, 2);
+    assertThat(jobs).extracting(OcrJob::docTotal).containsExactly(2, 2);
   }
 
   @Test

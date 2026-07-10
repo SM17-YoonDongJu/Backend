@@ -39,6 +39,9 @@ public class ReportController {
   private final ReportQueryService reportQueryService;
   private final ProposalQueryService proposalQueryService;
 
+  /**
+   * 사건 정보 입력
+   */
   @PostMapping("/reports")
   public ResponseEntity<ApiResponse<CreateReportResponse>> create(
       @CurrentUserId UUID userId, @RequestBody CreateReportRequest request) {
@@ -47,6 +50,9 @@ public class ReportController {
         .body(new ApiResponse<>("202", "리포트 생성을 시작했습니다.", data));
   }
 
+  /**
+   * 리포트 목록 조회
+   */
   @GetMapping("/reports")
   public ResponseEntity<ApiResponse<ReportCardListResponse>> list(
       @CurrentUserId UUID userId,
@@ -56,12 +62,18 @@ public class ReportController {
     return ResponseEntity.ok(ApiResponse.ok(reportQueryService.getUserReports(userId, status, page, size)));
   }
 
+  /**
+   * 리포트 상세 조회
+   */
   @GetMapping("/reports/{reportId}")
   public ResponseEntity<ApiResponse<ReportDetailResponse>> detail(
       @CurrentUserId UUID userId, @PathVariable UUID reportId) {
     return ResponseEntity.ok(ApiResponse.ok(reportQueryService.getDetail(userId, reportId)));
   }
 
+  /**
+   * 검수+제안 목록 조회
+   */
   @GetMapping("/reports/{reportId}/proposals")
   public ResponseEntity<ApiResponse<ProposalListResponse>> proposals(
       @CurrentUserId UUID userId,

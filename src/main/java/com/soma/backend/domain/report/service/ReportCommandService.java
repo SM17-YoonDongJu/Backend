@@ -32,8 +32,9 @@ import com.soma.backend.infra.kafka.OcrJob;
 import com.soma.backend.infra.kafka.OcrJobOutboxPort;
 
 /**
- * 리포트 생성·제안 결정 커맨드 유스케이스(design.md §6). createReport는 UserClaim·Report·첨부를
+ * 리포트 생성·제안 결정 커맨드 유스케이스(design.md §6). createReport는 UserClaim·Report(shell)·첨부를
  * 한 트랜잭션에 저장하고, 문서 1건당 OCR 트리거를 아웃박스로 발행(같은 트랜잭션에서 원자적 적재)한다.
+ * OcrJob에 claim/report/attachment 참조 키를 실어, FastAPI가 OCR·AI 결과로 해당 행을 UPDATE하게 한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -50,27 +51,44 @@ public class ReportCommandService {
 
   /** POST /reports — 사고 정보 입력 수신 → 저장 → OCR 트리거 발행. 202(비동기). */
   public CreateReportResponse createReport(UUID userId, CreateReportRequest request) {
+
     if (request.productId() == null || request.accidentType() == null || request.accidentDate() == null) {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
 
+    //accidentType에 따른 claimDetails 생성
     ClaimDetails details =
         ClaimDetails.of(request.accidentType(), request.diagnosis(), request.hospitalizations());
+
+    //DB 저장
     UserClaim claim = userClaimRepository.save(UserClaim.create(
         userId, request.productId(), request.offeredAmount(), request.accidentDate(),
         request.accidentType(), details, request.question(), request.description(),
         request.additionalInformation()));
 
+    //Reports 테이블 스켈레톤 저장
     Report report = reportRepository.save(Report.createPending(
         userId, request.productId(), claim.getId(), request.accidentType(), request.question(),
         generateCaseNo()));
 
+    //Document
     List<CreateReportRequest.Document> documents =
         request.documents() == null ? List.of() : request.documents();
-    for (CreateReportRequest.Document document : documents) {
+
+    int docTotal = documents.size();
+
+    // Document 별 반복문 (doc_index 1-based, doc_total로 FastAPI가 OCR 완료(fan-in) 판별)
+    for (int i = 0; i < documents.size(); i++) {
+      CreateReportRequest.Document document = documents.get(i);
+
+      //contentType 매핑
       String contentType = toContentType(document.fileType());
-      reportAttachmentRepository.save(ReportAttachment.of(
+
+      //report_attachments 테이블 스켈레톤 저장
+      ReportAttachment attachment = reportAttachmentRepository.save(ReportAttachment.of(
           report.getId(), document.name(), document.s3Url(), contentType, document.reportType()));
+
+      //document 1건 단위 ocrjob 발행 (report/attachment 참조 + 문서 순번·총개수 포함)
       ocrJobOutboxPort.enqueue(new OcrJob(
           UUID.randomUUID().toString(),
           toS3Key(document.s3Url()),
@@ -78,6 +96,10 @@ public class ReportCommandService {
           userId.toString(),
           document.reportType(),
           claim.getId().toString(),
+          report.getId().toString(),
+          attachment.getId().toString(),
+          i + 1,
+          docTotal,
           Instant.now().toString()));
     }
 
