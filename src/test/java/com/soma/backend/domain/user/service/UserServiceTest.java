@@ -2,6 +2,8 @@ package com.soma.backend.domain.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -32,8 +34,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
-import com.soma.backend.infra.redis.TokenBlacklistRepository;
-import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
+import com.soma.backend.infra.outbox.OutboxEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserService 단위 테스트")
@@ -52,10 +53,7 @@ class UserServiceTest {
   private AuthTokenService authTokenService;
 
   @Mock
-  private TokenBlacklistRepository tokenBlacklistRepository;
-
-  @Mock
-  private WithdrawalLedgerRepository withdrawalLedgerRepository;
+  private OutboxEventPublisher outboxEventPublisher;
 
   @Mock
   private HttpServletResponse response;
@@ -160,8 +158,8 @@ class UserServiceTest {
   }
 
   @Test
-  @DisplayName("withdraw-소셜을 원장에 기록하고 계정을 익명화하며 세션을 무효화한다")
-  void withdraw_anonymizesAndInvalidates() {
+  @DisplayName("withdraw-계정을 익명화·언링크하고 후처리 아웃박스를 적재한 뒤 쿠키를 만료한다")
+  void withdraw_anonymizesAndPublishesOutbox() {
     // Given
     UUID userId = UUID.randomUUID();
     User user = activeUser();
@@ -177,9 +175,8 @@ class UserServiceTest {
     // Then
     assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     assertThat(user.getPhoneNumber()).isNull();
-    then(withdrawalLedgerRepository).should().record("kakao", "kakao-1");
     then(socialAccountRepository).should().deleteByUserId(userId);
-    then(authTokenService).should().clearTokens(response, userId);
-    then(tokenBlacklistRepository).should().blacklist(userId);
+    then(outboxEventPublisher).should().publishAuthCleanup(eq(userId), anyList());
+    then(authTokenService).should().expireCookies(response);
   }
 }

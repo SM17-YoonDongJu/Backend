@@ -44,6 +44,8 @@ logging:
 app:
   cookie:
     secure: false
+  outbox:
+    enabled: false
 
 jwt:
   secret: testsecretkeyforcitestingonly32chars!!

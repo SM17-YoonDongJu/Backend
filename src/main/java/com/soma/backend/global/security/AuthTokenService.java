@@ -92,6 +92,14 @@ public class AuthTokenService {
     if (userId != null) {
       refreshTokenRepository.delete(userId);
     }
+    expireCookies(response);
+  }
+
+  /**
+   * 만료 쿠키만 부착한다(Redis 접근 없음). 세션 무효화 부수효과를 별도 경로(아웃박스 등)로 처리하되
+   * 클라이언트 쿠키는 요청 스레드에서 즉시 지워야 할 때 쓴다.
+   */
+  public void expireCookies(HttpServletResponse response) {
     addCookie(response, cookieProvider.expireAccessTokenCookie());
     addCookie(response, cookieProvider.expireRefreshTokenCookie());
   }

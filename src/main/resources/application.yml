@@ -67,6 +67,12 @@ app:
     # 탈퇴 후 재가입 인지 윈도우. 이 기간 내 동일 소셜로 재로그인하면 프론트에 previously_withdrawn=true로 알린다.
     # 재가입 자체를 막는 쿨다운은 아니다. 지원 표기: 30d(일)·12h(시간)·30m(분) 등.
     rejoin-window: ${WITHDRAWAL_REJOIN_WINDOW:30d}
+  outbox:
+    # 탈퇴 후처리(Redis 부수효과)를 처리하는 트랜잭션 아웃박스 poller 설정.
+    enabled: ${OUTBOX_ENABLED:true}   # false면 poller 비활성화(테스트 등)
+    poll-interval-ms: 5000            # 폴링 주기(고정 지연)
+    batch-size: 50                    # 한 번에 잠가 처리할 이벤트 수
+    backoff-seconds: 30               # 실패 시 재시도 백오프 기준(재시도 횟수에 비례)
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}

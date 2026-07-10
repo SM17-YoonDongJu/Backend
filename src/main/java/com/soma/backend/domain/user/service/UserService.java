@@ -1,5 +1,6 @@
 package com.soma.backend.domain.user.service;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -16,14 +17,14 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
-import com.soma.backend.infra.redis.TokenBlacklistRepository;
-import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
+import com.soma.backend.infra.outbox.OutboxEventPublisher;
+import com.soma.backend.infra.outbox.SocialIdentity;
 
 /**
  * 내 정보 조회·수정·탈퇴 유스케이스.
  *
  * <p>모든 동작은 {@code CustomUserDetails.userId}(본인)만 대상으로 한다. 탈퇴는 soft delete(WITHDRAWN)
- * + 개인정보 익명화 + 소셜 언링크 + 세션 무효화(refresh 삭제·access blacklist·쿠키 만료)를 함께 수행한다.
+ * + 개인정보 익명화 + 소셜 언링크를 트랜잭션에서 수행하고, Redis 부수효과는 아웃박스로 위임한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,8 +33,7 @@ public class UserService {
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
   private final AuthTokenService authTokenService;
-  private final TokenBlacklistRepository tokenBlacklistRepository;
-  private final WithdrawalLedgerRepository withdrawalLedgerRepository;
+  private final OutboxEventPublisher outboxEventPublisher;
 
   /**
    * 내 정보를 조회한다. 존재하지 않거나 이미 탈퇴한 계정이면 {@code USER_NOT_FOUND}.
@@ -65,21 +65,20 @@ public class UserService {
   }
 
   /**
-   * 회원 탈퇴. 탈퇴 전 소셜 신원을 원장에 기록(재가입 인지용)한 뒤, 계정을 익명화(WITHDRAWN)하고
-   * 소셜 링크를 끊는다. 이어서 세션을 무효화한다 — refresh 삭제 + 쿠키 만료({@link AuthTokenService})
-   * 및 살아있는 access 토큰 blacklist 등록.
+   * 회원 탈퇴. 계정을 익명화(WITHDRAWN)하고 소셜 링크를 끊은 뒤, 세션 무효화 부수효과(Refresh 삭제·access
+   * blacklist·탈퇴 원장 기록)는 아웃박스에 적재해 커밋 이후 소비자가 멱등하게 처리·재시도하도록 위임한다
+   * (dual-write 불일치 제거). 쿠키 만료는 HTTP 응답이라 요청 스레드에서 즉시 처리한다.
    */
   @Transactional
   public void withdraw(UUID userId, HttpServletResponse response) {
     User user = findActiveUser(userId);
-    socialAccountRepository.findByUserId(userId)
-        .forEach(social ->
-            withdrawalLedgerRepository.record(social.getProvider(), social.getProviderUserId()));
+    List<SocialIdentity> socials = socialAccountRepository.findByUserId(userId).stream()
+        .map(social -> new SocialIdentity(social.getProvider(), social.getProviderUserId()))
+        .toList();
     user.withdraw();
     socialAccountRepository.deleteByUserId(userId);
-
-    authTokenService.clearTokens(response, userId);
-    tokenBlacklistRepository.blacklist(userId);
+    outboxEventPublisher.publishAuthCleanup(userId, socials);
+    authTokenService.expireCookies(response);
   }
 
   private User findActiveUser(UUID userId) {
