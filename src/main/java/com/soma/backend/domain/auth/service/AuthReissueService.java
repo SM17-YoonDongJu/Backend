@@ -1,7 +1,5 @@
 package com.soma.backend.domain.auth.service;
 
-import java.util.UUID;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +12,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenService.RefreshTokenContext;
 
 /**
  * 토큰 재발급 유스케이스. refresh 쿠키를 RTR 검증한 뒤 최신 role로 새 토큰 쌍을 발급한다.
@@ -27,9 +26,9 @@ public class AuthReissueService {
 
   @Transactional(readOnly = true)
   public void reissue(HttpServletRequest request, HttpServletResponse response) {
-    UUID userId = authTokenService.validateRefreshCookie(request);
-    User user = userRepository.findById(userId)
+    RefreshTokenContext context = authTokenService.validateRefreshCookie(request);
+    User user = userRepository.findById(context.userId())
         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-    authTokenService.issueTokens(response, userId, user.getRole().name());
+    authTokenService.reissueTokens(response, context, user.getRole().name());
   }
 }

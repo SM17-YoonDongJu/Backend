@@ -27,6 +27,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenService.RefreshTokenContext;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuthReissueService 단위 테스트")
@@ -48,12 +49,13 @@ class AuthReissueServiceTest {
   private HttpServletResponse response;
 
   @Test
-  @DisplayName("refresh 쿠키가 유효하면 최신 role로 새 토큰 쌍을 발급한다")
+  @DisplayName("refresh 쿠키가 유효하면 최신 role로 새 토큰 쌍을 원자적으로 재발급한다")
   void reissue_validRefresh_issuesTokens() {
     // Given
     UUID userId = UUID.randomUUID();
+    RefreshTokenContext context = new RefreshTokenContext(userId, "refresh-token");
     User user = mock(User.class);
-    given(authTokenService.validateRefreshCookie(request)).willReturn(userId);
+    given(authTokenService.validateRefreshCookie(request)).willReturn(context);
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(user.getRole()).willReturn(Role.CERTIFICATED_ADJUSTER);
 
@@ -61,7 +63,7 @@ class AuthReissueServiceTest {
     authReissueService.reissue(request, response);
 
     // Then
-    then(authTokenService).should().issueTokens(response, userId, "CERTIFICATED_ADJUSTER");
+    then(authTokenService).should().reissueTokens(response, context, "CERTIFICATED_ADJUSTER");
   }
 
   @Test
@@ -69,7 +71,8 @@ class AuthReissueServiceTest {
   void reissue_userNotFound_throwsUserNotFound() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(authTokenService.validateRefreshCookie(request)).willReturn(userId);
+    RefreshTokenContext context = new RefreshTokenContext(userId, "refresh-token");
+    given(authTokenService.validateRefreshCookie(request)).willReturn(context);
     given(userRepository.findById(userId)).willReturn(Optional.empty());
 
     // When & Then
@@ -77,6 +80,6 @@ class AuthReissueServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting(ex -> ((BusinessException) ex).getErrorCode())
         .isEqualTo(ErrorCode.USER_NOT_FOUND);
-    then(authTokenService).should(never()).issueTokens(any(), any(), anyString());
+    then(authTokenService).should(never()).reissueTokens(any(), any(), anyString());
   }
 }
