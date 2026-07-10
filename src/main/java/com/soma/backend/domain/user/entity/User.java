@@ -3,6 +3,8 @@ package com.soma.backend.domain.user.entity;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,13 +22,16 @@ import com.soma.backend.domain.common.entity.BaseEntity;
  * USERS Aggregate Root. 회원 계정 정보를 관리한다.
  *
  * <p>소셜 계정(provider/providerUserId)은 별도 Aggregate(SocialAccount)로 분리하고
- * user_id(UUID)로만 연결한다. 신규 가입은 {@link #create(String, LocalDate, String, Role)}로만 만든다.
+ * user_id(UUID)로만 연결한다. 신규 가입은 {@link #create}로만 만든다.
  */
 @Entity
 @Table(name = "users")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends BaseEntity {
+
+  /** 탈퇴 시 이름(실명)을 대체하는 익명화 값. */
+  private static final String WITHDRAWN_NICKNAME = "탈퇴회원";
 
   @Id
   @GeneratedValue
@@ -36,11 +41,8 @@ public class User extends BaseEntity {
   @Column(name = "nickname", nullable = false)
   private String nickname;
 
-  @Column(name = "phone_number", nullable = false, unique = true)
+  @Column(name = "phone_number", unique = true)
   private String phoneNumber;
-
-  @Column(name = "phone_number_verified", nullable = false)
-  private boolean phoneNumberVerified;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "role", nullable = false, length = 30)
@@ -50,7 +52,7 @@ public class User extends BaseEntity {
   @Column(name = "status", nullable = false, length = 20)
   private UserStatus status;
 
-  @Column(name = "gender", length = 10)
+  @Column(name = "gender", nullable = false, length = 10)
   private String gender;
 
   @Column(name = "region")
@@ -63,17 +65,54 @@ public class User extends BaseEntity {
   private String avatarUrl;
 
   /**
-   * 소셜 로그인 신규 가입 시 사용하는 정적 팩터리. 이름·생년월일·전화번호를 받고
-   * 상태는 ACTIVE로 시작한다. 전화번호 인증은 별도 절차이므로 미인증으로 생성한다.
+   * 소셜 로그인 신규 가입 시 사용하는 정적 팩터리. 이름·생년월일·성별·전화번호를 받고
+   * 상태는 ACTIVE로 시작한다.
    */
-  public static User create(String nickname, LocalDate birthDate, String phoneNumber, Role role) {
+  public static User create(
+      String nickname, LocalDate birthDate, String gender, String phoneNumber, Role role) {
     User user = new User();
     user.nickname = nickname;
     user.birthDate = birthDate;
+    user.gender = gender;
     user.phoneNumber = phoneNumber;
-    user.phoneNumberVerified = false;
     user.role = role;
     user.status = UserStatus.ACTIVE;
     return user;
+  }
+
+  /**
+   * 프로필(전화번호·지역·프로필사진)을 부분 수정한다. {@code null} 인자는 변경하지 않는다(부분 수정).
+   * 번호 유일성 검사는 저장소를 아는 서비스가 호출 전에 수행한다.
+   */
+  public void updateProfile(@Nullable String phoneNumber, @Nullable String region, @Nullable String avatarUrl) {
+    if (phoneNumber != null) {
+      this.phoneNumber = phoneNumber;
+    }
+    if (region != null) {
+      this.region = region;
+    }
+    if (avatarUrl != null) {
+      this.avatarUrl = avatarUrl;
+    }
+  }
+
+  /**
+   * 회원 탈퇴(soft delete). 상태를 WITHDRAWN으로 바꾸고 개인정보(연락처·이름·지역·성별·프로필사진)를
+   * 파기한다. 전화번호를 {@code null}로 비워 UNIQUE 번호를 해제하므로 동일 번호로 재가입할 수 있다.
+   */
+  public void withdraw() {
+    this.status = UserStatus.WITHDRAWN;
+    this.phoneNumber = null;
+    this.nickname = WITHDRAWN_NICKNAME;
+    this.region = null;
+    this.gender = "";
+    this.avatarUrl = null;
+  }
+
+  /**
+   * 이미 탈퇴한 계정인지 여부.
+   */
+  public boolean isWithdrawn() {
+    return this.status == UserStatus.WITHDRAWN;
   }
 }

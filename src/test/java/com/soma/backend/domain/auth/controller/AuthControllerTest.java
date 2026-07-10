@@ -42,6 +42,7 @@ import com.soma.backend.global.security.JwtProvider;
 import com.soma.backend.global.security.RestAccessDeniedHandler;
 import com.soma.backend.global.security.RestAuthenticationEntryPoint;
 import com.soma.backend.global.security.SecurityConfig;
+import com.soma.backend.infra.redis.TokenBlacklistRepository;
 
 @WebMvcTest(AuthController.class)
 @ActiveProfiles("test")
@@ -70,6 +71,9 @@ class AuthControllerTest {
 
   @MockitoBean
   private AuthLogoutService authLogoutService;
+
+  @MockitoBean
+  private TokenBlacklistRepository tokenBlacklistRepository;
 
   private void addAccessCookie(HttpServletResponse response, Duration maxAge) {
     ResponseCookie cookie = ResponseCookie.from(CookieProvider.ACCESS_TOKEN_COOKIE, "token-value")
@@ -130,7 +134,7 @@ class AuthControllerTest {
 
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
         + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
+        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")
@@ -153,7 +157,7 @@ class AuthControllerTest {
 
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
         + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
+        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")
@@ -172,7 +176,7 @@ class AuthControllerTest {
 
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
         + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
+        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")
@@ -188,7 +192,7 @@ class AuthControllerTest {
     // Given
     String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
         + "\"nickname\":\"\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"user_type\":\"insured_person\"}";
+        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
 
     // When & Then
     mockMvc.perform(post("/auth/register")

@@ -33,6 +33,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OAuthLoginService 단위 테스트")
@@ -55,6 +56,9 @@ class OAuthLoginServiceTest {
 
   @Mock
   private AuthTokenService authTokenService;
+
+  @Mock
+  private WithdrawalLedgerRepository withdrawalLedgerRepository;
 
   @Mock
   private HttpServletResponse response;
@@ -103,7 +107,27 @@ class OAuthLoginServiceTest {
     assertThat(result.isNewUser()).isTrue();
     assertThat(result.signupTicket()).isEqualTo("ticket-jwt");
     assertThat(result.userId()).isNull();
+    assertThat(result.previouslyWithdrawn()).isFalse();
     then(authTokenService).should(never()).issueTokens(any(), any(), anyString());
+  }
+
+  @Test
+  @DisplayName("탈퇴 이력이 있는 소셜로 재로그인하면 previously_withdrawn=true로 가입 티켓을 반환한다")
+  void handleCallback_previouslyWithdrawn_flagsRejoin() {
+    // Given
+    OAuthProfile profile = new OAuthProfile("kakao", "kakao-9");
+    given(oAuthClient.fetchProfile("kakao", "code", "state")).willReturn(profile);
+    given(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-9"))
+        .willReturn(Optional.empty());
+    given(signupTicketProvider.issue("kakao", "kakao-9")).willReturn("ticket-jwt");
+    given(withdrawalLedgerRepository.wasWithdrawn("kakao", "kakao-9")).willReturn(true);
+
+    // When
+    OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, "kakao", "code", "state");
+
+    // Then
+    assertThat(result.isNewUser()).isTrue();
+    assertThat(result.previouslyWithdrawn()).isTrue();
   }
 
   @Test

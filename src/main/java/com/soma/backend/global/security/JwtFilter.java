@@ -1,6 +1,7 @@
 package com.soma.backend.global.security;
 
 import java.io.IOException;
+import java.util.UUID;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
@@ -19,7 +20,9 @@ import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.json.JsonMapper;
 
 import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.exception.ErrorResponse;
+import com.soma.backend.infra.redis.TokenBlacklistRepository;
 
 @Component
 @RequiredArgsConstructor
@@ -32,6 +35,7 @@ public class JwtFilter extends OncePerRequestFilter {
   private final JwtProvider jwtProvider;
   private final JsonMapper jsonMapper;
   private final CookieProvider cookieProvider;
+  private final TokenBlacklistRepository tokenBlacklistRepository;
 
   /**
    * {@code /auth/**} 경로는 access 토큰 검증을 건너뛴다. 재발급·로그아웃 요청에 만료된 access 쿠키가
@@ -52,9 +56,11 @@ public class JwtFilter extends OncePerRequestFilter {
     if (token != null) {
       try {
         jwtProvider.validate(token);
-        CustomUserDetails userDetails = new CustomUserDetails(
-            jwtProvider.getUserId(token),
-            jwtProvider.getRole(token));
+        UUID userId = jwtProvider.getUserId(token);
+        if (tokenBlacklistRepository.isBlacklisted(userId)) {
+          throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
+        CustomUserDetails userDetails = new CustomUserDetails(userId, jwtProvider.getRole(token));
         UsernamePasswordAuthenticationToken authentication =
             new UsernamePasswordAuthenticationToken(
                 userDetails, null, userDetails.getAuthorities());

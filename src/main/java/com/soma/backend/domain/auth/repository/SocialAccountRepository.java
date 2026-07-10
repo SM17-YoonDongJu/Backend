@@ -1,5 +1,6 @@
 package com.soma.backend.domain.auth.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -12,4 +13,8 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, UU
   Optional<SocialAccount> findByProviderAndProviderUserId(String provider, String providerUserId);
 
   boolean existsByProviderAndProviderUserId(String provider, String providerUserId);
+
+  List<SocialAccount> findByUserId(UUID userId);
+
+  void deleteByUserId(UUID userId);
 }

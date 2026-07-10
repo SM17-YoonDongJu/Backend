@@ -63,6 +63,10 @@ app:
     # 운영/프리뷰 오리진은 CORS_ALLOWED_ORIGIN_PATTERNS로 주입(쉼표 구분).
     # 예: https://앱운영도메인,https://*.vercel.app
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000}
+  withdrawal:
+    # 탈퇴 후 재가입 인지 윈도우. 이 기간 내 동일 소셜로 재로그인하면 프론트에 previously_withdrawn=true로 알린다.
+    # 재가입 자체를 막는 쿨다운은 아니다. 지원 표기: 30d(일)·12h(시간)·30m(분) 등.
+    rejoin-window: ${WITHDRAWAL_REJOIN_WINDOW:30d}
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}
