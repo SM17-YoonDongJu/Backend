@@ -33,6 +33,9 @@ public class User extends BaseEntity {
   /** 탈퇴 시 이름(실명)을 대체하는 익명화 값. */
   private static final String WITHDRAWN_NICKNAME = "탈퇴회원";
 
+  /** 탈퇴 시 생년월일(개인정보)을 대체하는 익명화 값. birth_date가 NOT NULL이라 null 대신 상수로 마스킹한다. */
+  private static final LocalDate WITHDRAWN_BIRTH_DATE = LocalDate.of(1900, 1, 1);
+
   @Id
   @GeneratedValue
   private UUID id;
@@ -97,8 +100,9 @@ public class User extends BaseEntity {
   }
 
   /**
-   * 회원 탈퇴(soft delete). 상태를 WITHDRAWN으로 바꾸고 개인정보(연락처·이름·지역·성별·프로필사진)를
+   * 회원 탈퇴(soft delete). 상태를 WITHDRAWN으로 바꾸고 개인정보(연락처·이름·지역·성별·생년월일·프로필사진)를
    * 파기한다. 전화번호를 {@code null}로 비워 UNIQUE 번호를 해제하므로 동일 번호로 재가입할 수 있다.
+   * birth_date는 NOT NULL이라 null 대신 마스킹 값({@link #WITHDRAWN_BIRTH_DATE})으로 대체한다.
    */
   public void withdraw() {
     this.status = UserStatus.WITHDRAWN;
@@ -106,6 +110,7 @@ public class User extends BaseEntity {
     this.nickname = WITHDRAWN_NICKNAME;
     this.region = null;
     this.gender = "";
+    this.birthDate = WITHDRAWN_BIRTH_DATE;
     this.avatarUrl = null;
   }
 

@@ -40,7 +40,9 @@ public class WithdrawalLedgerRepository {
   }
 
   /**
-   * 탈퇴한 소셜 신원을 원장에 기록한다.
+   * 탈퇴한 소셜 신원을 원장에 기록한다. 아웃박스 소비자(OutboxProcessor)가 커밋 이후 호출하므로, 실패 시
+   * 예외를 그대로 전파해 아웃박스가 백오프 재시도하도록 둔다(멱등, at-least-once). 여기서 fail-open으로
+   * 삼키면 재시도 없이 원장 기록이 영구 유실되므로 조회({@link #wasWithdrawn})와 달리 예외를 흡수하지 않는다.
    */
   public void record(String provider, String providerUserId) {
     redisTemplate.opsForValue().set(key(provider, providerUserId), MARKER, ttl);
@@ -60,10 +62,16 @@ public class WithdrawalLedgerRepository {
   }
 
   /**
-   * 재가입이 완료된 소셜 신원의 탈퇴 이력을 원장에서 제거한다.
+   * 재가입이 완료된 소셜 신원의 탈퇴 이력을 원장에서 제거한다. 가입 트랜잭션(AuthRegisterService.register)
+   * 안에서 호출되는 best-effort 정리이므로, Redis 장애 시 fail-open으로 조용히 넘어가 가입 자체를 막지 않는다
+   * (원장 항목은 TTL로도 소멸하므로 삭제 실패가 치명적이지 않다). 조회({@link #wasWithdrawn})와 일관된 정책.
    */
   public void clear(String provider, String providerUserId) {
-    redisTemplate.delete(key(provider, providerUserId));
+    try {
+      redisTemplate.delete(key(provider, providerUserId));
+    } catch (DataAccessException ex) {
+      log.warn("탈퇴 원장 삭제 실패, fail-open 처리: {}", ex.getMessage());
+    }
   }
 
   private String key(String provider, String providerUserId) {
