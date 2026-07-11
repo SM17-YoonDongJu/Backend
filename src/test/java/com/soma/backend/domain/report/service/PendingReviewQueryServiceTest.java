@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -17,14 +19,23 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
+import com.soma.backend.domain.report.dto.ReportDetailResponse;
+import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportIssue;
+import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
+import com.soma.backend.domain.report.repository.ReportHoldRepository;
+import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -35,6 +46,10 @@ class PendingReviewQueryServiceTest {
 
   @Mock
   private ReportRepository reportRepository;
+  @Mock
+  private ReportHoldRepository reportHoldRepository;
+  @Mock
+  private ReportIssueRepository reportIssueRepository;
 
   @InjectMocks
   private PendingReviewQueryService service;
@@ -112,6 +127,63 @@ class PendingReviewQueryServiceTest {
         () -> service.getPendingReviewList(null, "질병", null, UUID.randomUUID(), pageable))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.VALIDATION_ERROR);
+  }
+
+  @Test
+  @DisplayName("상세 조회(API#6): report·쟁점·첨부·region/held 조립, accident_type은 DB 값(getValue)으로 내린다")
+  void getReportDetailAssembles() {
+    UUID reportId = UUID.randomUUID();
+    UUID adjusterId = UUID.randomUUID();
+
+    Report report = BeanUtils.instantiateClass(Report.class);
+    ReflectionTestUtils.setField(report, "id", reportId);
+    ReflectionTestUtils.setField(report, "caseNo", "20260531-042");
+    ReflectionTestUtils.setField(report, "title", "우측 슬관절 후방십자인대 파열");
+    ReflectionTestUtils.setField(report, "accidentType", AccidentType.DISABILITY);
+    ReflectionTestUtils.setField(report, "status", ReportStatus.AWAITING_INSPECTION);
+    ReflectionTestUtils.setField(report, "claimedMinAmount", 12_000_000L);
+    ReflectionTestUtils.setField(report, "claimedMaxAmount", 18_000_000L);
+    ReflectionTestUtils.setField(report, "offeredAmount", 8_500_000L);
+    ReflectionTestUtils.setField(report, "confidenceLevel", "high");
+    ReflectionTestUtils.setField(report, "isMasked", true);
+    ReflectionTestUtils.setField(report, "documents", Map.of("진단서.pdf", "s3://bucket/reports/진단서.pdf"));
+
+    ReportIssue issue = BeanUtils.instantiateClass(ReportIssue.class);
+    ReflectionTestUtils.setField(issue, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(issue, "title", "장해등급 과소 산정 가능");
+    ReflectionTestUtils.setField(issue, "tags", List.of("약관 제12조", "진단서"));
+
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportRepository.findRegionByReportId(reportId)).willReturn("서울 강남");
+    given(reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(true);
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issue));
+
+    ReportDetailResponse result = service.getReportDetail(reportId, adjusterId);
+
+    assertThat(result.reportId()).isEqualTo(reportId);
+    assertThat(result.accidentType()).isEqualTo("disability");
+    assertThat(result.region()).isEqualTo("서울 강남");
+    assertThat(result.isMasked()).isTrue();
+    assertThat(result.offerHeadroom()).isEqualTo(9_500_000L);
+    assertThat(result.issues()).hasSize(1);
+    assertThat(result.issues().get(0).tags()).containsExactly("약관 제12조", "진단서");
+    assertThat(result.issueCount()).isEqualTo(1);
+    assertThat(result.documents()).hasSize(1);
+    assertThat(result.documents().get(0).name()).isEqualTo("진단서.pdf");
+    assertThat(result.documents().get(0).url()).isEqualTo("s3://bucket/reports/진단서.pdf");
+    assertThat(result.documentCount()).isEqualTo(1);
+    assertThat(result.held()).isTrue();
+  }
+
+  @Test
+  @DisplayName("상세 조회(API#6): 존재하지 않는 report면 REPORT_NOT_FOUND(404)")
+  void getReportDetailNotFound() {
+    UUID reportId = UUID.randomUUID();
+    given(reportRepository.findById(reportId)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.getReportDetail(reportId, UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode").isEqualTo(ErrorCode.REPORT_NOT_FOUND);
   }
 
   private static PendingReviewRow row(

@@ -21,4 +21,7 @@ public interface ReportHoldRepository extends JpaRepository<ReportHold, UUID> {
       + "VALUES (gen_random_uuid(), :reportId, :adjusterId, now()) "
       + "ON CONFLICT (report_id, adjuster_id) DO NOTHING", nativeQuery = true)
   void insertIfAbsent(@Param("reportId") UUID reportId, @Param("adjusterId") UUID adjusterId);
+
+  /** 요청 사정사 본인이 해당 report를 보류(hold)했는지 여부(API#6 held 파생 필드). */
+  boolean existsByReportIdAndAdjusterId(UUID reportId, UUID adjusterId);
 }

@@ -37,7 +37,7 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
       @Param("adjusterId") UUID adjusterId, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
-      + "AND rv.status = com.soma.backend.domain.report.entity.ReviewStatus.CONSULTATION")
+      + "AND rv.status = com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING")
   long countConsultationConvertedByAdjusterId(@Param("adjusterId") UUID adjusterId);
 
   @Query(value = "SELECT rv.report_id AS reportId, r.case_no AS caseNo, r.title AS title, "

@@ -19,6 +19,10 @@ repositories {
 	mavenCentral()
 }
 
+configurations {
+	mockitoAgent
+}
+
 dependencies {
 	// Web
 	implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -63,10 +67,16 @@ dependencies {
 
 	// Test
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// Mockito 5는 JDK 21+에서 self-attach가 막히므로 -javaagent로 명시 로딩(공식 권장)
+	mockitoAgent('org.mockito:mockito-core') {
+		transitive = false
+	}
 }
 
 checkstyle {
@@ -98,4 +108,5 @@ tasks.named('compileTestJava') {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	jvmArgs "-javaagent:${configurations.mockitoAgent.singleFile}"
 }

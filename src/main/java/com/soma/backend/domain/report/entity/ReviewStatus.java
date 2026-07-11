@@ -1,9 +1,9 @@
 package com.soma.backend.domain.report.entity;
 
-/** REPORT_REVIEWS.status 값 객체(사정사 검수 진행 상태, ERD 정합으로 ReviewOutcome에서 개명). */
+/** REPORT_REVIEWS.status 값 객체(사정사 검수·제안 상태, ERD 2026-07 정합). */
 public enum ReviewStatus {
   SENT,
-  CONSULTATION,
-  NOT_SELECTED,
-  CLOSED
+  COUNSELING,
+  REJECTED,
+  ACCEPTED
 }

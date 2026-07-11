@@ -1,11 +1,7 @@
 package com.soma.backend.domain.report.entity;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
@@ -83,48 +79,68 @@ public class ReportReview extends BaseEntity {
     this.status = ReviewStatus.SENT;
   }
 
-  /** 검수 내용 갱신(estimate·배열3·review). 서명 개념 없음 — status 전이와 무관하게 upsert된다. */
+  /**
+   * 검수 내용 부분 갱신(estimate·배열3·review). null 인자는 미포함(기존 값 유지)으로 보고, 빈 배열·빈 문자열은
+   * 명시적 비움으로 반영한다. status 전이와 무관하게 upsert된다.
+   */
   public void updateReviewContent(Long estimateMinAmount, Long estimateMaxAmount,
       List<String> applicableGuarantees, List<String> omittedSpecialContract,
       List<String> basisTermsPrecedents, String review) {
-    this.estimateMinAmount = estimateMinAmount;
-    this.estimateMaxAmount = estimateMaxAmount;
-    this.applicableGuarantees = applicableGuarantees;
-    this.omittedSpecialContract = omittedSpecialContract;
-    this.basisTermsPrecedents = basisTermsPrecedents;
-    this.review = review;
+    if (estimateMinAmount != null) {
+      this.estimateMinAmount = estimateMinAmount;
+    }
+    if (estimateMaxAmount != null) {
+      this.estimateMaxAmount = estimateMaxAmount;
+    }
+    if (applicableGuarantees != null) {
+      this.applicableGuarantees = applicableGuarantees;
+    }
+    if (omittedSpecialContract != null) {
+      this.omittedSpecialContract = omittedSpecialContract;
+    }
+    if (basisTermsPrecedents != null) {
+      this.basisTermsPrecedents = basisTermsPrecedents;
+    }
+    if (review != null) {
+      this.review = review;
+    }
   }
 
   /**
-   * 사정사 쟁점 검수를 교체한다(Aggregate 내부에서 처리). 같은 AI 쟁점(report_issue_id)은
-   * 삭제·재삽입 대신 값만 갱신하고, 없어진 것은 제거, 새 것은 추가한다(부분 UK 충돌 회피).
-   * ADDED(report_issue_id null)는 UK가 없으므로 전량 교체한다.
+   * 쟁점 1건 부분 반영(upsert, 삭제 없음). reviewIssueId(행 PK)가 있으면 그 행을, 없으면 reportIssueId(AI 쟁점)로
+   * 매칭해 인플레이스 갱신하고, 매칭이 없으면 신규 추가한다. 보내지 않은 쟁점은 그대로 유지된다.
    */
-  public void replaceIssues(List<ReportReviewIssue> desired) {
-    this.issues.removeIf(cur -> cur.getReportIssueId() == null);
-
-    Map<UUID, ReportReviewIssue> currentByIssueId = new HashMap<>();
-    for (ReportReviewIssue cur : this.issues) {
-      currentByIssueId.put(cur.getReportIssueId(), cur);
+  public void upsertIssue(UUID reviewIssueId, ReportReviewIssue desired) {
+    ReportReviewIssue target = null;
+    if (reviewIssueId != null) {
+      target = findByReviewIssueId(reviewIssueId);
     }
+    if (target == null && desired.getReportIssueId() != null) {
+      target = findByReportIssueId(desired.getReportIssueId());
+    }
+    if (target == null) {
+      this.issues.add(desired);
+      return;
+    }
+    target.updateContent(desired.getTitle(), desired.getDescription(), desired.getReviewStatus(),
+        desired.getAdjusterOpinion(), desired.getModifiedReason(), desired.getExcludedReason());
+  }
 
-    Set<UUID> desiredIssueIds = new HashSet<>();
-    for (ReportReviewIssue want : desired) {
-      if (want.getReportIssueId() == null) {
-        this.issues.add(want);
-        continue;
-      }
-      desiredIssueIds.add(want.getReportIssueId());
-      ReportReviewIssue cur = currentByIssueId.get(want.getReportIssueId());
-      if (cur != null) {
-        cur.updateContent(want.getTitle(), want.getDescription(), want.getReviewStatus(),
-            want.getAdjusterOpinion(), want.getModifiedReason(), want.getExcludedReason());
-      } else {
-        this.issues.add(want);
+  private ReportReviewIssue findByReviewIssueId(UUID reviewIssueId) {
+    for (ReportReviewIssue issue : this.issues) {
+      if (reviewIssueId.equals(issue.getId())) {
+        return issue;
       }
     }
+    return null;
+  }
 
-    this.issues.removeIf(
-        cur -> cur.getReportIssueId() != null && !desiredIssueIds.contains(cur.getReportIssueId()));
+  private ReportReviewIssue findByReportIssueId(UUID reportIssueId) {
+    for (ReportReviewIssue issue : this.issues) {
+      if (reportIssueId.equals(issue.getReportIssueId())) {
+        return issue;
+      }
+    }
+    return null;
   }
 }

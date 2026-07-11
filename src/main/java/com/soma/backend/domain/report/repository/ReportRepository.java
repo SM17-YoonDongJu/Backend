@@ -26,6 +26,10 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       + "AND r.createdAt <= :dueSoonThreshold")
   long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
 
+  @Query(value = "SELECT u.region FROM users u JOIN reports r ON r.user_id = u.id WHERE r.id = :reportId",
+      nativeQuery = true)
+  String findRegionByReportId(@Param("reportId") UUID reportId);
+
   @Query(value = "SELECT r.id AS reportId, r.case_no AS caseNo, r.title AS title, "
       + "r.accident_type AS accidentType, u.region AS region, r.status AS status, "
       + "r.claimed_min_amount AS claimedMinAmount, r.claimed_max_amount AS claimedMaxAmount, "
@@ -50,4 +54,19 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       @Param("region") String region,
       @Param("adjusterId") UUID adjusterId,
       Pageable pageable);
+
+  @Query(value = "SELECT u.nickname AS nickname, u.gender AS gender, u.birth_date AS birthDate, "
+      + "u.region AS region, u.created_at AS joinedAt, "
+      + "uc.accident_type AS claimAccidentType, uc.diagnosis AS diagnosis, uc.accident_date AS accidentDate, "
+      + "CAST(uc.hospitalization AS text) AS hospitalization, uc.description AS claimDescription, "
+      + "uc.additional_information AS additionalInformation, "
+      + "ip.product_name AS productName, ins.name AS insurerName "
+      + "FROM reports r "
+      + "JOIN users u ON u.id = r.user_id "
+      + "LEFT JOIN user_claims uc ON uc.id = r.claim_id "
+      + "LEFT JOIN insurance_products ip ON ip.id = r.product_id "
+      + "LEFT JOIN insurers ins ON ins.id = ip.insurer_id "
+      + "WHERE r.id = :reportId",
+      nativeQuery = true)
+  ReviewContextRow findReviewContext(@Param("reportId") UUID reportId);
 }
