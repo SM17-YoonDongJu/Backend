@@ -81,7 +81,7 @@ class ReportReviewCommandServiceTest {
   }
 
   private ReportReviewIssue reviewIssueRow(UUID reportIssueId, IssueReviewStatus status, String opinion) {
-    return new ReportReviewIssue(reportIssueId, null, null, status, opinion, null, null);
+    return new ReportReviewIssue(reportIssueId, null, null, null, status, opinion, null, null);
   }
 
   private ReviewReportRequest request(List<ReviewReportRequest.IssueReview> issues) {
@@ -107,7 +107,7 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, UUID.randomUUID(), "ACCEPTED", null, null, "의견", null, null);
+        null, UUID.randomUUID(), "ACCEPTED", null, null, null, "의견", null, null);
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of(issue))))
         .isInstanceOf(BusinessException.class)
@@ -123,7 +123,7 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, null, "ACCEPTED", null, null, "의견", null, null);
+        null, null, "ACCEPTED", null, null, null, "의견", null, null);
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of(issue))))
         .isInstanceOf(BusinessException.class)
@@ -140,7 +140,7 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issueWithId(issueId)));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, issueId, "MODIFIED", null, null, "의견", null, null);
+        null, issueId, "MODIFIED", null, null, null, "의견", null, null);
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of(issue))))
         .isInstanceOf(BusinessException.class)
@@ -157,7 +157,7 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issueWithId(issueId)));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, issueId, "EXCLUDED", null, null, "의견", null, null);
+        null, issueId, "EXCLUDED", null, null, null, "의견", null, null);
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of(issue))))
         .isInstanceOf(BusinessException.class)
@@ -173,7 +173,7 @@ class ReportReviewCommandServiceTest {
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, null, "ADDED", null, null, "의견", null, null);
+        null, null, "ADDED", null, null, null, "의견", null, null);
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of(issue))))
         .isInstanceOf(BusinessException.class)
@@ -193,13 +193,14 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, null, "ADDED", "신규 쟁점 제목", "신규 쟁점 설명", null, null, null);
+        null, null, "ADDED", "신규 쟁점 제목", "신규 쟁점 설명", 1_500_000L, null, null, null);
 
     ReviewReportResponse result = service.review(adjusterId, reportId, request(List.of(issue)));
 
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(review.getIssues()).hasSize(1);
     assertThat(review.getIssues().get(0).getTitle()).isEqualTo("신규 쟁점 제목");
+    assertThat(review.getIssues().get(0).getImpactAmount()).isEqualTo(1_500_000L);
     verify(reportReviewRepository).insertIfAbsent(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
   }
@@ -247,7 +248,7 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, issueId, "ACCEPTED", null, null, "의견", null, null);
+        null, issueId, "ACCEPTED", null, null, null, "의견", null, null);
 
     ReviewReportResponse result = service.review(adjusterId, reportId, request(List.of(issue)));
 
@@ -315,7 +316,7 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportRequest.IssueReview only1 = new ReviewReportRequest.IssueReview(
-        null, issueId1, "EXCLUDED", null, null, "제외 의견", null, "제외 사유");
+        null, issueId1, "EXCLUDED", null, null, null, "제외 의견", null, "제외 사유");
     service.review(adjusterId, reportId, request(List.of(only1)));
 
     assertThat(review.getIssues()).hasSize(2);

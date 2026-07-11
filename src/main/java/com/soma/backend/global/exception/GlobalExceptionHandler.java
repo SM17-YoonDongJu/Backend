@@ -2,6 +2,7 @@ package com.soma.backend.global.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -51,6 +52,17 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
     return ResponseEntity.status(ErrorCode.FORBIDDEN.getStatus())
         .body(ErrorResponse.of(ErrorCode.FORBIDDEN));
+  }
+
+  /**
+   * 요청 바디가 없거나(필수 {@code @RequestBody}) JSON 파싱이 불가능하면 스프링 MVC가
+   * HttpMessageNotReadableException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 INVALID_REQUEST로 매핑한다.
+   */
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex) {
+    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus())
+        .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
   }
 
   @ExceptionHandler(Exception.class)

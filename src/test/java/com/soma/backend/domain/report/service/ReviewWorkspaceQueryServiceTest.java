@@ -94,8 +94,8 @@ class ReviewWorkspaceQueryServiceTest {
     ReportIssue aiIssue = issue("장해등급 과소 산정 가능");
     UUID aiIssueId = aiIssue.getId();
     ReportReview review = review();
-    review.getIssues().add(reviewIssue(aiIssueId, IssueReviewStatus.ACCEPTED, null, "인정 의견"));
-    review.getIssues().add(reviewIssue(null, IssueReviewStatus.ADDED, "외모추상 특약 누락", "신규 의견"));
+    review.getIssues().add(reviewIssue(aiIssueId, IssueReviewStatus.ACCEPTED, null, "인정 의견", null));
+    review.getIssues().add(reviewIssue(null, IssueReviewStatus.ADDED, "외모추상 특약 누락", "신규 의견", 3_000_000L));
 
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportRepository.findReviewContext(reportId)).willReturn(context());
@@ -116,11 +116,13 @@ class ReviewWorkspaceQueryServiceTest {
     assertThat(merged.aiTitle()).isEqualTo("장해등급 과소 산정 가능");
     assertThat(merged.reviewStatus()).isEqualTo("ACCEPTED");
     assertThat(merged.adjusterOpinion()).isEqualTo("인정 의견");
+    assertThat(merged.modifiedImpactAmount()).isNull();
 
     ReviewWorkspaceResponse.IssueItem added = result.issues().get(1);
     assertThat(added.issueId()).isNull();
     assertThat(added.reviewStatus()).isEqualTo("ADDED");
     assertThat(added.modifiedTitle()).isEqualTo("외모추상 특약 누락");
+    assertThat(added.modifiedImpactAmount()).isEqualTo(3_000_000L);
 
     assertThat(result.progress().total()).isEqualTo(2);
     assertThat(result.progress().accepted()).isEqualTo(1);
@@ -163,8 +165,8 @@ class ReviewWorkspaceQueryServiceTest {
   }
 
   private ReportReviewIssue reviewIssue(
-      UUID reportIssueId, IssueReviewStatus status, String title, String opinion) {
-    return new ReportReviewIssue(reportIssueId, title, null, status, opinion, null, null);
+      UUID reportIssueId, IssueReviewStatus status, String title, String opinion, Long impactAmount) {
+    return new ReportReviewIssue(reportIssueId, title, null, impactAmount, status, opinion, null, null);
   }
 
   private ReviewContextRow context() {

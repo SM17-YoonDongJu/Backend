@@ -89,6 +89,7 @@ class PendingReviewQueryServiceTest {
     assertThat(item.offerHeadroom()).isEqualTo(-3000L);
     assertThat(item.issueCount()).isEqualTo(2L);
     assertThat(item.held()).isTrue();
+    assertThat(item.createdAt()).isEqualTo(LocalDateTime.of(2026, 5, 31, 9, 0));
     assertThat(result.totalElements()).isEqualTo(1L);
   }
 
@@ -242,6 +243,11 @@ class PendingReviewQueryServiceTest {
       @Override
       public Boolean getHeld() {
         return held;
+      }
+
+      @Override
+      public LocalDateTime getCreatedAt() {
+        return LocalDateTime.of(2026, 5, 31, 9, 0);
       }
     };
   }

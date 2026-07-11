@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.report.dto.HoldReportRequest;
 import com.soma.backend.domain.report.dto.HoldResponse;
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
@@ -91,8 +92,10 @@ public class PendingReviewController {
   @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
   @PostMapping("/reports/{reportId}/hold")
   public ResponseEntity<ApiResponse<HoldResponse>> addHold(
-      @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
-    HoldResponse result = reportHoldCommandService.addHold(reportId, principal.getUserId());
+      @AuthenticationPrincipal CustomUserDetails principal,
+      @PathVariable UUID reportId,
+      @RequestBody HoldReportRequest request) {
+    HoldResponse result = reportHoldCommandService.addHold(reportId, principal.getUserId(), request);
     return ResponseEntity.ok(ApiResponse.ok(result));
   }
 

@@ -106,7 +106,8 @@ public class ReportReviewCommandService {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
     return new ReportReviewIssue(issueRequest.issueId(), issueRequest.title(), issueRequest.description(),
-        reviewStatus, issueRequest.adjusterOpinion(), issueRequest.modifiedReason(), issueRequest.excludedReason());
+        issueRequest.impactAmount(), reviewStatus, issueRequest.adjusterOpinion(), issueRequest.modifiedReason(),
+        issueRequest.excludedReason());
   }
 
   private IssueReviewStatus parseIssueReviewStatus(String reviewStatus) {

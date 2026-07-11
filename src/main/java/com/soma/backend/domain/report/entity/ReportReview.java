@@ -122,8 +122,9 @@ public class ReportReview extends BaseEntity {
       this.issues.add(desired);
       return;
     }
-    target.updateContent(desired.getTitle(), desired.getDescription(), desired.getReviewStatus(),
-        desired.getAdjusterOpinion(), desired.getModifiedReason(), desired.getExcludedReason());
+    target.updateContent(desired.getTitle(), desired.getDescription(), desired.getImpactAmount(),
+        desired.getReviewStatus(), desired.getAdjusterOpinion(), desired.getModifiedReason(),
+        desired.getExcludedReason());
   }
 
   private ReportReviewIssue findByReviewIssueId(UUID reviewIssueId) {

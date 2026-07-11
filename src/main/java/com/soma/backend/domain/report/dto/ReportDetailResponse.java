@@ -19,11 +19,8 @@ import com.soma.backend.domain.report.entity.ReportIssue;
 public record ReportDetailResponse(
     UUID reportId,
     String caseNo,
-    String title,
     String accidentType,
     String region,
-    String status,
-    String confidenceLevel,
     boolean isMasked,
     Long claimedMinAmount,
     Long claimedMaxAmount,
@@ -47,11 +44,8 @@ public record ReportDetailResponse(
     return new ReportDetailResponse(
         report.getId(),
         report.getCaseNo(),
-        report.getTitle(),
         report.getAccidentType() == null ? null : report.getAccidentType().getValue(),
         region,
-        report.getStatus() == null ? null : report.getStatus().name(),
-        report.getConfidenceLevel(),
         Boolean.TRUE.equals(report.getIsMasked()),
         report.getClaimedMinAmount(),
         report.getClaimedMaxAmount(),

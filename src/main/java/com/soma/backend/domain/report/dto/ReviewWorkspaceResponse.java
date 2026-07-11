@@ -190,7 +190,8 @@ public record ReviewWorkspaceResponse(
 
   /**
    * ⑥ 쟁점 1건 — AI 원본(REPORT_ISSUES)과 사정사 오버레이(REPORT_REVIEW_ISSUES) 병합. reviewStatus가 null이면
-   * 미검수 AI 쟁점, issueId가 null이면 사정사 신규(ADDED) 쟁점이다.
+   * 미검수 AI 쟁점, issueId가 null이면 사정사 신규(ADDED) 쟁점이다. impactAmount는 AI 추정 영향 금액,
+   * modifiedImpactAmount는 사정사가 직접 입력한 영향 금액(미입력·미검수면 null)이다.
    */
   public record IssueItem(
       UUID issueId,
@@ -204,6 +205,7 @@ public record ReviewWorkspaceResponse(
       String adjusterOpinion,
       String modifiedTitle,
       String modifiedDescription,
+      Long modifiedImpactAmount,
       String modifiedReason,
       String excludedReason) {
 
@@ -220,6 +222,7 @@ public record ReviewWorkspaceResponse(
           overlay == null ? null : overlay.getAdjusterOpinion(),
           overlay == null ? null : overlay.getTitle(),
           overlay == null ? null : overlay.getDescription(),
+          overlay == null ? null : overlay.getImpactAmount(),
           overlay == null ? null : overlay.getModifiedReason(),
           overlay == null ? null : overlay.getExcludedReason());
     }
@@ -237,6 +240,7 @@ public record ReviewWorkspaceResponse(
           added.getAdjusterOpinion(),
           added.getTitle(),
           added.getDescription(),
+          added.getImpactAmount(),
           added.getModifiedReason(),
           added.getExcludedReason());
     }
