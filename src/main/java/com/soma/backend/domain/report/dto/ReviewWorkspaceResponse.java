@@ -139,9 +139,7 @@ public record ReviewWorkspaceResponse(
   /** ②③ 사고·청구·가입 보험(user_claims + insurance_products + insurers). */
   public record Claim(
       String accidentType,
-      String diagnosis,
       LocalDate accidentDate,
-      String hospitalization,
       String description,
       String additionalInformation,
       String productName,
@@ -152,8 +150,8 @@ public record ReviewWorkspaceResponse(
         return null;
       }
       return new Claim(
-          context.getClaimAccidentType(), context.getDiagnosis(), context.getAccidentDate(),
-          context.getHospitalization(), context.getClaimDescription(), context.getAdditionalInformation(),
+          context.getClaimAccidentType(), context.getAccidentDate(),
+          context.getClaimDescription(), context.getAdditionalInformation(),
           context.getProductName(), context.getInsurerName());
     }
   }

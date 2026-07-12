@@ -202,18 +202,8 @@ class ReviewWorkspaceQueryServiceTest {
       }
 
       @Override
-      public String getDiagnosis() {
-        return "후방십자인대 파열";
-      }
-
-      @Override
       public LocalDate getAccidentDate() {
         return LocalDate.of(2026, 5, 1);
-      }
-
-      @Override
-      public String getHospitalization() {
-        return "[]";
       }
 
       @Override

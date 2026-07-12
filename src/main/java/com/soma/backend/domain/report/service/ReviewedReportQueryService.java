@@ -41,9 +41,9 @@ public class ReviewedReportQueryService {
     long previousMonthReviewCount =
         reportReviewRepository.countByAdjusterIdAndCreatedAtBetween(adjusterId, previousFrom, previousTo);
     long totalCount = reportReviewRepository.countByAdjusterId(adjusterId);
-    // NOTE(m1): consultationConvertedCount·conversionRate는 report_reviews.status=CONSULTATION 기준인데,
-    // CONSULTATION 전이는 매칭·채팅(별도 티켓)에서 발생한다. 본 티켓 범위에서는 검수 반영 시 status를
-    // SENT로만 생성하므로 이 두 지표는 현재 항상 0이다. 매칭/채팅 플로우 구현 후 실제 값이 채워진다.
+    // NOTE(m1): consultationConvertedCount·conversionRate는 report_reviews.status=COUNSELING 기준인데,
+    // COUNSELING 전이는 채팅방 생성(채팅 도메인, 별도 티켓)에서 발생한다. 본 티켓 범위에서는 검수 반영 시
+    // status를 SENT로만 생성하므로 이 두 지표는 현재 항상 0이다. 채팅 플로우 구현 후 실제 값이 채워진다.
     long consultationConvertedCount = reportReviewRepository.countConsultationConvertedByAdjusterId(adjusterId);
     double conversionRate = totalCount == 0L ? 0.0 : (double) consultationConvertedCount / totalCount;
 

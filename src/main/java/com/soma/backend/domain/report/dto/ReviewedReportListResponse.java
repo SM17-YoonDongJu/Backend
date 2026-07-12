@@ -20,7 +20,7 @@ public record ReviewedReportListResponse(
 
   /**
    * 상단 통계. consultationConvertedCount·consultationConversionRate는 현재 항상 0이다 —
-   * CONSULTATION 전이(매칭·채팅)가 별도 티켓이라 본 티켓에서는 채워지지 않는다(m1).
+   * COUNSELING 전이(채팅방 생성)가 별도 티켓이라 본 티켓에서는 채워지지 않는다(m1).
    */
   public record Stats(
       long monthlyReviewCount,

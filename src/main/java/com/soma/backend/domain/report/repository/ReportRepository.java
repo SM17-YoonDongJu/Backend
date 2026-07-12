@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -16,6 +17,15 @@ import com.soma.backend.domain.report.entity.Report;
 public interface ReportRepository extends JpaRepository<Report, UUID> {
 
   List<Report> findAllByIdIn(List<UUID> ids);
+
+  /**
+   * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이
+   * 원자 증가하므로, count-then-insert 경쟁으로 인한 case_no UNIQUE 위반(→500)을 원천 차단한다(ReportHold 관례).
+   */
+  @Query(value = "INSERT INTO report_case_sequences (day, seq) VALUES (:day, 1) "
+      + "ON CONFLICT (day) DO UPDATE SET seq = report_case_sequences.seq + 1 "
+      + "RETURNING seq", nativeQuery = true)
+  int nextCaseNoSequence(@Param("day") LocalDate day);
 
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION")
@@ -80,10 +90,43 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       @Param("adjusterId") UUID adjusterId,
       Pageable pageable);
 
+  /**
+   * GET /reports 유저 대시보드 카드 목록(design.md §6). 채택된 제안(report_reviews.status='ACCEPTED')을
+   * LEFT JOIN해 확정 사정사·확정 견적을 붙인다. rating은 {@code adjuster_profiles.rating_mean}
+   * 비정규화 컬럼을 직접 읽는다(develop V8이 컬럼 도입 + 후기 write 시 재집계) — 매 조회마다 adjuster_reviews를
+   * 전체 GROUP BY 하던 파생 테이블 조인을 제거해 병목을 없앴다.
+   */
+  @Query(value = "SELECT r.id AS reportId, r.status AS status, r.accident_type AS accidentType, "
+      + "r.title AS title, r.created_at AS createdAt, r.case_no AS caseNo, "
+      + "r.claimed_min_amount AS claimedMinAmount, r.claimed_max_amount AS claimedMaxAmount, "
+      + "(SELECT COUNT(*) FROM report_reviews rv2 WHERE rv2.report_id = r.id) AS proposalCount, "
+      + "accepted.updated_at AS reviewedAt, "
+      + "au.nickname AS adjusterNickname, "
+      + "accepted.estimate_min_amount AS confirmedMinAmount, "
+      + "accepted.estimate_max_amount AS confirmedMaxAmount, "
+      + "ap.rating_mean AS rating "
+      + "FROM reports r "
+      + "LEFT JOIN report_reviews accepted ON accepted.report_id = r.id AND accepted.status = 'ACCEPTED' "
+      + "LEFT JOIN users au ON au.id = accepted.adjuster_id "
+      + "LEFT JOIN adjuster_profiles ap ON ap.user_id = accepted.adjuster_id "
+      + "WHERE r.user_id = :userId "
+      + "AND (:status IS NULL OR r.status = :status) "
+      + "ORDER BY r.created_at DESC",
+      countQuery = "SELECT COUNT(*) FROM reports r "
+          + "WHERE r.user_id = :userId "
+          + "AND (:status IS NULL OR r.status = :status)",
+      nativeQuery = true)
+  Page<ReportCardRow> findUserReportCards(
+      @Param("userId") UUID userId, @Param("status") String status, Pageable pageable);
+
+  /**
+   * API#6 검수 대기 상세 컨텍스트 조인(의뢰인·사건 입력·보험상품/보험사).
+   * diagnosis·hospitalization은 user_claims details(jsonb) 전환으로 컬럼에서 제거됨(추후 details 기반 노출).
+   */
   @Query(value = "SELECT u.nickname AS nickname, u.gender AS gender, u.birth_date AS birthDate, "
       + "u.region AS region, u.created_at AS joinedAt, "
-      + "uc.accident_type AS claimAccidentType, uc.diagnosis AS diagnosis, uc.accident_date AS accidentDate, "
-      + "CAST(uc.hospitalization AS text) AS hospitalization, uc.description AS claimDescription, "
+      + "uc.accident_type AS claimAccidentType, uc.accident_date AS accidentDate, "
+      + "uc.description AS claimDescription, "
       + "uc.additional_information AS additionalInformation, "
       + "ip.product_name AS productName, ins.name AS insurerName "
       + "FROM reports r "

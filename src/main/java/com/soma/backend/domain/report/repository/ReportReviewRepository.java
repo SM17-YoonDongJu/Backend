@@ -81,4 +81,25 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
       @Param("monthFrom") LocalDateTime monthFrom,
       @Param("monthTo") LocalDateTime monthTo,
       Pageable pageable);
+
+  /**
+   * GET /reports/{reportId}/proposals 목록(design.md §6). REJECTED는 노출하지 않는다.
+   * NOTE(backend-developer): design.md는 rating 출처로 {@code adjuster_profiles.rating_mean}을
+   * 지정하지만 V1 스키마에 해당 컬럼이 없다 — {@code adjuster_reviews.score} 평균으로 대체했다(ReportRepository와 동일 이슈).
+   * proposalSummary는 report_reviews.review 원문을 그대로 사용한다(별도 요약 컬럼 없음).
+   */
+  @Query(value = "SELECT rv.id AS proposalId, rv.adjuster_id AS adjusterId, u.nickname AS nickname, "
+      + "rating.avg_score AS rating, rv.review AS proposalSummary, rv.status AS status, "
+      + "rv.created_at AS submittedAt "
+      + "FROM report_reviews rv "
+      + "JOIN users u ON u.id = rv.adjuster_id "
+      + "LEFT JOIN (SELECT adjuster_id, AVG(score) AS avg_score FROM adjuster_reviews GROUP BY adjuster_id) rating "
+      + "ON rating.adjuster_id = rv.adjuster_id "
+      + "WHERE rv.report_id = :reportId "
+      + "AND rv.status <> 'REJECTED' "
+      + "ORDER BY rv.created_at DESC",
+      countQuery = "SELECT COUNT(*) FROM report_reviews rv "
+          + "WHERE rv.report_id = :reportId AND rv.status <> 'REJECTED'",
+      nativeQuery = true)
+  Page<ProposalRow> findProposalRows(@Param("reportId") UUID reportId, Pageable pageable);
 }

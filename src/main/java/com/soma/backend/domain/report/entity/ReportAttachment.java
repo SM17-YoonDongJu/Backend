@@ -13,9 +13,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * REPORT_ATTACHMENTS — Report Aggregate 내부 구성요소(첨부 서류 메타). Report를 통해서만 접근한다.
- * 원본 바이너리는 S3에 있고 여기엔 메타·URL만 둔다. ocr_result_id는 상세 응답에 불필요해 매핑을 생략한다
- * (validate는 매핑된 컬럼만 검사한다).
+ * REPORT_ATTACHMENTS — Report Aggregate에 속한 첨부 진단서 메타데이터(design.md §3). 바이너리는 S3에 저장하고
+ * 이 엔티티는 key/URL만 보관한다. pageCount·issuedBy·issuedAt·aiSummary·ocrResultId는 OCR 처리(FastAPI consumer)
+ * 이후 채워지는 필드라 생성 시점({@link #of})에는 비워둔다.
  */
 @Entity
 @Table(name = "report_attachments")
@@ -53,4 +53,18 @@ public class ReportAttachment extends CreatedAtEntity {
 
   @Column(name = "ai_summary")
   private String aiSummary;
+
+  @Column(name = "ocr_result_id")
+  private UUID ocrResultId;
+
+  /** 리포트 생성 시 문서 1건당 호출되는 정적 팩토리(design.md §3). */
+  public static ReportAttachment of(UUID reportId, String name, String url, String mimeType, String reportType) {
+    ReportAttachment attachment = new ReportAttachment();
+    attachment.reportId = reportId;
+    attachment.name = name;
+    attachment.url = url;
+    attachment.mimeType = mimeType;
+    attachment.reportType = reportType;
+    return attachment;
+  }
 }
