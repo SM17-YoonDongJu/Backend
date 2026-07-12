@@ -23,7 +23,7 @@ import com.soma.backend.global.exception.ErrorCode;
 
 /**
  * 검수 화면(편집 워크스페이스) 집계 조회 유스케이스(CQRS). AI 초안(REPORTS/REPORT_ISSUES)·사정사 작업본
- * (REPORT_REVIEWS/REPORT_REVIEW_ISSUES)·상세 첨부(REPORT_ATTACHMENTS)·의뢰인 맥락을 한 응답으로 조립한다.
+ * (REPORT_REVIEWS/REPORT_ISSUES_REVIEWS)·상세 첨부(REPORT_ATTACHMENTS)·의뢰인 맥락을 한 응답으로 조립한다.
  */
 @Service
 @RequiredArgsConstructor

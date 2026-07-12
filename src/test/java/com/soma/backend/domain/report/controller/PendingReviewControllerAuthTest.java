@@ -287,6 +287,14 @@ class PendingReviewControllerAuthTest {
   class ReviewedReportsEndpoint {
 
     @Test
+    @DisplayName("비로그인이면 401 LOGIN_REQUIRED")
+    void unauthenticatedReturns401() throws Exception {
+      mockMvc.perform(get("/adjusters/me/reviewed-reports"))
+          .andExpect(status().isUnauthorized())
+          .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
+    }
+
+    @Test
     @DisplayName("UNCERTIFICATED_ADJUSTER면 200")
     void uncertificatedAdjuster200() throws Exception {
       mockMvc.perform(get("/adjusters/me/reviewed-reports").with(as("UNCERTIFICATED_ADJUSTER")))

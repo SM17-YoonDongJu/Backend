@@ -19,7 +19,7 @@ import com.soma.backend.domain.report.repository.ReviewContextRow;
  * 검수 화면(편집 워크스페이스) 집계 응답. 사정사 작업본(REPORT_REVIEWS)이 없으면 AI 초안을, 있으면 작업본을 노출한다.
  *
  * <p>규칙: 보장·특약·근거는 작업본 유무로 전환(resolved), 쟁점은 AI 원본(REPORT_ISSUES)에 사정사 오버레이
- * (REPORT_REVIEW_ISSUES)를 병합, 예상 보상은 AI 추정과 사정사 확정을 함께 담는다. 필드는 camelCase로 두고
+ * (REPORT_ISSUES_REVIEWS)를 병합, 예상 보상은 AI 추정과 사정사 확정을 함께 담는다. 필드는 camelCase로 두고
  * snake_case 직렬화는 Jackson 전역 설정이 처리한다.
  */
 public record ReviewWorkspaceResponse(
@@ -83,7 +83,7 @@ public record ReviewWorkspaceResponse(
         progressOf(issues));
   }
 
-  /** AI 쟁점(REPORT_ISSUES) 원본에 사정사 검수(REPORT_REVIEW_ISSUES) 오버레이를 병합하고 ADDED 신규 쟁점을 덧붙인다. */
+  /** AI 쟁점(REPORT_ISSUES) 원본에 사정사 검수(REPORT_ISSUES_REVIEWS) 오버레이를 병합하고 ADDED 신규 쟁점을 덧붙인다. */
   private static List<IssueItem> mergeIssues(List<ReportIssue> aiIssues, ReportReview review) {
     Map<UUID, ReportReviewIssue> overlayByIssueId = new HashMap<>();
     List<ReportReviewIssue> added = new ArrayList<>();
@@ -189,7 +189,7 @@ public record ReviewWorkspaceResponse(
   }
 
   /**
-   * ⑥ 쟁점 1건 — AI 원본(REPORT_ISSUES)과 사정사 오버레이(REPORT_REVIEW_ISSUES) 병합. reviewStatus가 null이면
+   * ⑥ 쟁점 1건 — AI 원본(REPORT_ISSUES)과 사정사 오버레이(REPORT_ISSUES_REVIEWS) 병합. reviewStatus가 null이면
    * 미검수 AI 쟁점, issueId가 null이면 사정사 신규(ADDED) 쟁점이다. impactAmount는 AI 추정 영향 금액,
    * modifiedImpactAmount는 사정사가 직접 입력한 영향 금액(미입력·미검수면 null)이다.
    */

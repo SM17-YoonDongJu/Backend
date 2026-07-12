@@ -31,7 +31,7 @@ import com.soma.backend.global.exception.ErrorCode;
  * role 인가(CERTIFICATED_ADJUSTER만 허용)는 컨트롤러의 {@code @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")}가
  * 보증하므로 이 서비스는 role을 재검증하지 않는다. 본인 REPORT_REVIEWS 행이 없으면 최초 호출 시
  * 멱등 upsert(생성)한다. 쟁점은 ReportReview Aggregate가 소유하며,
- * reportReview.replaceIssues(...)로 교체(같은 AI 쟁점은 인플레이스 갱신)한다.
+ * reportReview.upsertIssue(...)로 부분 반영(보낸 쟁점만 갱신/추가, 삭제 없음)한다.
  * 검수 내용(금액·보장·쟁점·피드백)은 REPORT_REVIEWS에만 저장하고 REPORTS는 status 전이(applyReviewStart)만
  * 반영한다 — target은 클라가 지정하지 않고 현재 status에서 서버가 파생한다(A8 격리).
  */
