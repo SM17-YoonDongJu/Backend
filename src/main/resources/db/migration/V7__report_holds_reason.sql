@@ -1,5 +1,5 @@
 -- =====================================================================
--- V3 — REPORT_HOLDS에 보류 사유 추가(검수 대기 보류 모달).
+-- V7 — REPORT_HOLDS에 보류 사유 추가(검수 대기 보류 모달).
 -- reason: HoldReason enum 이름(대문자) 저장. NEED_MORE_DOCUMENTS / OUT_OF_SPECIALTY /
 --         SCHEDULE_CONFLICT / OTHER. NOT NULL.
 -- reason_detail: 직접 입력(OTHER) 또는 프리셋 사유의 상세 텍스트(선택). NULL 허용.
