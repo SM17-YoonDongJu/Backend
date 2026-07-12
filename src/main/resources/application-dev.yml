@@ -8,6 +8,8 @@ spring:
 app:
   cookie:
     secure: false   # 로컬 http 개발용
+  docs:
+    public: true    # dev 전용: Scalar 문서(/docs·/scalar.html·/v3/api-docs)를 인증 없이 개방
 
 logging:
   level:
