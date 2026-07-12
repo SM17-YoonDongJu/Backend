@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -18,8 +19,14 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
 
   List<Report> findAllByIdIn(List<UUID> ids);
 
-  /** case_no 당일 시퀀스 계산용(prefix = yyyyMMdd-). */
-  long countByCaseNoStartingWith(String prefix);
+  /**
+   * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이
+   * 원자 증가하므로, count-then-insert 경쟁으로 인한 case_no UNIQUE 위반(→500)을 원천 차단한다(ReportHold 관례).
+   */
+  @Query(value = "INSERT INTO report_case_sequences (day, seq) VALUES (:day, 1) "
+      + "ON CONFLICT (day) DO UPDATE SET seq = report_case_sequences.seq + 1 "
+      + "RETURNING seq", nativeQuery = true)
+  int nextCaseNoSequence(@Param("day") LocalDate day);
 
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION")
@@ -57,10 +64,9 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
 
   /**
    * GET /reports 유저 대시보드 카드 목록(design.md §6). 채택된 제안(report_reviews.status='ACCEPTED')을
-   * LEFT JOIN해 확정 사정사·확정 견적을 붙인다.
-   * NOTE(backend-developer): design.md는 rating 출처로 {@code adjuster_profiles.rating_mean}을
-   * 지정하지만 V1 스키마(adjuster_profiles)에 해당 컬럼이 없다 — {@code adjuster_reviews.score}의
-   * 평균으로 대체했다. 리더 확인 후 실제 컬럼/집계 방식으로 교체 필요.
+   * LEFT JOIN해 확정 사정사·확정 견적을 붙인다. rating은 {@code adjuster_profiles.rating_mean}
+   * 비정규화 컬럼을 직접 읽는다(V4 백필 + 후기 write 시 재집계) — 매 조회마다 adjuster_reviews를
+   * 전체 GROUP BY 하던 파생 테이블 조인을 제거해 병목을 없앴다.
    */
   @Query(value = "SELECT r.id AS reportId, r.status AS status, r.accident_type AS accidentType, "
       + "r.title AS title, r.created_at AS createdAt, r.case_no AS caseNo, "
@@ -70,12 +76,11 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       + "au.nickname AS adjusterNickname, "
       + "accepted.estimate_min_amount AS confirmedMinAmount, "
       + "accepted.estimate_max_amount AS confirmedMaxAmount, "
-      + "rating.avg_score AS rating "
+      + "ap.rating_mean AS rating "
       + "FROM reports r "
       + "LEFT JOIN report_reviews accepted ON accepted.report_id = r.id AND accepted.status = 'ACCEPTED' "
       + "LEFT JOIN users au ON au.id = accepted.adjuster_id "
-      + "LEFT JOIN (SELECT adjuster_id, AVG(score) AS avg_score FROM adjuster_reviews GROUP BY adjuster_id) rating "
-      + "ON rating.adjuster_id = accepted.adjuster_id "
+      + "LEFT JOIN adjuster_profiles ap ON ap.user_id = accepted.adjuster_id "
       + "WHERE r.user_id = :userId "
       + "AND (:status IS NULL OR r.status = :status) "
       + "ORDER BY r.created_at DESC",

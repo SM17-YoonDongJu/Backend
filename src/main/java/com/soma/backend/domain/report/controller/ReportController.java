@@ -47,7 +47,7 @@ public class ReportController {
       @CurrentUserId UUID userId, @RequestBody CreateReportRequest request) {
     CreateReportResponse data = reportCommandService.createReport(userId, request);
     return ResponseEntity.status(HttpStatus.ACCEPTED)
-        .body(new ApiResponse<>("202", "리포트 생성을 시작했습니다.", data));
+        .body(ApiResponse.accepted("리포트 생성을 시작했습니다.", data));
   }
 
   /**

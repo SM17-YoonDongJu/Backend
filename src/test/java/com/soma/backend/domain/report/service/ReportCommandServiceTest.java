@@ -3,7 +3,6 @@ package com.soma.backend.domain.report.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -68,7 +67,7 @@ class ReportCommandServiceTest {
 
   @Test
   void createReport_persistsClaimReportAttachments_andEnqueuesOcrJobPerDocument() {
-    given(reportRepository.countByCaseNoStartingWith(anyString())).willReturn(0L);
+    given(reportRepository.nextCaseNoSequence(any())).willReturn(1);
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportAttachmentRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));

@@ -26,6 +26,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import com.soma.backend.domain.common.entity.BaseEntity;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 
 /**
  * REPORT_REVIEWS Aggregate Root — 사정사 검수 작업 공간(고객 노출). (report_id, adjuster_id) 당 1행(UK).
@@ -85,12 +87,21 @@ public class ReportReview extends BaseEntity {
 
   /** 사용자가 이 제안을 채택. 리포트 종결과 함께 호출된다(design.md §6 decide). */
   public void accept() {
+    ensureDecidable();
     this.status = ReviewStatus.ACCEPTED;
   }
 
   /** 사용자가 이 제안을 거절. 목록에서 제외된다(리포트 상태는 유지). */
   public void reject() {
+    ensureDecidable();
     this.status = ReviewStatus.REJECTED;
+  }
+
+  /** 종료 상태(ACCEPTED/REJECTED)에서의 재결정을 차단 — CLOSED 리포트와 제안 상태 불일치를 막는다. */
+  private void ensureDecidable() {
+    if (this.status == ReviewStatus.ACCEPTED || this.status == ReviewStatus.REJECTED) {
+      throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+    }
   }
 
   /** 검수 내용 갱신(estimate·배열3·review). 서명 개념 없음 — status 전이와 무관하게 upsert된다. */

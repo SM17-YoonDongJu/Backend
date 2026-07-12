@@ -150,19 +150,23 @@ public class ReportCommandService {
     return decision;
   }
 
-  /** 사람용 사건번호 yyyyMMdd-NNN. 당일 시퀀스(경합 시 case_no UNIQUE 제약이 최종 방어선). */
+  /** 사람용 사건번호 yyyyMMdd-NNN. 당일 시퀀스는 DB 원자 카운터로 발급해 동시 생성 경합을 차단한다. */
   private String generateCaseNo() {
-    String day = LocalDate.now().format(CASE_NO_DAY);
-    long sequence = reportRepository.countByCaseNoStartingWith(day + "-") + 1;
-    return String.format("%s-%03d", day, sequence);
+    LocalDate today = LocalDate.now();
+    int sequence = reportRepository.nextCaseNoSequence(today);
+    return String.format("%s-%03d", today.format(CASE_NO_DAY), sequence);
   }
 
   private String toS3Key(String s3Url) {
     if (!StringUtils.hasText(s3Url)) {
       return null;
     }
-    String path = URI.create(s3Url).getPath();
-    return path == null ? s3Url : path.replaceFirst("^/", "");
+    try {
+      String path = URI.create(s3Url).getPath();
+      return path == null ? s3Url : path.replaceFirst("^/", "");
+    } catch (IllegalArgumentException ex) {
+      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    }
   }
 
   private String toContentType(String fileType) {
