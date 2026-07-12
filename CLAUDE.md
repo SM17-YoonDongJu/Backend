@@ -47,7 +47,7 @@ com.soma.backend
 **레이어 의존 규칙 (핵심):**
 - `controller` → `service`, `dto`(+ 조회용 `entity`). HTTP ↔ 유스케이스 변환만, 얇게.
 - `service` → `entity`, `repository`, `dto`. 유스케이스 단위로 `@Transactional` 경계를 갖는다.
-- `repository` → `entity`. Spring Data JPA 인터페이스, Aggregate 단위 저장/조회.
+- `repository` → `entity`. Spring Data JPA 인터페이스, Aggregate 단위 저장/조회. **조회는 native query 금지 — 동적 조회는 QueryDSL, 그 외는 Spring Data 파생 쿼리·JPQL. 불가피한 경우만 사유 주석을 단 문서화된 예외.**
 - `entity` → 아무것도 의존 안 함 (실용적 예외: JPA 애노테이션). Spring Web/Service/Controller 참조 금지.
 - **의존 방향은 항상 안쪽(entity)으로.** 바깥이 안을 알고, 안은 바깥을 모른다.
 
@@ -141,6 +141,7 @@ Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반
 - 에러는 `BusinessException` + `ErrorCode` enum, `GlobalExceptionHandler`가 `ErrorResponse`로 처리
 - JWT secret은 최소 32자 이상
 - `open-in-view: false` — 서비스 레이어 안에서 트랜잭션 완료 후 응답
+- **쿼리 작성 규칙:** 조회에 native query(`nativeQuery = true`)를 쓰지 않는다. 동적 조회(필터·정렬·페이지네이션)는 QueryDSL(`JPAQueryFactory` + Q타입, `*RepositoryCustom`/`*RepositoryImpl` 프래그먼트, projection은 record + `Projections.constructor`), 단순 조회·카운트는 Spring Data 파생 쿼리나 JPQL(`@Query`)로 작성한다. 아직 엔티티로 매핑되지 않은 테이블을 조인하는 읽기 전용 projection처럼 QueryDSL/JPQL로 표현할 수 없는 경우에만, 리포지토리 코드에 사유를 주석으로 남긴 '문서화된 예외'로 native를 허용한다.
 
 ## Spring Boot 담당 범위
 
