@@ -42,7 +42,7 @@ AWAITING_ADOPTION    ← 사용자 선택 대기. 복수 검수 리포트 비교
         ↓  (사용자가 사정사 선택 → ChatRoom 즉시 생성)
 COUNSELING           ← 채팅 중. WebSocket 채널 개설됨. 거절 없음.
         ↓  (사정사가 최종 리포트를 REPORTS 테이블에 등록)
-MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사정사 리포트를
+CLOSED               ← 상담 종료. 사정사 최종 리포트 확정. AI 리포트와 사정사 리포트를
                        같은 REPORTS 테이블에서 구분하는 enum 값.
 ```
 
@@ -54,7 +54,7 @@ MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사�
 | `AWAITING_INSPECTION` | `채택 대기중` | ✅ | ❌ (AI 초안 직접 접근 차단) | ❌ |
 | `AWAITING_ADOPTION` | `채택 대기중` | ✅ (계속 채택 가능) | ✅ (검수된 리포트만) | ✅ |
 | `COUNSELING` | `상담 중` | — | ✅ | ❌ |
-| `MATCHED` | `완료` | — | ✅ | ❌ |
+| `CLOSED` | `완료` | — | ✅ | ❌ |
 
 > `GET /reports` 목록 API의 `status` 쿼리 파라미터 허용값: `생성 중` / `채택 대기중` / `상담 중` / `완료`
 
@@ -279,13 +279,13 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 - **관계**: REPORT_REVIEWS 1:N REPORT_REVIEW_ISSUES, REPORT_ISSUES 1:N REPORT_REVIEW_ISSUES(nullable)
 
 ### ADJUSTER_REVIEW (사용자 평가 테이블)
-- **목적**: 매칭 완료(MATCHED) 후 사용자가 담당 사정사를 평가한 기록
+- **목적**: 매칭 완료(CLOSED) 후 사용자가 담당 사정사를 평가한 기록
 - **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시
 - **필드**: `score`(정수), `review`(텍스트)
 - **제약**: 사용자 1인 + 사정사 1인 조합으로 중복 평가 방지
 
 ### ADJUSTER_REVIEW (사용자 평가 테이블)
-- **목적**: 매칭 완료(MATCHED) 후 사용자가 담당 사정사를 평가한 기록
+- **목적**: 매칭 완료(CLOSED) 후 사용자가 담당 사정사를 평가한 기록
 - **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시
 - **필드**: `score`(정수), `review`(텍스트)
 - **제약**: 사용자 1인 + 사정사 1인 조합으로 중복 평가 방지
