@@ -91,35 +91,6 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       Pageable pageable);
 
   /**
-   * GET /reports 유저 대시보드 카드 목록(design.md §6). 채택된 제안(report_reviews.status='ACCEPTED')을
-   * LEFT JOIN해 확정 사정사·확정 견적을 붙인다. rating은 {@code adjuster_profiles.rating_mean}
-   * 비정규화 컬럼을 직접 읽는다(develop V8이 컬럼 도입 + 후기 write 시 재집계) — 매 조회마다 adjuster_reviews를
-   * 전체 GROUP BY 하던 파생 테이블 조인을 제거해 병목을 없앴다.
-   */
-  @Query(value = "SELECT r.id AS reportId, r.status AS status, r.accident_type AS accidentType, "
-      + "r.title AS title, r.created_at AS createdAt, r.case_no AS caseNo, "
-      + "r.claimed_min_amount AS claimedMinAmount, r.claimed_max_amount AS claimedMaxAmount, "
-      + "(SELECT COUNT(*) FROM report_reviews rv2 WHERE rv2.report_id = r.id) AS proposalCount, "
-      + "accepted.updated_at AS reviewedAt, "
-      + "au.nickname AS adjusterNickname, "
-      + "accepted.estimate_min_amount AS confirmedMinAmount, "
-      + "accepted.estimate_max_amount AS confirmedMaxAmount, "
-      + "ap.rating_mean AS rating "
-      + "FROM reports r "
-      + "LEFT JOIN report_reviews accepted ON accepted.report_id = r.id AND accepted.status = 'ACCEPTED' "
-      + "LEFT JOIN users au ON au.id = accepted.adjuster_id "
-      + "LEFT JOIN adjuster_profiles ap ON ap.user_id = accepted.adjuster_id "
-      + "WHERE r.user_id = :userId "
-      + "AND (:status IS NULL OR r.status = :status) "
-      + "ORDER BY r.created_at DESC",
-      countQuery = "SELECT COUNT(*) FROM reports r "
-          + "WHERE r.user_id = :userId "
-          + "AND (:status IS NULL OR r.status = :status)",
-      nativeQuery = true)
-  Page<ReportCardRow> findUserReportCards(
-      @Param("userId") UUID userId, @Param("status") String status, Pageable pageable);
-
-  /**
    * API#6 검수 대기 상세 컨텍스트 조인(의뢰인·사건 입력·보험상품/보험사).
    * diagnosis·hospitalization은 user_claims details(jsonb) 전환으로 컬럼에서 제거됨(추후 details 기반 노출).
    */
