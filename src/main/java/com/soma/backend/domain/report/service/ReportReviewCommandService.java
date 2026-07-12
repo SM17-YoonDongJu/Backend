@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.soma.backend.domain.report.dto.ReviewReportRequest;
 import com.soma.backend.domain.report.dto.ReviewReportResponse;
@@ -36,6 +37,7 @@ import com.soma.backend.global.exception.ErrorCode;
  * 검수 내용(금액·보장·쟁점·피드백)은 REPORT_REVIEWS에만 저장하고 REPORTS는 status 전이(applyReviewStart)만
  * 반영한다 — target은 클라가 지정하지 않고 현재 status에서 서버가 파생한다(A8 격리).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -94,6 +96,7 @@ public class ReportReviewCommandService {
       reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId);
     } catch (DataIntegrityViolationException ex) {
       // 동시 최초 제출: 다른 트랜잭션이 먼저 스켈레톤을 커밋했다. 멱등 처리로 무시하고 아래에서 로드한다.
+      log.debug("동시 최초 검수 스켈레톤 삽입 감지 — reportId={}, adjusterId={}", reportId, adjusterId);
     }
     return reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));

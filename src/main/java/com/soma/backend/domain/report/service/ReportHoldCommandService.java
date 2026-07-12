@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.soma.backend.domain.report.dto.HoldReportRequest;
 import com.soma.backend.domain.report.dto.HoldResponse;
@@ -23,6 +24,7 @@ import com.soma.backend.global.exception.ErrorCode;
  * 멱등하게 처리한다(동시 요청·재보류에도 500 없이 최신 사유로 갱신). 보류 사유(reason)는 필수이며,
  * reason이 {@link HoldReason#OTHER}(직접 입력)면 상세 텍스트(reasonDetail)도 필수다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -51,6 +53,7 @@ public class ReportHoldCommandService {
       reportHoldInitializer.ensureExists(reportId, adjusterId, reason, reasonDetail);
     } catch (DataIntegrityViolationException ex) {
       // 동시 최초 보류: 다른 트랜잭션이 먼저 생성했다. 멱등 처리로 무시하고 아래에서 로드해 사유를 갱신한다.
+      log.debug("동시 최초 보류 감지 — reportId={}, adjusterId={}", reportId, adjusterId);
     }
     ReportHold hold = reportHoldRepository.findByReportIdAndAdjusterId(reportId, adjusterId)
         .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));

@@ -111,7 +111,7 @@ public class AdjusterHomeQueryService {
     return new InProgressCases.Item(
         row.reportId(),
         row.caseNo(),
-        row.accidentType().getValue(),
+        row.accidentType() == null ? null : row.accidentType().getValue(),
         row.title(),
         reportStatus,
         reviewStatus,
