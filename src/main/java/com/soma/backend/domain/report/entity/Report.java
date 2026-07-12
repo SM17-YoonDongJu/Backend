@@ -106,6 +106,16 @@ public class Report extends BaseEntity {
   @Column(name = "question")
   private String question;
 
+  @Column(name = "confidence_level", length = 10)
+  private String confidenceLevel;
+
+  @Column(name = "is_masked")
+  private Boolean isMasked;
+
+  @JdbcTypeCode(SqlTypes.JSON)
+  @Column(name = "documents", columnDefinition = "jsonb")
+  private Map<String, String> documents;
+
   public AmountRange amountRange() {
     return new AmountRange(claimedMinAmount, claimedMaxAmount, offeredAmount);
   }
@@ -119,5 +129,19 @@ public class Report extends BaseEntity {
       throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
     }
     this.status = target;
+  }
+
+  /**
+   * 사정사 검수 착수/반영에 의한 상태 파생 전이. 사정사는 target을 지정하지 않고 현재 status에서 파생한다.
+   * AWAITING_INSPECTION → AWAITING_ADOPTION(착수), AWAITING_ADOPTION → 유지(재반영). 그 외(COUNSELING·CLOSED)는
+   * 검수 대상이 아니므로 400 INVALID_STATUS_TRANSITION. 검수 내용은 REPORTS가 아니라 REPORT_REVIEWS에만 저장하며,
+   * REPORTS는 이 생명주기 status 전이만 반영한다(A8 격리).
+   */
+  public void applyReviewStart() {
+    ReportStatus target = switch (status) {
+      case AWAITING_INSPECTION, AWAITING_ADOPTION -> ReportStatus.AWAITING_ADOPTION;
+      default -> throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+    };
+    applyReviewTransition(target);
   }
 }

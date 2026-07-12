@@ -20,7 +20,6 @@ import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportReviewIssue;
-import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
@@ -29,9 +28,12 @@ import com.soma.backend.global.exception.ErrorCode;
 
 /**
  * API#4 검수 반영 유스케이스. 리더 확정(★#2)에 따라 "채택 사정사" 게이팅은 수행하지 않는다.
- * role == CERTIFICATED_ADJUSTER면(@ActiveAdjuster에서 이미 검증) 허용하고, 본인 REPORT_REVIEWS 행이
- * 없으면 최초 호출 시 멱등 upsert(생성)한다. 쟁점은 ReportReview Aggregate가 소유하며,
- * reportReview.replaceIssues(...)로 교체(같은 AI 쟁점은 인플레이스 갱신)한다.
+ * role 인가(CERTIFICATED_ADJUSTER만 허용)는 컨트롤러의 {@code @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")}가
+ * 보증하므로 이 서비스는 role을 재검증하지 않는다. 본인 REPORT_REVIEWS 행이 없으면 최초 호출 시
+ * 멱등 upsert(생성)한다. 쟁점은 ReportReview Aggregate가 소유하며,
+ * reportReview.upsertIssue(...)로 부분 반영(보낸 쟁점만 갱신/추가, 삭제 없음)한다.
+ * 검수 내용(금액·보장·쟁점·피드백)은 REPORT_REVIEWS에만 저장하고 REPORTS는 status 전이(applyReviewStart)만
+ * 반영한다 — target은 클라가 지정하지 않고 현재 status에서 서버가 파생한다(A8 격리).
  */
 @Service
 @RequiredArgsConstructor
@@ -49,11 +51,10 @@ public class ReportReviewCommandService {
     Report report = reportRepository.findById(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
 
-    ReportStatus target = parseStatus(request.status());
-
     Map<UUID, ReportIssue> reportIssuesById = reportIssueRepository.findAllByReportId(reportId).stream()
         .collect(Collectors.toMap(ReportIssue::getId, issue -> issue));
 
+    // 쟁점 검증·빌드를 DB 쓰기 전에 수행 — 실패 시 조기 예외.
     List<ReportReviewIssue> desiredIssues = new ArrayList<>();
     if (request.issues() != null) {
       for (ReviewReportRequest.IssueReview issueRequest : request.issues()) {
@@ -68,25 +69,20 @@ public class ReportReviewCommandService {
     reportReview.updateReviewContent(request.estimateMinAmount(), request.estimateMaxAmount(),
         request.applicableGuarantees(), request.omittedSpecialContract(), request.basisTermsPrecedents(),
         request.review());
-    reportReview.replaceIssues(desiredIssues);
+    // 부분 반영(upsert): 보낸 쟁점만 갱신/추가, 안 보낸 쟁점은 유지(삭제 없음).
+    if (request.issues() != null) {
+      List<ReviewReportRequest.IssueReview> issueRequests = request.issues();
+      for (int idx = 0; idx < desiredIssues.size(); idx++) {
+        reportReview.upsertIssue(issueRequests.get(idx).reviewIssueId(), desiredIssues.get(idx));
+      }
+    }
     reportReviewRepository.save(reportReview);
 
-    report.applyReviewTransition(target);
+    report.applyReviewStart();
     report = reportRepository.save(report);
 
     return new ReviewReportResponse(
         report.getId(), report.getStatus().name(), reportReview.getId(), reportReview.getStatus().name());
-  }
-
-  private ReportStatus parseStatus(String status) {
-    if (!StringUtils.hasText(status)) {
-      throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
-    }
-    try {
-      return ReportStatus.valueOf(status);
-    } catch (IllegalArgumentException ex) {
-      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-    }
   }
 
   private ReportReviewIssue toReportReviewIssue(
@@ -110,7 +106,8 @@ public class ReportReviewCommandService {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
     return new ReportReviewIssue(issueRequest.issueId(), issueRequest.title(), issueRequest.description(),
-        reviewStatus, issueRequest.adjusterOpinion(), issueRequest.modifiedReason(), issueRequest.excludedReason());
+        issueRequest.impactAmount(), reviewStatus, issueRequest.adjusterOpinion(), issueRequest.modifiedReason(),
+        issueRequest.excludedReason());
   }
 
   private IssueReviewStatus parseIssueReviewStatus(String reviewStatus) {
