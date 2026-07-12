@@ -38,7 +38,7 @@ public class PendingReviewQueryService {
   private static final long SLA_DAYS = 7L;
 
   /** 마감 임박으로 간주하는 SLA 잔여 여유 기간. SLA_DAYS 이내 이 값만큼 남았으면 due_soon. */
-  private static final long DUE_SOON_WINDOW_DAYS = 2L;
+  private static final long DUE_SOON_WINDOW_DAYS = 1L;
 
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;

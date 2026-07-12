@@ -55,14 +55,14 @@ class PendingReviewQueryServiceTest {
   private PendingReviewQueryService service;
 
   @Test
-  @DisplayName("summary는 pending/due-soon 카운트를 반환하고 due-soon 기준은 now - 5일(SLA 7 - 여유 2)")
+  @DisplayName("summary는 pending/due-soon 카운트를 반환하고 due-soon 기준은 now - 6일(SLA 7 - 여유 1)")
   void summaryUsesSlaThreshold() {
     given(reportRepository.countPending()).willReturn(9L);
     given(reportRepository.countDueSoon(any(LocalDateTime.class))).willReturn(3L);
 
-    LocalDateTime before = LocalDateTime.now().minusDays(5);
+    LocalDateTime before = LocalDateTime.now().minusDays(6);
     PendingReviewSummaryResponse summary = service.getSummary();
-    LocalDateTime after = LocalDateTime.now().minusDays(5);
+    LocalDateTime after = LocalDateTime.now().minusDays(6);
 
     assertThat(summary.pendingCount()).isEqualTo(9L);
     assertThat(summary.dueSoonCount()).isEqualTo(3L);
