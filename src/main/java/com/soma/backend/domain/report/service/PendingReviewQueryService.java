@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -13,9 +14,14 @@ import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
+import com.soma.backend.domain.report.dto.ReportDetailResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
+import com.soma.backend.domain.report.repository.ReportHoldRepository;
+import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -35,6 +41,8 @@ public class PendingReviewQueryService {
   private static final long DUE_SOON_WINDOW_DAYS = 2L;
 
   private final ReportRepository reportRepository;
+  private final ReportHoldRepository reportHoldRepository;
+  private final ReportIssueRepository reportIssueRepository;
 
   public PendingReviewSummaryResponse getSummary() {
     long pendingCount = reportRepository.countPending();
@@ -50,6 +58,24 @@ public class PendingReviewQueryService {
     Page<PendingReviewRow> rows =
         reportRepository.findPendingReviewRows(status, accidentType, region, adjusterId, pageable);
     return PendingReviewListResponse.from(rows);
+  }
+
+  /**
+   * API#6 — 검수 대기 리포트의 AI 초안 상세 조회. Aggregate 로딩을 우회하고 파생 필드(region·held·개수)를
+   * 조합한다. 쟁점은 report당 소량이라 findByReportId로 조회하고, 첨부는 검수 대기 화면용이라
+   * REPORTS.documents({name:url} 비정규화 맵)에서 내린다(상세 첨부 REPORT_ATTACHMENTS는 검수 화면 API 담당).
+   */
+  public ReportDetailResponse getReportDetail(UUID reportId, UUID adjusterId) {
+    Report report =
+        reportRepository.findById(reportId).orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+    if (report.getStatus() != ReportStatus.AWAITING_INSPECTION
+        && report.getStatus() != ReportStatus.AWAITING_ADOPTION) {
+      throw new BusinessException(ErrorCode.REPORT_NOT_FOUND);
+    }
+    String region = reportRepository.findRegionByReportId(reportId);
+    boolean held = reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId);
+    List<ReportIssue> issues = reportIssueRepository.findAllByReportId(reportId);
+    return ReportDetailResponse.from(report, region, held, issues);
   }
 
   /** 잘못된 status 필터 값은 조용한 빈 결과 대신 400으로 거른다. */

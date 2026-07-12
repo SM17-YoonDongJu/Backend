@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * REPORT_ISSUES — Report Aggregate 내부 구성요소(AI 쟁점 초안). Report를 통해서만 접근한다.
- * 검수 결과 컬럼은 없다 — 사정사별 검수 결과는 REPORT_REVIEW_ISSUES로 격리한다.
+ * 검수 결과 컬럼은 없다 — 사정사별 검수 결과는 REPORT_ISSUES_REVIEWS로 격리한다.
  */
 @Entity
 @Table(name = "report_issues")

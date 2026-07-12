@@ -269,7 +269,7 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 - **목적**: 사정사가 리포트에 남기는 **고객 제공 최종 검수 내용**(의견·예상금액·보장/특약/근거 수정본). AI 초안(REPORTS)과 **별개 테이블**로 격리.
 - **생성 시점**: 사정사가 검수(PATCH /reports/{id})를 최초 반영할 때 행 upsert (채택 게이팅은 현재 미적용 — role=CERTIFICATED_ADJUSTER면 허용)
 - **격리 규칙**: 경쟁 검수 모델 — 동일 AI 초안에 여러 사정사의 REPORT_REVIEWS 행이 존재. 조회 시 반드시 `adjuster_id` 필터링. **AI 초안(REPORTS/REPORT_ISSUES)은 절대 덮어쓰지 않음.**
-- **주요 필드**: `review`(사정사 최종 의견, 고객 노출), `estimate_min_amount`/`estimate_max_amount`, `applicable_guarantees[]`/`omitted_special_contract[]`/`basis_terms_precedents[]`(사정사 수정본), `status`(SENT/CONSULTATION/NOT_SELECTED/CLOSED)
+- **주요 필드**: `review`(사정사 최종 의견, 고객 노출), `estimate_min_amount`/`estimate_max_amount`, `applicable_guarantees[]`/`omitted_special_contract[]`/`basis_terms_precedents[]`(사정사 수정본), `status`(SENT/COUNSELING/REJECTED/ACCEPTED — ERD 2026-07 정합)
 - **RAG 피드백**: AI 개선 피드백은 본 범위 제외(다음 티켓). 현재 `review`는 고객 노출 최종 의견 용도.
 
 ### REPORT_REVIEW_ISSUES (사정사별 쟁점 검수 테이블)
@@ -298,7 +298,7 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | `accident_type` | enum | `medical_indemnity, traffic, disability, cancer_diagnosis, fire, liability, other` (영문) |
-| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `MATCHED`, `CLOSED` |
+| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED` |
 | `claimed_min_amount` | bigint | 최소 청구 금액 (단정 표현 금지 — 범위로 표현) |
 | `claimed_max_amount` | bigint | 최대 청구 금액 |
 | `offered_amount` | bigint | 보험사 지급 금액 |
@@ -307,11 +307,16 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 | `basis_terms_precedents` | string[] | 근거 약관·판례 (AI 원본) |
 | `treatment` | text | 질병명 |
 | `question` | text | 사용자 질문 입력 |
+| `confidence_level` | enum | `HIGH`, `MEDIUM`, `LOW` — AI 초안 신뢰수준(nullable, AI 파이프라인 산출) |
+| `is_masked` | boolean | 본문·첨부 PII 마스킹 적용 여부(OCR 마스킹 결과 기반) |
+| `documents` | jsonb | `{name: s3_url}` 첨부 비정규화 맵 — **검수 대기 화면(API#6) 첨부 표기용**. 상세 첨부는 REPORT_ATTACHMENTS(리치) |
 | `adjuster_id` | uuid | 담당 사정사 ID (매칭 전 null) |
 
 > 쟁점은 `REPORTS.issue[]` 배열이 아니라 **REPORT_ISSUES 테이블**로 분리(AI 초안). 사정사 검수 결과는 **REPORT_REVIEW_ISSUES**(격리).
 > `region`은 REPORTS에 없음 → 검수 화면 노출 시 `USERS.region` 조인(비식별).
 > ⚠️ `POST /reports` 요청 파라미터 `accidentType`(신체/교통 명세)과 DB enum(영문) 매핑은 서버 내부 처리.
+> REPORT_ISSUES.`ai_status`: `CONFIRMED`/`TRUSTED`/`INFO` (AI 쟁점 신뢰등급, FastAPI 산출 — Spring은 읽기만).
+> REPORT_ATTACHMENTS(상세 첨부, 검수 화면 소스): `name`·`mime_type`·`url`(s3)·`report_type`·`page_count`·`issued_by`·`issued_at`·`ai_summary`·`ocr_result_id`.
 
 ### ADJUSTER_PROFILES
 | 필드 | 타입 | 설명 |

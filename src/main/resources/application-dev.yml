@@ -5,6 +5,10 @@ spring:
       hibernate:
         format_sql: true
 
+app:
+  cookie:
+    secure: false   # 로컬 http 개발용
+
 logging:
   level:
     org.hibernate.SQL: DEBUG

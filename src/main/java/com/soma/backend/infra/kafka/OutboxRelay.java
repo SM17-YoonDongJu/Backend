@@ -14,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import com.soma.backend.infra.outbox.OutboxEvent;
-import com.soma.backend.infra.outbox.OutboxRepository;
+import com.soma.backend.infra.outbox.KafkaOutboxEvent;
+import com.soma.backend.infra.outbox.KafkaOutboxRepository;
 
 /**
  * 아웃박스 릴레이. PENDING 이벤트를 고정 지연(fixedDelay) 폴링으로 조회해 Kafka로 발행한다(design.md §4).
@@ -37,20 +37,20 @@ public class OutboxRelay {
   // 브로커 응답 대기 상한 — 폴러 스레드가 무한정 블록되지 않도록 한다.
   private static final long SEND_TIMEOUT_SECONDS = 5;
 
-  private final OutboxRepository outboxRepository;
+  private final KafkaOutboxRepository outboxRepository;
   private final KafkaTemplate<String, String> kafkaTemplate;
 
   /** 이전 실행이 끝난 뒤 2초 후 재실행 — 폴링 간 최소 간격을 보장해 배치 처리가 길어져도 중첩 실행을 막는다. */
   @Scheduled(fixedDelay = 2000)
   @Transactional(timeout = 30)
   public void relay() {
-    List<OutboxEvent> events = outboxRepository.findBatchForRelay(BATCH_SIZE);
-    for (OutboxEvent event : events) {
+    List<KafkaOutboxEvent> events = outboxRepository.findBatchForRelay(BATCH_SIZE);
+    for (KafkaOutboxEvent event : events) {
       send(event);
     }
   }
 
-  private void send(OutboxEvent event) {
+  private void send(KafkaOutboxEvent event) {
     try {
       kafkaTemplate.send(event.getTopic(), event.getMessageKey(), event.getPayload())
           .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -66,7 +66,7 @@ public class OutboxRelay {
     }
   }
 
-  private void markFailed(OutboxEvent event, Exception ex) {
+  private void markFailed(KafkaOutboxEvent event, Exception ex) {
     event.markAttemptFailed(MAX_ATTEMPTS);
     log.warn("아웃박스 이벤트 발행 실패. id={}, topic={}, attempts={}",
         event.getId(), event.getTopic(), event.getAttempts(), ex);

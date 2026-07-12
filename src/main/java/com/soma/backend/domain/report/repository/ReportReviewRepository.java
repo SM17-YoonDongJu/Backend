@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +40,23 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
       + "AND rv.status = com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING")
   long countConsultationConvertedByAdjusterId(@Param("adjusterId") UUID adjusterId);
+
+  /** 홈 "진행 중인 사건" 카운트 — 요청 사정사의 미완료 검수(SENT·COUNSELING). */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
+      + "AND rv.status IN ("
+      + "com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
+      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING)")
+  long countInProgressByAdjusterId(@Param("adjusterId") UUID adjusterId);
+
+  /** 홈 "진행 중인 사건" 미리보기(top N) — 최근 작업순. Pageable로 개수를 제한한다. */
+  @Query(value = "SELECT rv.report_id AS reportId, r.case_no AS caseNo, r.accident_type AS accidentType, "
+      + "r.title AS title, r.status AS reportStatus, rv.status AS reviewStatus "
+      + "FROM report_reviews rv "
+      + "JOIN reports r ON r.id = rv.report_id "
+      + "WHERE rv.adjuster_id = :adjusterId AND rv.status IN ('SENT', 'COUNSELING') "
+      + "ORDER BY rv.created_at DESC",
+      nativeQuery = true)
+  List<InProgressCaseRow> findInProgressCases(@Param("adjusterId") UUID adjusterId, Pageable pageable);
 
   @Query(value = "SELECT rv.report_id AS reportId, r.case_no AS caseNo, r.title AS title, "
       + "r.accident_type AS accidentType, u.region AS region, rv.status AS status, "

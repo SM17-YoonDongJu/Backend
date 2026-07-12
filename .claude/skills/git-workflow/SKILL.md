@@ -1,12 +1,38 @@
 ---
 name: git-workflow
-description: "커밋·이슈·PR 워크플로우를 표준화하는 스킬. commit(Conventional Commits 강제, Co-Authored-By 추가), issue([feat]/[bug]/[chore] 템플릿 생성, 라벨 자동 태깅), PR(이슈 번호 포함 제목, 본문 템플릿, CodeRabbit 트리거 확인) 세 가지 워크플로우 제공. '커밋해줘', '이슈 만들어줘', 'PR 올려줘', '커밋하고 PR 생성해줘' 요청 시 반드시 이 스킬을 사용. springboot-dev 구현 완료 후에는 사용자 승인 시에만 실행."
+description: "커밋·이슈·PR 워크플로우를 표준화하는 스킬. commit(Conventional Commits 강제, Co-Authored-By 추가), issue([feat]/[bug]/[chore] 템플릿 생성, 라벨 자동 태깅), PR(이슈 번호 포함 제목, 본문 템플릿, CodeRabbit 트리거 확인) 세 가지 워크플로우 제공. 이슈·PR 본문의 자유 서술 부분은 생성 직전 Humanize KR(humanize-korean@im-not-ai)로 다듬어 'AI가 쓴 티'를 제거. '커밋해줘', '이슈 만들어줘', 'PR 올려줘', '커밋하고 PR 생성해줘' 요청 시 반드시 이 스킬을 사용. springboot-dev 구현 완료 후에는 사용자 승인 시에만 실행."
 ---
 
 # Git Workflow — commit · issue · PR 표준화
 
 commit / issue / PR 세 가지 워크플로우를 표준화한다.
 요청 내용에 따라 해당 워크플로우만 실행한다.
+
+---
+
+## 공통: 본문 humanize (이슈·PR 생성 직전 필수)
+
+이슈·PR **본문의 자유 서술 부분**은 `gh` 명령으로 생성하기 직전에 반드시 humanize를 거쳐
+"AI가 쓴 티"(번역투·기계적 병렬구조·과도한 영문 병기·로봇 같은 표현)를 걷어낸 뒤 사용한다.
+Humanize KR 플러그인(`humanize-korean@im-not-ai`)이 설치되어 있으면 그 기능을 쓴다.
+
+**대상 / 비대상:**
+
+| 대상 (humanize) | 비대상 (그대로 유지) |
+|-----------------|---------------------|
+| 이슈: `## 배경` 설명 | 체크박스 항목(`- [ ] ...`)의 구조 |
+| PR: `## Summary`, `## 변경 내역` 서술 | `## 체크리스트`의 고정 항목 |
+| 자유롭게 풀어 쓴 한국어 문단 | `Closes #<번호>`, 라벨, 링크, 코드·경로 |
+
+**절차:**
+1. 위 템플릿대로 본문 초안을 작성한다.
+2. 자유 서술 부분만 humanize 플러그인에 통과시킨다.
+   - 플러그인 설치 시: `/humanize <서술 텍스트>` (또는 "이 글 자연스럽게 윤문해줘")
+   - 미설치 시: 사용자에게 설치를 1회 안내하고
+     (`/plugin marketplace add epoko77-ai/im-not-ai` → `/plugin install humanize-korean@im-not-ai`),
+     이번에는 건너뛰거나 수동으로 문장을 다듬어 진행한다.
+3. 내용(사실·수치·범위)은 바꾸지 않는다 — 표현·리듬만 자연스럽게 다듬는다.
+4. 다듬은 서술을 템플릿의 정형 구조에 다시 끼워 넣어 최종 본문을 완성한 뒤 `gh` 명령으로 생성한다.
 
 ---
 
@@ -99,6 +125,8 @@ EOF
 
 ### B-3. 이슈 생성
 
+> 먼저 [공통: 본문 humanize](#공통-본문-humanize-이슈pr-생성-직전-필수)에 따라 `## 배경` 서술을 다듬은 뒤 아래를 실행한다.
+
 ```bash
 gh issue create \
   --title "[<type>] <설명>" \
@@ -183,6 +211,8 @@ hotfix/*  → main + develop (긴급 수정)
 연결된 이슈가 없으면 이슈 번호 생략.
 
 ### C-3. PR 생성
+
+> 먼저 [공통: 본문 humanize](#공통-본문-humanize-이슈pr-생성-직전-필수)에 따라 `## Summary`·`## 변경 내역` 서술을 다듬은 뒤 아래를 실행한다.
 
 ```bash
 gh pr create \

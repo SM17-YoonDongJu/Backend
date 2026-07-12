@@ -1,6 +1,7 @@
 package com.soma.backend.global.security;
 
 import java.io.IOException;
+import java.util.UUID;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
@@ -19,7 +20,9 @@ import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.json.JsonMapper;
 
 import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.exception.ErrorResponse;
+import com.soma.backend.infra.redis.TokenBlacklistRepository;
 
 @Component
 @RequiredArgsConstructor
@@ -27,9 +30,21 @@ public class JwtFilter extends OncePerRequestFilter {
 
   private static final String AUTH_HEADER = "Authorization";
   private static final String BEARER_PREFIX = "Bearer ";
+  private static final String AUTH_PATH_PREFIX = "/auth/";
 
   private final JwtProvider jwtProvider;
   private final JsonMapper jsonMapper;
+  private final CookieProvider cookieProvider;
+  private final TokenBlacklistRepository tokenBlacklistRepository;
+
+  /**
+   * {@code /auth/**} 경로는 access 토큰 검증을 건너뛴다. 재발급·로그아웃 요청에 만료된 access 쿠키가
+   * 딸려와도 EXPIRED_TOKEN으로 막히면 안 되기 때문이다(해당 경로는 refresh 쿠키로 동작).
+   */
+  @Override
+  protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+    return request.getServletPath().startsWith(AUTH_PATH_PREFIX);
+  }
 
   @Override
   protected void doFilterInternal(
@@ -41,9 +56,11 @@ public class JwtFilter extends OncePerRequestFilter {
     if (token != null) {
       try {
         jwtProvider.validate(token);
-        CustomUserDetails userDetails = new CustomUserDetails(
-            jwtProvider.getUserId(token),
-            jwtProvider.getRole(token));
+        UUID userId = jwtProvider.getUserId(token);
+        if (tokenBlacklistRepository.isBlacklisted(userId)) {
+          throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
+        CustomUserDetails userDetails = new CustomUserDetails(userId, jwtProvider.getRole(token));
         UsernamePasswordAuthenticationToken authentication =
             new UsernamePasswordAuthenticationToken(
                 userDetails, null, userDetails.getAuthorities());
@@ -70,6 +87,8 @@ public class JwtFilter extends OncePerRequestFilter {
     if (StringUtils.hasText(header) && header.startsWith(BEARER_PREFIX)) {
       return header.substring(BEARER_PREFIX.length());
     }
-    return null;
+    return cookieProvider.readCookie(request, CookieProvider.ACCESS_TOKEN_COOKIE)
+        .filter(StringUtils::hasText)
+        .orElse(null);
   }
 }

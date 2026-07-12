@@ -97,4 +97,40 @@ class ReportTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
   }
+
+  @Test
+  @DisplayName("applyReviewStart: AWAITING_INSPECTION은 착수로 AWAITING_ADOPTION으로 파생 전이된다")
+  void reviewStartFromInspection() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+
+    report.applyReviewStart();
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+  }
+
+  @Test
+  @DisplayName("applyReviewStart: 이미 AWAITING_ADOPTION이면 상태를 그대로 유지한다")
+  void reviewStartKeepsAdoption() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+
+    report.applyReviewStart();
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+  }
+
+  @Test
+  @DisplayName("applyReviewStart: COUNSELING·CLOSED는 검수 대상이 아니므로 INVALID_STATUS_TRANSITION")
+  void reviewStartRejectsNonReviewable() {
+    Report counseling = reportWithStatus(ReportStatus.COUNSELING);
+    assertThatThrownBy(counseling::applyReviewStart)
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+
+    Report closed = reportWithStatus(ReportStatus.CLOSED);
+    assertThatThrownBy(closed::applyReviewStart)
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+  }
 }

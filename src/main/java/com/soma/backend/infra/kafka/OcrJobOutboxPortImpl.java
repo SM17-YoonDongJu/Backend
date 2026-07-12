@@ -7,11 +7,11 @@ import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.json.JsonMapper;
 
-import com.soma.backend.infra.outbox.OutboxEvent;
-import com.soma.backend.infra.outbox.OutboxRepository;
+import com.soma.backend.infra.outbox.KafkaOutboxEvent;
+import com.soma.backend.infra.outbox.KafkaOutboxRepository;
 
 /**
- * {@link OcrJobOutboxPort} 구현체. OcrJob을 JSON 문자열로 직렬화해 OutboxEvent로 저장한다.
+ * {@link OcrJobOutboxPort} 구현체. OcrJob을 JSON 문자열로 직렬화해 KafkaOutboxEvent로 저장한다.
  * 이 메서드는 Kafka를 직접 호출하지 않는다 — 발행은 {@link OutboxRelay}가 별도 스케줄로 폴링해 수행한다
  * (Kafka 브로커 장애가 리포트 생성 트랜잭션에 영향을 주지 않도록 분리).
  * JsonMapper는 Spring Boot가 자동 구성한 전역 Bean을 그대로 재사용한다 — application.yml의
@@ -26,13 +26,13 @@ public class OcrJobOutboxPortImpl implements OcrJobOutboxPort {
   private static final String TOPIC = "ocr-job-queue";
   private static final String AGGREGATE_TYPE = "OCR_JOB";
 
-  private final OutboxRepository outboxRepository;
+  private final KafkaOutboxRepository outboxRepository;
   private final JsonMapper jsonMapper;
 
   @Override
   public void enqueue(OcrJob job) {
     String payload = jsonMapper.writeValueAsString(job);
     UUID aggregateId = job.claimId() != null ? UUID.fromString(job.claimId()) : null;
-    outboxRepository.save(OutboxEvent.pending(AGGREGATE_TYPE, aggregateId, TOPIC, job.jobId(), payload));
+    outboxRepository.save(KafkaOutboxEvent.pending(AGGREGATE_TYPE, aggregateId, TOPIC, job.jobId(), payload));
   }
 }

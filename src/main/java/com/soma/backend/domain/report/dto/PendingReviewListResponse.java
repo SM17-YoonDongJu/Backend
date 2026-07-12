@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.dto;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,7 +31,8 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
       Long offeredAmount,
       long offerHeadroom,
       long issueCount,
-      boolean held) {
+      boolean held,
+      LocalDateTime createdAt) {
 
     public static Item from(PendingReviewRow row) {
       long offerHeadroom = new AmountRange(
@@ -49,7 +51,8 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
           row.getOfferedAmount(),
           offerHeadroom,
           issueCount,
-          held);
+          held,
+          row.getCreatedAt());
     }
   }
 }

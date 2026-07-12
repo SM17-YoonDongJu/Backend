@@ -9,7 +9,7 @@ import java.lang.annotation.Target;
 /**
  * 컨트롤러 메서드 파라미터에 현재 로그인한 사용자의 userId(UUID)를 주입한다.
  *
- * <p>{@link ActiveAdjuster}와 달리 역할(role) 제한 없이 로그인 여부만 검사한다.
+ * <p>역할(role) 제한 없이 로그인 여부만 검사한다.
  *
  * <p>주입 과정에서 다음 인가 가드를 수행한다.
  * <ul>

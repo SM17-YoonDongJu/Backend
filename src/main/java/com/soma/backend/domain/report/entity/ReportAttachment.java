@@ -13,9 +13,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * REPORT_ISSUES와 마찬가지로 Report Aggregate에 속한 첨부 진단서 메타데이터(design.md §3).
- * 바이너리는 S3에 저장하고 이 엔티티는 key/URL만 보관한다. pageCount·issuedBy·issuedAt·aiSummary·
- * ocrResultId는 OCR 처리(FastAPI consumer) 이후 채워지는 필드라 생성 시점({@link #of})에는 비워둔다.
+ * REPORT_ATTACHMENTS — Report Aggregate에 속한 첨부 진단서 메타데이터(design.md §3). 바이너리는 S3에 저장하고
+ * 이 엔티티는 key/URL만 보관한다. pageCount·issuedBy·issuedAt·aiSummary·ocrResultId는 OCR 처리(FastAPI consumer)
+ * 이후 채워지는 필드라 생성 시점({@link #of})에는 비워둔다.
  */
 @Entity
 @Table(name = "report_attachments")
@@ -30,10 +30,10 @@ public class ReportAttachment extends CreatedAtEntity {
   @Column(name = "report_id", nullable = false)
   private UUID reportId;
 
-  @Column(name = "name")
+  @Column(name = "name", length = 255)
   private String name;
 
-  @Column(name = "mime_type")
+  @Column(name = "mime_type", length = 100)
   private String mimeType;
 
   @Column(name = "url")
@@ -45,7 +45,7 @@ public class ReportAttachment extends CreatedAtEntity {
   @Column(name = "page_count")
   private Integer pageCount;
 
-  @Column(name = "issued_by")
+  @Column(name = "issued_by", length = 255)
   private String issuedBy;
 
   @Column(name = "issued_at")

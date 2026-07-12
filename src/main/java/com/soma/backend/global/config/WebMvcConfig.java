@@ -8,22 +8,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import lombok.RequiredArgsConstructor;
 
-import com.soma.backend.global.security.ActiveAdjusterArgumentResolver;
 import com.soma.backend.global.security.CurrentUserIdArgumentResolver;
 
 /**
- * Spring MVC 전역 설정. 커스텀 ArgumentResolver를 등록한다.
+ * Spring MVC 전역 설정. {@code @CurrentUserId} 커스텀 ArgumentResolver를 등록한다.
+ * (ActiveAdjuster 리졸버는 develop OAuth2 전환에서 제거됨 — 권한 검사는 Security/@AuthenticationPrincipal로 이동.)
  */
 @Configuration
 @RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
 
-  private final ActiveAdjusterArgumentResolver activeAdjusterArgumentResolver;
   private final CurrentUserIdArgumentResolver currentUserIdArgumentResolver;
 
   @Override
   public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
-    resolvers.add(activeAdjusterArgumentResolver);
     resolvers.add(currentUserIdArgumentResolver);
   }
 }

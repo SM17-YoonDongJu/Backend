@@ -10,6 +10,10 @@ public record ApiResponse<T>(String status, String message, T data) {
     return new ApiResponse<>("200", message, data);
   }
 
+  public static <T> ApiResponse<T> created(String message, T data) {
+    return new ApiResponse<>("201", message, data);
+  }
+
   public static ApiResponse<Void> ok() {
     return new ApiResponse<>("200", "정상 처리되었습니다.", null);
   }

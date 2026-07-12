@@ -17,7 +17,7 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 
 ## 작업 원칙
 - spring-security-impl 스킬을 참조한다
-- Refresh Token은 RTR(Refresh Token Rotation) 적용 — 재발급마다 기존 토큰 무효화
+- Refresh Token은 RTR(Refresh Token Rotation) 적용 — 재발급은 Lua 원자적 CAS(`rotate(userId, oldToken, newToken)`)로 저장값 대조·교체를 한 번에 수행, 동시 재발급 경쟁 창 없음
 - Redis는 JWT Refresh Token 저장 전용. Redis 키는 `refresh:{userId}` 단일 패턴만 사용
 - OAuth2 Client ID·Secret·Redirect URI는 환경변수로 관리, 코드 하드코딩 금지
 - CORS 설정은 dev/prod 프로파일로 분리
@@ -25,9 +25,9 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 
 ## Redis 담당 범위
 - `refresh:{userId}` — Refresh Token 값, TTL = RT 만료 시간
-- RTR: `/api/auth/reissue` 호출 시 기존 키 삭제 + 새 값 저장
+- RTR: `/api/auth/reissue` 호출 시 `rotate` Lua 스크립트로 `GET`→비교→`SET`(PX)/`DEL` 원자 수행 — `RotateResult` ROTATED/NOT_FOUND/MISMATCH 반환
 - 로그아웃: `refresh:{userId}` 즉시 삭제
-- 탈취 감지: Redis에 없는 RT 사용 시 401 반환
+- 탈취/재사용 감지: 저장값 없음(NOT_FOUND) → 401, 저장값 불일치(MISMATCH, 이미 회전됨) → Lua가 키 삭제 후 401
 
 ## 입력/출력 프로토콜
 - 입력: `_workspace/01_analyst/design.md` (권한 정의 섹션)
