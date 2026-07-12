@@ -21,17 +21,22 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.soma.backend.domain.report.dto.ReviewWorkspaceResponse;
+import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.IssueReviewStatus;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportReviewIssue;
 import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.UserClaim;
+import com.soma.backend.domain.report.entity.claim.ClaimDetails;
+import com.soma.backend.domain.report.entity.claim.Hospitalization;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.ReviewContextRow;
+import com.soma.backend.domain.report.repository.UserClaimRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
@@ -47,26 +52,32 @@ class ReviewWorkspaceQueryServiceTest {
   private ReportReviewRepository reportReviewRepository;
   @Mock
   private ReportAttachmentRepository reportAttachmentRepository;
+  @Mock
+  private UserClaimRepository userClaimRepository;
 
   @InjectMocks
   private ReviewWorkspaceQueryService service;
 
   private UUID reportId;
   private UUID adjusterId;
+  private UUID claimId;
 
   @BeforeEach
   void setUp() {
     reportId = UUID.randomUUID();
     adjusterId = UUID.randomUUID();
+    claimId = UUID.randomUUID();
   }
 
   @Test
   @DisplayName("작업본 없음: 보장·예상보상은 AI(reports)에서 오고 started=false, 쟁점은 AI 원본만(오버레이 null)")
   void notStartedUsesAiDraft() {
     Report report = report();
+    ReflectionTestUtils.setField(report, "claimId", claimId);
     ReportIssue aiIssue = issue("장해등급 과소 산정 가능");
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportRepository.findReviewContext(reportId)).willReturn(context());
+    given(userClaimRepository.findById(claimId)).willReturn(Optional.of(claim()));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(aiIssue));
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(Optional.empty());
     given(reportAttachmentRepository.findAllByReportId(reportId)).willReturn(List.of());
@@ -85,6 +96,8 @@ class ReviewWorkspaceQueryServiceTest {
     assertThat(result.progress().total()).isEqualTo(1);
     assertThat(result.progress().accepted()).isZero();
     assertThat(result.client().nickname()).isEqualTo("운수");
+    assertThat(result.claim().diagnosis()).containsExactly("후방십자인대 파열");
+    assertThat(result.claim().hospitalizations()).hasSize(1);
   }
 
   @Test
@@ -226,5 +239,14 @@ class ReviewWorkspaceQueryServiceTest {
         return "OO손해보험";
       }
     };
+  }
+
+  private UserClaim claim() {
+    UserClaim claim = BeanUtils.instantiateClass(UserClaim.class);
+    ReflectionTestUtils.setField(claim, "id", claimId);
+    ReflectionTestUtils.setField(claim, "details",
+        ClaimDetails.of(AccidentType.TRAFFIC, List.of("후방십자인대 파열"),
+            List.of(new Hospitalization(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 10), "수술 및 입원"))));
+    return claim;
   }
 }
