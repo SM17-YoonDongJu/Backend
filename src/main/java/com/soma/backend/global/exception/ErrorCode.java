@@ -44,6 +44,7 @@ public enum ErrorCode {
 
   // Auth (도메인 특화)
   REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰을 찾을 수 없습니다."),
+  UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 소셜 로그인 제공자입니다."),
 
   // Adjuster (도메인 특화)
   ADJUSTER_NOT_FOUND(HttpStatus.NOT_FOUND, "손해사정사를 찾을 수 없습니다."),
