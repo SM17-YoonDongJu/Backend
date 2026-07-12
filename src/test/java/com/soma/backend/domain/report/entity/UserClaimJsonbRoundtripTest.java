@@ -43,7 +43,9 @@ class UserClaimJsonbRoundtripTest {
     // Hibernate 세션 커넥션에 직접 INSERT해 아래 flush와 동일 트랜잭션·커넥션임을 보장한다.
     // TODO: 회원(user) 도메인의 User 엔티티가 개발되면 userRepository.save(user)로 교체.
     entityManager.unwrap(Session.class).doWork(connection -> {
-      try (PreparedStatement ps = connection.prepareStatement("INSERT INTO users (id, role) VALUES (?, 'USER')")) {
+      String insertUser = "INSERT INTO users (id, role, nickname, birth_date, gender) "
+          + "VALUES (?, 'USER', '테스트유저', DATE '2000-01-01', '')";
+      try (PreparedStatement ps = connection.prepareStatement(insertUser)) {
         ps.setObject(1, userId);
         ps.executeUpdate();
       }
