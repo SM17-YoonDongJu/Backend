@@ -15,7 +15,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 import com.soma.backend.infra.redis.RefreshTokenRepository;
 import com.soma.backend.infra.redis.TokenBlacklistRepository;
-import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
 
 /**
  * 아웃박스 poller. 커밋된 PENDING 이벤트를 주기적으로 집어 외부 부수효과를 처리하고, 실패 시 지수 백오프로
@@ -32,7 +31,6 @@ public class OutboxProcessor {
   private final JsonMapper jsonMapper;
   private final RefreshTokenRepository refreshTokenRepository;
   private final TokenBlacklistRepository tokenBlacklistRepository;
-  private final WithdrawalLedgerRepository withdrawalLedgerRepository;
 
   @Value("${app.outbox.batch-size:50}")
   private int batchSize;
@@ -77,8 +75,5 @@ public class OutboxProcessor {
     AuthCleanupPayload payload = jsonMapper.readValue(payloadJson, AuthCleanupPayload.class);
     refreshTokenRepository.delete(payload.userId());
     tokenBlacklistRepository.blacklist(payload.userId());
-    for (SocialIdentity social : payload.socials()) {
-      withdrawalLedgerRepository.record(social.provider(), social.providerUserId());
-    }
   }
 }

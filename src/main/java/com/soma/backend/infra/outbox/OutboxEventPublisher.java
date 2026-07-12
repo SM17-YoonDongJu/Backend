@@ -1,7 +1,6 @@
 package com.soma.backend.infra.outbox;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Component;
@@ -24,11 +23,11 @@ public class OutboxEventPublisher {
   private final JsonMapper jsonMapper;
 
   /**
-   * 회원 탈퇴 후처리(Refresh 삭제·blacklist 등록·탈퇴 원장 기록) 이벤트를 적재한다. 호출자의 트랜잭션에
+   * 회원 탈퇴 후처리(Refresh 삭제·blacklist 등록) 이벤트를 적재한다. 호출자의 트랜잭션에
    * 참여하므로, 탈퇴 커밋이 성공한 경우에만 이벤트가 남는다.
    */
-  public void publishAuthCleanup(UUID userId, List<SocialIdentity> socials) {
-    AuthCleanupPayload payload = new AuthCleanupPayload(userId, socials);
+  public void publishAuthCleanup(UUID userId) {
+    AuthCleanupPayload payload = new AuthCleanupPayload(userId);
     String json = jsonMapper.writeValueAsString(payload);
     outboxEventRepository.save(
         OutboxEvent.of(AGGREGATE_USER, userId, EVENT_AUTH_CLEANUP, json, LocalDateTime.now()));
