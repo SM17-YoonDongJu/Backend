@@ -4,16 +4,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.soma.backend.domain.report.entity.Report;
 
-/** Report Aggregate Spring Data JPA 리포지토리 + 목록/요약 조회 전용 파생 쿼리(N+1 방지). */
-public interface ReportRepository extends JpaRepository<Report, UUID> {
+/**
+ * Report Aggregate Spring Data JPA 리포지토리 + 요약/카운트 조회.
+ * 동적 목록 조회는 {@link ReportRepositoryCustom}(QueryDSL)에서 구현한다.
+ */
+public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRepositoryCustom {
 
   List<Report> findAllByIdIn(List<UUID> ids);
 
@@ -34,9 +35,20 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       + "AND r.createdAt >= :newThreshold")
   long countPendingPoolNew(@Param("newThreshold") LocalDateTime newThreshold);
 
-  /**
-   * 홈 헤더·요약 카드용 사정사 비정규화 정보. name은 adjuster_profiles.name 우선(없으면 nickname),
-   * 누적 검수·상담·평점은 adjuster_profiles 비정규화 컬럼에서 읽는다.
+  @Query("SELECT COUNT(r) FROM Report r "
+      + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
+      + "AND r.createdAt <= :dueSoonThreshold")
+  long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
+
+  /** 리포트 의뢰인의 지역(users.region). 매핑된 엔티티 간 조인이라 JPQL 스칼라 조회로 충분하다. */
+  @Query("SELECT u.region FROM User u, Report r WHERE u.id = r.userId AND r.id = :reportId")
+  String findRegionByReportId(@Param("reportId") UUID reportId);
+
+  /*
+   * 아래 2건은 아직 엔티티로 모델링되지 않은 테이블을 조인하는 읽기 전용 projection이라 QueryDSL로 표현할 수 없다.
+   * 하네스의 native query 금지 규칙에 대한 '문서화된 예외'로 유지한다(해당 도메인 모델링 시 QueryDSL로 전환):
+   *   - findAdjusterIdentity : adjuster_profiles (미매핑)
+   *   - findReviewContext    : user_claims / insurance_products / insurers (미매핑)
    */
   @Query(value = "SELECT COALESCE(ap.name, u.nickname) AS name, u.avatar_url AS avatarUrl, "
       + "ap.cases_reviewed AS casesReviewed, ap.completed_consult_count AS completedConsultCount, "
@@ -44,41 +56,6 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       + "FROM users u LEFT JOIN adjuster_profiles ap ON ap.user_id = u.id WHERE u.id = :userId",
       nativeQuery = true)
   AdjusterIdentityRow findAdjusterIdentity(@Param("userId") UUID userId);
-
-  @Query("SELECT COUNT(r) FROM Report r "
-      + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
-      + "AND r.createdAt <= :dueSoonThreshold")
-  long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
-
-  @Query(value = "SELECT u.region FROM users u JOIN reports r ON r.user_id = u.id WHERE r.id = :reportId",
-      nativeQuery = true)
-  String findRegionByReportId(@Param("reportId") UUID reportId);
-
-  @Query(value = "SELECT r.id AS reportId, r.case_no AS caseNo, r.title AS title, "
-      + "r.accident_type AS accidentType, u.region AS region, r.status AS status, "
-      + "r.created_at AS createdAt, "
-      + "r.claimed_min_amount AS claimedMinAmount, r.claimed_max_amount AS claimedMaxAmount, "
-      + "r.offered_amount AS offeredAmount, "
-      + "(SELECT COUNT(*) FROM report_issues ri WHERE ri.report_id = r.id) AS issueCount, "
-      + "EXISTS(SELECT 1 FROM report_holds rh WHERE rh.report_id = r.id AND rh.adjuster_id = :adjusterId) AS held "
-      + "FROM reports r "
-      + "JOIN users u ON u.id = r.user_id "
-      + "WHERE (:status IS NULL OR r.status = :status) "
-      + "AND (:accidentType IS NULL OR r.accident_type = :accidentType) "
-      + "AND (:region IS NULL OR u.region = :region) "
-      + "ORDER BY r.created_at DESC",
-      countQuery = "SELECT COUNT(*) FROM reports r "
-          + "JOIN users u ON u.id = r.user_id "
-          + "WHERE (:status IS NULL OR r.status = :status) "
-          + "AND (:accidentType IS NULL OR r.accident_type = :accidentType) "
-          + "AND (:region IS NULL OR u.region = :region)",
-      nativeQuery = true)
-  Page<PendingReviewRow> findPendingReviewRows(
-      @Param("status") String status,
-      @Param("accidentType") String accidentType,
-      @Param("region") String region,
-      @Param("adjusterId") UUID adjusterId,
-      Pageable pageable);
 
   @Query(value = "SELECT u.nickname AS nickname, u.gender AS gender, u.birth_date AS birthDate, "
       + "u.region AS region, u.created_at AS joinedAt, "

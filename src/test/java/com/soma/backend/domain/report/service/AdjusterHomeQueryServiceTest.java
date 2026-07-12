@@ -20,6 +20,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 
 import com.soma.backend.domain.report.dto.AdjusterHomeResponse;
+import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.AdjusterIdentityRow;
 import com.soma.backend.domain.report.repository.InProgressCaseRow;
 import com.soma.backend.domain.report.repository.ReportRepository;
@@ -191,37 +194,8 @@ class AdjusterHomeQueryServiceTest {
   }
 
   private static InProgressCaseRow inProgressRow(String reportStatus, String reviewStatus) {
-    UUID reportId = UUID.randomUUID();
-    return new InProgressCaseRow() {
-      @Override
-      public UUID getReportId() {
-        return reportId;
-      }
-
-      @Override
-      public String getCaseNo() {
-        return "20260528-022";
-      }
-
-      @Override
-      public String getAccidentType() {
-        return "disability";
-      }
-
-      @Override
-      public String getTitle() {
-        return "장해등급 재산정 의견 작성 중";
-      }
-
-      @Override
-      public String getReportStatus() {
-        return reportStatus;
-      }
-
-      @Override
-      public String getReviewStatus() {
-        return reviewStatus;
-      }
-    };
+    return new InProgressCaseRow(
+        UUID.randomUUID(), "20260528-022", AccidentType.DISABILITY, "장해등급 재산정 의견 작성 중",
+        ReportStatus.valueOf(reportStatus), ReviewStatus.valueOf(reviewStatus));
   }
 }

@@ -48,6 +48,8 @@ class ReportReviewCommandServiceTest {
   private ReportReviewRepository reportReviewRepository;
   @Mock
   private ReportIssueRepository reportIssueRepository;
+  @Mock
+  private ReportReviewSkeletonInitializer reportReviewSkeletonInitializer;
 
   @InjectMocks
   private ReportReviewCommandService service;
@@ -201,7 +203,7 @@ class ReportReviewCommandServiceTest {
     assertThat(review.getIssues()).hasSize(1);
     assertThat(review.getIssues().get(0).getTitle()).isEqualTo("신규 쟁점 제목");
     assertThat(review.getIssues().get(0).getImpactAmount()).isEqualTo(1_500_000L);
-    verify(reportReviewRepository).insertIfAbsent(reportId, adjusterId);
+    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
   }
 
@@ -255,7 +257,7 @@ class ReportReviewCommandServiceTest {
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
     assertThat(review.getIssues()).hasSize(1);
-    verify(reportReviewRepository).insertIfAbsent(reportId, adjusterId);
+    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
     verify(reportRepository).save(report);
   }

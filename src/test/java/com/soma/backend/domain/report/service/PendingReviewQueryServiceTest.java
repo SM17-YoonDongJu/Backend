@@ -189,66 +189,8 @@ class PendingReviewQueryServiceTest {
 
   private static PendingReviewRow row(
       UUID reportId, Long claimedMin, Long claimedMax, Long offered, Long issueCount, Boolean held) {
-    return new PendingReviewRow() {
-      @Override
-      public UUID getReportId() {
-        return reportId;
-      }
-
-      @Override
-      public String getCaseNo() {
-        return "CASE-1";
-      }
-
-      @Override
-      public String getTitle() {
-        return "제목";
-      }
-
-      @Override
-      public String getAccidentType() {
-        return "질병";
-      }
-
-      @Override
-      public String getRegion() {
-        return "서울";
-      }
-
-      @Override
-      public String getStatus() {
-        return "AWAITING_INSPECTION";
-      }
-
-      @Override
-      public Long getClaimedMinAmount() {
-        return claimedMin;
-      }
-
-      @Override
-      public Long getClaimedMaxAmount() {
-        return claimedMax;
-      }
-
-      @Override
-      public Long getOfferedAmount() {
-        return offered;
-      }
-
-      @Override
-      public Long getIssueCount() {
-        return issueCount;
-      }
-
-      @Override
-      public Boolean getHeld() {
-        return held;
-      }
-
-      @Override
-      public LocalDateTime getCreatedAt() {
-        return LocalDateTime.of(2026, 5, 31, 9, 0);
-      }
-    };
+    return new PendingReviewRow(
+        reportId, "CASE-1", "제목", AccidentType.DISABILITY, "서울", ReportStatus.AWAITING_INSPECTION,
+        claimedMin, claimedMax, offered, issueCount, held, LocalDateTime.of(2026, 5, 31, 9, 0));
   }
 }

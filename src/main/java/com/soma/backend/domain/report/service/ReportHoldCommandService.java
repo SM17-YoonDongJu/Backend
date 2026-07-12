@@ -2,6 +2,7 @@ package com.soma.backend.domain.report.service;
 
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -11,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import com.soma.backend.domain.report.dto.HoldReportRequest;
 import com.soma.backend.domain.report.dto.HoldResponse;
 import com.soma.backend.domain.report.entity.HoldReason;
+import com.soma.backend.domain.report.entity.ReportHold;
 import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -28,14 +30,31 @@ public class ReportHoldCommandService {
 
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;
+  private final ReportHoldInitializer reportHoldInitializer;
 
   /** 보류 추가(멱등). 이미 보류 중이어도 최신 사유로 갱신하고 held=true. */
   public HoldResponse addHold(UUID reportId, UUID adjusterId, HoldReportRequest request) {
     requireReport(reportId);
     HoldReason reason = parseReason(request.reason());
     String reasonDetail = resolveReasonDetail(reason, request.reasonDetail());
-    reportHoldRepository.upsertHold(reportId, adjusterId, reason.name(), reasonDetail);
+    upsertHold(reportId, adjusterId, reason, reasonDetail);
     return new HoldResponse(reportId, true, reason.name(), reasonDetail);
+  }
+
+  /**
+   * 보류를 멱등하게 확보하고 최신 사유로 갱신한다. 없으면 별도 트랜잭션에서 생성하고, 있으면(또는 방금 생성했으면)
+   * 관리 엔티티를 로드해 사유를 갱신한다(dirty checking). 동시 최초 보류로 UK가 충돌하면
+   * REQUIRES_NEW 트랜잭션에서만 롤백되어 {@link DataIntegrityViolationException}으로 전파되며, 이를 멱등으로 흡수한다.
+   */
+  private void upsertHold(UUID reportId, UUID adjusterId, HoldReason reason, String reasonDetail) {
+    try {
+      reportHoldInitializer.ensureExists(reportId, adjusterId, reason, reasonDetail);
+    } catch (DataIntegrityViolationException ex) {
+      // 동시 최초 보류: 다른 트랜잭션이 먼저 생성했다. 멱등 처리로 무시하고 아래에서 로드해 사유를 갱신한다.
+    }
+    ReportHold hold = reportHoldRepository.findByReportIdAndAdjusterId(reportId, adjusterId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));
+    hold.updateReason(reason, reasonDetail);
   }
 
   private void requireReport(UUID reportId) {

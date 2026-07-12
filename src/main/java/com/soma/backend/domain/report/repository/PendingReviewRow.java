@@ -3,31 +3,21 @@ package com.soma.backend.domain.report.repository;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/** API#1·#2 검수 대기 목록 네이티브 쿼리 프로젝션. */
-public interface PendingReviewRow {
+import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.ReportStatus;
 
-  UUID getReportId();
-
-  String getCaseNo();
-
-  String getTitle();
-
-  String getAccidentType();
-
-  String getRegion();
-
-  String getStatus();
-
-  Long getClaimedMinAmount();
-
-  Long getClaimedMaxAmount();
-
-  Long getOfferedAmount();
-
-  Long getIssueCount();
-
-  Boolean getHeld();
-
-  /** 접수 시각(REPORTS.created_at). 프론트가 마감 라벨(오늘 마감/N일 남음)을 이 값으로 계산한다. */
-  LocalDateTime getCreatedAt();
+/** API#1·#2 검수 대기 목록 조회 프로젝션(QueryDSL). issueCount·held는 상관 서브쿼리로 채운다. */
+public record PendingReviewRow(
+    UUID reportId,
+    String caseNo,
+    String title,
+    AccidentType accidentType,
+    String region,
+    ReportStatus status,
+    Long claimedMinAmount,
+    Long claimedMaxAmount,
+    Long offeredAmount,
+    Long issueCount,
+    Boolean held,
+    LocalDateTime createdAt) {
 }

@@ -106,15 +106,17 @@ public class AdjusterHomeQueryService {
   }
 
   private InProgressCases.Item toInProgressItem(InProgressCaseRow row) {
+    String reportStatus = row.reportStatus().name();
+    String reviewStatus = row.reviewStatus().name();
     return new InProgressCases.Item(
-        row.getReportId(),
-        row.getCaseNo(),
-        row.getAccidentType(),
-        row.getTitle(),
-        row.getReportStatus(),
-        row.getReviewStatus(),
-        stageLabel(row.getReportStatus(), row.getReviewStatus()),
-        progressPercent(row.getReviewStatus()));
+        row.reportId(),
+        row.caseNo(),
+        row.accidentType().getValue(),
+        row.title(),
+        reportStatus,
+        reviewStatus,
+        stageLabel(reportStatus, reviewStatus),
+        progressPercent(reviewStatus));
   }
 
   /**

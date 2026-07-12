@@ -53,10 +53,10 @@ public class PendingReviewQueryService {
 
   public PendingReviewListResponse getPendingReviewList(
       String status, String accidentType, String region, UUID adjusterId, Pageable pageable) {
-    validateStatus(status);
-    validateAccidentType(accidentType);
+    ReportStatus statusFilter = parseStatus(status);
+    AccidentType accidentTypeFilter = parseAccidentType(accidentType);
     Page<PendingReviewRow> rows =
-        reportRepository.findPendingReviewRows(status, accidentType, region, adjusterId, pageable);
+        reportRepository.findPendingReviewRows(statusFilter, accidentTypeFilter, region, adjusterId, pageable);
     return PendingReviewListResponse.from(rows);
   }
 
@@ -78,25 +78,25 @@ public class PendingReviewQueryService {
     return ReportDetailResponse.from(report, region, held, issues);
   }
 
-  /** 잘못된 status 필터 값은 조용한 빈 결과 대신 400으로 거른다. */
-  private void validateStatus(String status) {
+  /** 잘못된 status 필터 값은 조용한 빈 결과 대신 400으로 거른다. 빈 값이면 필터 없음(null). */
+  private ReportStatus parseStatus(String status) {
     if (!StringUtils.hasText(status)) {
-      return;
+      return null;
     }
     try {
-      ReportStatus.valueOf(status);
+      return ReportStatus.valueOf(status);
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }
   }
 
-  /** 잘못된 accidentType 필터 값은 400으로 거른다(DB는 소문자 값). */
-  private void validateAccidentType(String accidentType) {
+  /** 잘못된 accidentType 필터 값은 400으로 거른다(DB는 소문자 값). 빈 값이면 필터 없음(null). */
+  private AccidentType parseAccidentType(String accidentType) {
     if (!StringUtils.hasText(accidentType)) {
-      return;
+      return null;
     }
     try {
-      AccidentType.from(accidentType);
+      return AccidentType.from(accidentType);
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }

@@ -37,8 +37,8 @@ public record ReviewedReportListResponse(
 
     public static Item from(ReviewedReportRow row) {
       return new Item(
-          row.getReportId(), row.getCaseNo(), row.getTitle(), row.getAccidentType(), row.getRegion(),
-          row.getStatus(), row.getReviewedAt());
+          row.reportId(), row.caseNo(), row.title(), row.accidentType().getValue(), row.region(),
+          row.status().name(), row.reviewedAt());
     }
   }
 }
