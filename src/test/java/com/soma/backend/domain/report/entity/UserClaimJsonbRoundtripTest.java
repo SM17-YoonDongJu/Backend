@@ -2,12 +2,10 @@ package com.soma.backend.domain.report.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,6 +18,9 @@ import com.soma.backend.domain.report.entity.claim.ClaimDetails;
 import com.soma.backend.domain.report.entity.claim.Hospitalization;
 import com.soma.backend.domain.report.entity.claim.MedicalIndemnityDetails;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
+import com.soma.backend.domain.user.entity.Role;
+import com.soma.backend.domain.user.entity.User;
+import com.soma.backend.domain.user.repository.UserRepository;
 
 /**
  * USER_CLAIMS.details(jsonb) ↔ sealed {@link ClaimDetails} 왕복 검증(design.md §3.2).
@@ -33,23 +34,20 @@ class UserClaimJsonbRoundtripTest {
   @Autowired
   private UserClaimRepository userClaimRepository;
 
+  @Autowired
+  private UserRepository userRepository;
+
   @PersistenceContext
   private EntityManager entityManager;
 
   @Test
   void medicalIndemnityDetails_roundtrips_through_jsonb() {
-    UUID userId = UUID.randomUUID();
     // user_claims.user_id는 users FK(NOT NULL) — 픽스처로 users 행을 먼저 만든다.
-    // Hibernate 세션 커넥션에 직접 INSERT해 아래 flush와 동일 트랜잭션·커넥션임을 보장한다.
-    // TODO: 회원(user) 도메인의 User 엔티티가 개발되면 userRepository.save(user)로 교체.
-    entityManager.unwrap(Session.class).doWork(connection -> {
-      String insertUser = "INSERT INTO users (id, role, nickname, birth_date, gender) "
-          + "VALUES (?, 'USER', '테스트유저', DATE '2000-01-01', '')";
-      try (PreparedStatement ps = connection.prepareStatement(insertUser)) {
-        ps.setObject(1, userId);
-        ps.executeUpdate();
-      }
-    });
+    // 네이티브 INSERT는 스키마의 NOT NULL(status·created_at 등)·default 유무에 취약하므로,
+    // User.create로 저장해 JPA 매핑·Auditing이 값을 채우게 한다(test·default 프로파일 스키마 모두 정합).
+    User user = userRepository.save(
+        User.create("테스트유저", LocalDate.of(2000, 1, 1), "", null, Role.USER));
+    UUID userId = user.getId();
 
     ClaimDetails details = new MedicalIndemnityDetails(
         List.of("급성 충수염", "복막염"),
