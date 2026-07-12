@@ -19,16 +19,15 @@ import com.soma.backend.domain.report.dto.CreateReportResponse;
 import com.soma.backend.domain.report.dto.ProposalDecisionRequest;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
-import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.service.ProposalQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
-import com.soma.backend.domain.report.service.ReportQueryService;
 import com.soma.backend.global.response.ApiResponse;
 import com.soma.backend.global.security.CurrentUserId;
 
 /**
  * 고객(user) 리포트 플로우 API(design.md §1, §6). 인가는 @CurrentUserId(로그인) +
  * 서비스 레이어 소유 검증(design.md §8)이 담당한다.
+ * (목록 조회 GET /reports는 일반 사용자의 미검수 리포트 조회 차단 정책으로 제거 — #106.)
  * (상세 조회 GET /reports/{reportId}는 develop 검수 대기 상세와 경로가 충돌해 제거 — 추후 재개발.)
  */
 @RestController
@@ -36,7 +35,6 @@ import com.soma.backend.global.security.CurrentUserId;
 public class ReportController {
 
   private final ReportCommandService reportCommandService;
-  private final ReportQueryService reportQueryService;
   private final ProposalQueryService proposalQueryService;
 
   /**
@@ -48,18 +46,6 @@ public class ReportController {
     CreateReportResponse data = reportCommandService.createReport(userId, request);
     return ResponseEntity.status(HttpStatus.ACCEPTED)
         .body(ApiResponse.accepted("리포트 생성을 시작했습니다.", data));
-  }
-
-  /**
-   * 리포트 목록 조회
-   */
-  @GetMapping("/reports")
-  public ResponseEntity<ApiResponse<ReportCardListResponse>> list(
-      @CurrentUserId UUID userId,
-      @RequestParam(required = false) String status,
-      @RequestParam(defaultValue = "1") int page,
-      @RequestParam(defaultValue = "10") int size) {
-    return ResponseEntity.ok(ApiResponse.ok(reportQueryService.getUserReports(userId, status, page, size)));
   }
 
   /**
@@ -75,6 +61,9 @@ public class ReportController {
         ApiResponse.ok(proposalQueryService.getProposals(userId, reportId, page, size)));
   }
 
+  /**
+   * 제안 찬성/거절
+   */
   @PatchMapping("/reports/{reportId}/proposals/{proposalId}")
   public ResponseEntity<ApiResponse<ProposalDecisionResponse>> decide(
       @CurrentUserId UUID userId,

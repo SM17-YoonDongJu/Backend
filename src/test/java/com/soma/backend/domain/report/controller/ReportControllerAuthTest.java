@@ -23,10 +23,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.soma.backend.domain.report.dto.Pagination;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
-import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.service.ProposalQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
-import com.soma.backend.domain.report.service.ReportQueryService;
 import com.soma.backend.global.exception.GlobalExceptionHandler;
 import com.soma.backend.global.security.CurrentUserIdArgumentResolver;
 import com.soma.backend.global.security.CustomUserDetails;
@@ -38,16 +36,14 @@ import com.soma.backend.global.security.CustomUserDetails;
 class ReportControllerAuthTest {
 
   private MockMvc mockMvc;
-  private ReportQueryService reportQueryService;
   private ProposalQueryService proposalQueryService;
 
   @BeforeEach
   void setUp() {
     ReportCommandService reportCommandService = Mockito.mock(ReportCommandService.class);
-    reportQueryService = Mockito.mock(ReportQueryService.class);
     proposalQueryService = Mockito.mock(ProposalQueryService.class);
     ReportController controller =
-        new ReportController(reportCommandService, reportQueryService, proposalQueryService);
+        new ReportController(reportCommandService, proposalQueryService);
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
         .setCustomArgumentResolvers(new CurrentUserIdArgumentResolver())
         .setControllerAdvice(new GlobalExceptionHandler())
@@ -67,21 +63,11 @@ class ReportControllerAuthTest {
   }
 
   @Test
-  @DisplayName("비로그인이면 GET /reports는 401 LOGIN_REQUIRED")
+  @DisplayName("비로그인이면 GET /reports/{id}/proposals는 401 LOGIN_REQUIRED")
   void unauthenticatedReturns401() throws Exception {
-    mockMvc.perform(get("/reports"))
+    mockMvc.perform(get("/reports/" + UUID.randomUUID() + "/proposals"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
-  }
-
-  @Test
-  @DisplayName("로그인 사용자는 GET /reports 200")
-  void authenticatedListReturns200() throws Exception {
-    authenticateAsUser();
-    given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt()))
-        .willReturn(new ReportCardListResponse(List.of(), new Pagination(1, 10, 0, 0, false)));
-
-    mockMvc.perform(get("/reports")).andExpect(status().isOk());
   }
 
   @Test
