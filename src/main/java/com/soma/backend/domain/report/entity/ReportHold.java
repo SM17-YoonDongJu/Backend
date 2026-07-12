@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -12,7 +14,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * REPORT_HOLDS — 사정사별 보류 토글(junction). (report_id, adjuster_id) UK.
+ * REPORT_HOLDS — 사정사별 보류(junction). (report_id, adjuster_id) UK. 보류 사유(reason)와
+ * 상세 텍스트(reasonDetail)를 함께 담는다. reason이 {@link HoldReason#OTHER}면 reasonDetail이 필수다.
  */
 @Entity
 @Table(name = "report_holds")
@@ -30,8 +33,17 @@ public class ReportHold extends CreatedAtEntity {
   @Column(name = "adjuster_id", nullable = false)
   private UUID adjusterId;
 
-  public ReportHold(UUID reportId, UUID adjusterId) {
+  @Enumerated(EnumType.STRING)
+  @Column(name = "reason", nullable = false, length = 30)
+  private HoldReason reason;
+
+  @Column(name = "reason_detail")
+  private String reasonDetail;
+
+  public ReportHold(UUID reportId, UUID adjusterId, HoldReason reason, String reasonDetail) {
     this.reportId = reportId;
     this.adjusterId = adjusterId;
+    this.reason = reason;
+    this.reasonDetail = reasonDetail;
   }
 }

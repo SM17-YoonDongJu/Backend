@@ -12,7 +12,7 @@ import lombok.Getter;
 
 /**
  * created_at만 갖는 append-only 엔티티 공통 부모(updated_at 없음).
- * report_issues / report_review_issues / report_holds 처럼 생성 후 수정하지 않는 테이블용.
+ * report_issues / report_issues_reviews / report_holds 처럼 생성 후 수정하지 않는 테이블용.
  */
 @Getter
 @MappedSuperclass

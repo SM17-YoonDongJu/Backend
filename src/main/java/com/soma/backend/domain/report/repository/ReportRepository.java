@@ -21,13 +21,42 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION")
   long countPending();
 
+  /** 홈 검수 대기 풀 카운트 — 검수 대기(AWAITING_INSPECTION)와 채택 대기(AWAITING_ADOPTION) 합산. */
+  @Query("SELECT COUNT(r) FROM Report r WHERE r.status IN ("
+      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
+      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION)")
+  long countPendingPool();
+
+  /** 홈 검수 대기 풀 중 신규(threshold 이후 접수) 카운트. threshold는 서비스가 잠정 규칙으로 계산한다. */
+  @Query("SELECT COUNT(r) FROM Report r WHERE r.status IN ("
+      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
+      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
+      + "AND r.createdAt >= :newThreshold")
+  long countPendingPoolNew(@Param("newThreshold") LocalDateTime newThreshold);
+
+  /**
+   * 홈 헤더·요약 카드용 사정사 비정규화 정보. name은 adjuster_profiles.name 우선(없으면 nickname),
+   * 누적 검수·상담·평점은 adjuster_profiles 비정규화 컬럼에서 읽는다.
+   */
+  @Query(value = "SELECT COALESCE(ap.name, u.nickname) AS name, u.avatar_url AS avatarUrl, "
+      + "ap.cases_reviewed AS casesReviewed, ap.completed_consult_count AS completedConsultCount, "
+      + "ap.rating_mean AS ratingMean, ap.review_count AS reviewCount "
+      + "FROM users u LEFT JOIN adjuster_profiles ap ON ap.user_id = u.id WHERE u.id = :userId",
+      nativeQuery = true)
+  AdjusterIdentityRow findAdjusterIdentity(@Param("userId") UUID userId);
+
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
       + "AND r.createdAt <= :dueSoonThreshold")
   long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
 
+  @Query(value = "SELECT u.region FROM users u JOIN reports r ON r.user_id = u.id WHERE r.id = :reportId",
+      nativeQuery = true)
+  String findRegionByReportId(@Param("reportId") UUID reportId);
+
   @Query(value = "SELECT r.id AS reportId, r.case_no AS caseNo, r.title AS title, "
       + "r.accident_type AS accidentType, u.region AS region, r.status AS status, "
+      + "r.created_at AS createdAt, "
       + "r.claimed_min_amount AS claimedMinAmount, r.claimed_max_amount AS claimedMaxAmount, "
       + "r.offered_amount AS offeredAmount, "
       + "(SELECT COUNT(*) FROM report_issues ri WHERE ri.report_id = r.id) AS issueCount, "
@@ -50,4 +79,19 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       @Param("region") String region,
       @Param("adjusterId") UUID adjusterId,
       Pageable pageable);
+
+  @Query(value = "SELECT u.nickname AS nickname, u.gender AS gender, u.birth_date AS birthDate, "
+      + "u.region AS region, u.created_at AS joinedAt, "
+      + "uc.accident_type AS claimAccidentType, uc.diagnosis AS diagnosis, uc.accident_date AS accidentDate, "
+      + "CAST(uc.hospitalization AS text) AS hospitalization, uc.description AS claimDescription, "
+      + "uc.additional_information AS additionalInformation, "
+      + "ip.product_name AS productName, ins.name AS insurerName "
+      + "FROM reports r "
+      + "JOIN users u ON u.id = r.user_id "
+      + "LEFT JOIN user_claims uc ON uc.id = r.claim_id "
+      + "LEFT JOIN insurance_products ip ON ip.id = r.product_id "
+      + "LEFT JOIN insurers ins ON ins.id = ip.insurer_id "
+      + "WHERE r.id = :reportId",
+      nativeQuery = true)
+  ReviewContextRow findReviewContext(@Param("reportId") UUID reportId);
 }
