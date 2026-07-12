@@ -35,6 +35,7 @@ import com.soma.backend.global.security.JwtProvider;
 import com.soma.backend.global.security.RestAccessDeniedHandler;
 import com.soma.backend.global.security.RestAuthenticationEntryPoint;
 import com.soma.backend.global.security.SecurityConfig;
+import com.soma.backend.infra.redis.TokenBlacklistRepository;
 
 /**
  * 검수 대기 API 인가 가드 검증. 실제 SecurityFilterChain(anyRequest.authenticated)과
@@ -67,6 +68,9 @@ class PendingReviewControllerAuthTest {
 
   @MockitoBean
   private ReportReviewCommandService reportReviewCommandService;
+
+  @MockitoBean
+  private TokenBlacklistRepository tokenBlacklistRepository;
 
   private Authentication authenticationAs(String role) {
     CustomUserDetails principal = new CustomUserDetails(UUID.randomUUID(), role);

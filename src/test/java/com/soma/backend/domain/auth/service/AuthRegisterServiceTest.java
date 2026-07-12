@@ -29,6 +29,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuthRegisterService 단위 테스트")
@@ -50,13 +51,16 @@ class AuthRegisterServiceTest {
   private AuthTokenService authTokenService;
 
   @Mock
+  private WithdrawalLedgerRepository withdrawalLedgerRepository;
+
+  @Mock
   private HttpServletResponse response;
 
   private static final String PHONE = "010-1234-5678";
 
   private RegisterRequest request(String userType) {
     return new RegisterRequest(
-        "kakao", "ticket", "홍길동", LocalDate.of(1990, 1, 1), PHONE, userType);
+        "kakao", "ticket", "홍길동", LocalDate.of(1990, 1, 1), PHONE, "남", userType);
   }
 
   @Test
@@ -77,6 +81,7 @@ class AuthRegisterServiceTest {
     assertThat(result.role()).isEqualTo(Role.USER.name());
     then(userRepository).should().save(any(User.class));
     then(socialAccountRepository).should().save(any(SocialAccount.class));
+    then(withdrawalLedgerRepository).should().clear("kakao", "kakao-1");
     then(authTokenService).should().issueTokens(any(HttpServletResponse.class), any(), anyString());
   }
 

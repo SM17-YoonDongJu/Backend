@@ -128,6 +128,8 @@ public class RefreshTokenRepository {
 5. access_token·refresh_token HttpOnly 쿠키를 응답에 부착 (바디 노출 없음)
 ```
 
+> **쿠키 Path 스코핑:** `CookieProvider`는 `access_token`을 Path `/`(모든 보호 API에서 검증), `refresh_token`을 Path `/auth`(재발급·로그아웃 `/auth/**`에만 전송)로 발급한다. 장기 크리덴셜이 일반 API 요청마다 딸려가지 않게 노출 표면을 줄이는 것이며, 만료 쿠키도 같은 Path로 발급해야 삭제된다. 쿠키를 건드릴 때 이 Path 분리를 유지하라.
+
 **토큰 재발급 (`POST /auth/reissue`)** — Redis를 건드리는 검증-교체는 원자적 회전 한 번으로 처리한다(경쟁 창 제거). 2단계로 분리:
 
 ```

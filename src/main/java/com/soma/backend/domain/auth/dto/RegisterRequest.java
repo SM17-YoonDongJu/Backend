@@ -16,6 +16,7 @@ import jakarta.validation.constraints.Size;
  * @param nickname    이름(실명, 1~30자, users.nickname)
  * @param birthDate   생년월일(과거 날짜)
  * @param phoneNumber 전화번호(하이픈 허용, users.phone_number unique)
+ * @param gender      성별(users.gender). 필수 입력이나 빈 문자열은 허용한다(10자 이하).
  * @param userType    insured_person|adjuster
  */
 public record RegisterRequest(
@@ -26,5 +27,6 @@ public record RegisterRequest(
     @NotBlank @Pattern(
         regexp = "^01[0-9]-?\\d{3,4}-?\\d{4}$",
         message = "유효한 휴대폰 번호 형식이 아닙니다.") String phoneNumber,
+    @NotNull @Size(max = 10) String gender,
     @NotBlank String userType) {
 }
