@@ -72,7 +72,7 @@ public class PendingReviewQueryService {
         && report.getStatus() != ReportStatus.AWAITING_ADOPTION) {
       throw new BusinessException(ErrorCode.REPORT_NOT_FOUND);
     }
-    String region = reportRepository.findRegionByReportId(reportId);
+    List<String> region = reportRepository.findRegionByReportId(reportId);
     boolean held = reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId);
     List<ReportIssue> issues = reportIssueRepository.findAllByReportId(reportId);
     return ReportDetailResponse.from(report, region, held, issues);

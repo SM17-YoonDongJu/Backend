@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
@@ -43,7 +44,8 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
       where.and(rp.accidentType.eq(accidentType));
     }
     if (region != null) {
-      where.and(us.region.eq(region));
+      // users.region이 text[]라 동등비교 대신 '배열이 필터 지역을 포함'하는지로 매칭한다(Hibernate array_contains).
+      where.and(Expressions.booleanTemplate("array_contains({0}, {1})", us.region, region));
     }
 
     List<PendingReviewRow> content = queryFactory
@@ -70,5 +72,17 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .fetchOne();
 
     return new PageImpl<>(content, pageable, total == null ? 0L : total);
+  }
+
+  @Override
+  public List<String> findRegionByReportId(UUID reportId) {
+    QReport rp = QReport.report;
+    QUser us = QUser.user;
+    return queryFactory
+        .select(us.region)
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .where(rp.id.eq(reportId))
+        .fetchOne();
   }
 }

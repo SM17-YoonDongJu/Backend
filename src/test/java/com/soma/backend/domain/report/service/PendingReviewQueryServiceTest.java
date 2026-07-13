@@ -155,7 +155,7 @@ class PendingReviewQueryServiceTest {
     ReflectionTestUtils.setField(issue, "tags", List.of("약관 제12조", "진단서"));
 
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
-    given(reportRepository.findRegionByReportId(reportId)).willReturn("서울 강남");
+    given(reportRepository.findRegionByReportId(reportId)).willReturn(List.of("서울 강남"));
     given(reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(true);
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issue));
 
@@ -163,7 +163,7 @@ class PendingReviewQueryServiceTest {
 
     assertThat(result.reportId()).isEqualTo(reportId);
     assertThat(result.accidentType()).isEqualTo("disability");
-    assertThat(result.region()).isEqualTo("서울 강남");
+    assertThat(result.region()).containsExactly("서울 강남");
     assertThat(result.isMasked()).isTrue();
     assertThat(result.offerHeadroom()).isEqualTo(9_500_000L);
     assertThat(result.issues()).hasSize(1);
@@ -190,7 +190,7 @@ class PendingReviewQueryServiceTest {
   private static PendingReviewRow row(
       UUID reportId, Long claimedMin, Long claimedMax, Long offered, Long issueCount, Boolean held) {
     return new PendingReviewRow(
-        reportId, "CASE-1", "제목", AccidentType.DISABILITY, "서울", ReportStatus.AWAITING_INSPECTION,
+        reportId, "CASE-1", "제목", AccidentType.DISABILITY, List.of("서울"), ReportStatus.AWAITING_INSPECTION,
         claimedMin, claimedMax, offered, issueCount, held, LocalDateTime.of(2026, 5, 31, 9, 0));
   }
 }

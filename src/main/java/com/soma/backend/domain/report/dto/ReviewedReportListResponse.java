@@ -32,7 +32,7 @@ public record ReviewedReportListResponse(
 
   /** 목록 아이템. */
   public record Item(
-      UUID reportId, String caseNo, String title, String accidentType, String region, String status,
+      UUID reportId, String caseNo, String title, String accidentType, List<String> region, String status,
       LocalDateTime reviewedAt) {
 
     public static Item from(ReviewedReportRow row) {

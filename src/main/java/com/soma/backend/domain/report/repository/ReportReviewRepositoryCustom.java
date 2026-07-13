@@ -1,7 +1,6 @@
 package com.soma.backend.domain.report.repository;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -14,6 +13,4 @@ public interface ReportReviewRepositoryCustom {
 
   Page<ReviewedReportRow> findReviewedReportRows(
       UUID adjusterId, ReviewStatus status, LocalDateTime monthFrom, LocalDateTime monthTo, Pageable pageable);
-
-  List<InProgressCaseRow> findInProgressCases(UUID adjusterId, Pageable pageable);
 }

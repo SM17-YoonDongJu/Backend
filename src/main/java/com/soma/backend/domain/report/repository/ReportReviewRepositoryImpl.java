@@ -64,22 +64,4 @@ public class ReportReviewRepositoryImpl implements ReportReviewRepositoryCustom 
 
     return new PageImpl<>(content, pageable, total == null ? 0L : total);
   }
-
-  @Override
-  public List<InProgressCaseRow> findInProgressCases(UUID adjusterId, Pageable pageable) {
-    QReportReview rv = QReportReview.reportReview;
-    QReport rp = QReport.report;
-
-    return queryFactory
-        .select(Projections.constructor(InProgressCaseRow.class,
-            rv.reportId, rp.caseNo, rp.accidentType, rp.title, rp.status, rv.status))
-        .from(rv)
-        .join(rp).on(rp.id.eq(rv.reportId))
-        .where(rv.adjusterId.eq(adjusterId)
-            .and(rv.status.in(ReviewStatus.SENT, ReviewStatus.COUNSELING)))
-        .orderBy(rv.createdAt.desc())
-        .offset(pageable.getOffset())
-        .limit(pageable.getPageSize())
-        .fetch();
-  }
 }

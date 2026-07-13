@@ -1,11 +1,14 @@
-package com.soma.backend.domain.report.service;
+package com.soma.backend.domain.adjuster.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,29 +19,27 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
 
-import com.soma.backend.domain.report.dto.AdjusterHomeResponse;
+import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse;
+import com.soma.backend.domain.adjuster.repository.AdjusterHomeRepository;
+import com.soma.backend.domain.adjuster.repository.AdjusterIdentityRow;
+import com.soma.backend.domain.adjuster.repository.InProgressCaseRow;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
-import com.soma.backend.domain.report.repository.AdjusterIdentityRow;
-import com.soma.backend.domain.report.repository.InProgressCaseRow;
-import com.soma.backend.domain.report.repository.ReportRepository;
-import com.soma.backend.domain.report.repository.ReportReviewRepository;
 
 /**
  * 사정사 홈 집계 유스케이스 단위 테스트. 누적 검수·상담·평점은 adjuster_profiles 비정규화에서 읽고,
- * 이번 달 완료만 report_reviews 실시간 집계임을 검증한다(+ limit clamp·단계 파생).
+ * 이번 달 완료만 report_reviews 실시간 집계임을 검증한다(+ limit clamp·단계 파생). 조회는 단일
+ * AdjusterHomeRepository(QueryDSL 읽기 모델)로 위임한다.
  */
 @ExtendWith(MockitoExtension.class)
 class AdjusterHomeQueryServiceTest {
 
   @Mock
-  private ReportRepository reportRepository;
-  @Mock
-  private ReportReviewRepository reportReviewRepository;
+  private AdjusterHomeRepository adjusterHomeRepository;
 
   @InjectMocks
   private AdjusterHomeQueryService service;
@@ -51,16 +52,15 @@ class AdjusterHomeQueryServiceTest {
   }
 
   @Test
-  @DisplayName("집계 조립: 대기 풀·신규·진행중은 실시간, 이번 달은 실시간, 누적·상담·평점은 adjuster_profiles")
+  @DisplayName("집계 조립: 대기 풀·신규·진행중·이번 달은 실시간, 누적·상담·평점은 adjuster_profiles")
   void assemblesHome() {
-    given(reportRepository.countPendingPool()).willReturn(5L);
-    given(reportRepository.countPendingPoolNew(any())).willReturn(2L);
-    given(reportRepository.findAdjusterIdentity(adjusterId))
-        .willReturn(identity("김도현", "https://cdn/a.png", 240, 9, new java.math.BigDecimal("4.9"), 86));
-    given(reportReviewRepository.countByAdjusterIdAndCreatedAtBetween(eq(adjusterId), any(), any()))
-        .willReturn(14L);
-    given(reportReviewRepository.countInProgressByAdjusterId(adjusterId)).willReturn(2L);
-    given(reportReviewRepository.findInProgressCases(eq(adjusterId), any(Pageable.class)))
+    given(adjusterHomeRepository.countPendingPool()).willReturn(5L);
+    given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(2L);
+    given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
+        .willReturn(new AdjusterIdentityRow("김도현", "https://cdn/a.png", 240, 9, new BigDecimal("4.9"), 86));
+    given(adjusterHomeRepository.countCompletedBetween(eq(adjusterId), any(), any())).willReturn(14L);
+    given(adjusterHomeRepository.countInProgress(adjusterId)).willReturn(2L);
+    given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt()))
         .willReturn(List.of(inProgressRow("AWAITING_ADOPTION", "SENT")));
 
     AdjusterHomeResponse result = service.getHome(adjusterId, 5);
@@ -90,8 +90,7 @@ class AdjusterHomeQueryServiceTest {
   @DisplayName("비정규화 컬럼이 아직 null이면 누적·상담 0, 평점 average null·후기 0으로 안전 처리")
   void denormalizedNullSafe() {
     stubMinimal();
-    given(reportReviewRepository.findInProgressCases(eq(adjusterId), any(Pageable.class)))
-        .willReturn(List.of());
+    given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt())).willReturn(List.of());
 
     AdjusterHomeResponse.Summary summary = service.getHome(adjusterId, 5).summary();
 
@@ -105,14 +104,13 @@ class AdjusterHomeQueryServiceTest {
   @DisplayName("신규 판정 threshold는 now - 24h 근방으로 전달된다")
   void newThresholdIsPast24h() {
     stubMinimal();
-    given(reportReviewRepository.findInProgressCases(eq(adjusterId), any(Pageable.class)))
-        .willReturn(List.of());
-    java.time.LocalDateTime before = java.time.LocalDateTime.now().minusHours(24);
+    given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt())).willReturn(List.of());
+    LocalDateTime before = LocalDateTime.now().minusHours(24);
     service.getHome(adjusterId, 5);
-    java.time.LocalDateTime after = java.time.LocalDateTime.now().minusHours(24);
+    LocalDateTime after = LocalDateTime.now().minusHours(24);
 
-    ArgumentCaptor<java.time.LocalDateTime> captor = ArgumentCaptor.forClass(java.time.LocalDateTime.class);
-    verify(reportRepository).countPendingPoolNew(captor.capture());
+    ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
+    verify(adjusterHomeRepository).countPendingPoolNew(captor.capture());
     assertThat(captor.getValue()).isBetween(before.minusSeconds(1), after.plusSeconds(1));
   }
 
@@ -120,24 +118,22 @@ class AdjusterHomeQueryServiceTest {
   @DisplayName("in_progress_limit는 [1,20]로 clamp: 0 이하는 기본 5, 20 초과는 20")
   void clampsLimit() {
     stubMinimal();
-    given(reportReviewRepository.findInProgressCases(eq(adjusterId), any(Pageable.class)))
-        .willReturn(List.of());
-    ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+    given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt())).willReturn(List.of());
+    ArgumentCaptor<Integer> captor = ArgumentCaptor.forClass(Integer.class);
 
     service.getHome(adjusterId, 0);
     service.getHome(adjusterId, 999);
 
-    verify(reportReviewRepository, org.mockito.Mockito.times(2))
-        .findInProgressCases(eq(adjusterId), captor.capture());
-    assertThat(captor.getAllValues().get(0).getPageSize()).isEqualTo(5);
-    assertThat(captor.getAllValues().get(1).getPageSize()).isEqualTo(20);
+    verify(adjusterHomeRepository, Mockito.times(2)).findInProgressCases(eq(adjusterId), captor.capture());
+    assertThat(captor.getAllValues().get(0)).isEqualTo(5);
+    assertThat(captor.getAllValues().get(1)).isEqualTo(20);
   }
 
   @Test
   @DisplayName("COUNSELING 검수는 상담 중·진행률 90으로 파생된다")
   void counselingStage() {
     stubMinimal();
-    given(reportReviewRepository.findInProgressCases(eq(adjusterId), any(Pageable.class)))
+    given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt()))
         .willReturn(List.of(inProgressRow("COUNSELING", "COUNSELING")));
 
     AdjusterHomeResponse.InProgressCases.Item item =
@@ -148,49 +144,12 @@ class AdjusterHomeQueryServiceTest {
   }
 
   private void stubMinimal() {
-    given(reportRepository.countPendingPool()).willReturn(0L);
-    given(reportRepository.countPendingPoolNew(any())).willReturn(0L);
-    given(reportRepository.findAdjusterIdentity(adjusterId))
-        .willReturn(identity("이름", null, null, null, null, null));
-    given(reportReviewRepository.countByAdjusterIdAndCreatedAtBetween(eq(adjusterId), any(), any()))
-        .willReturn(0L);
-    given(reportReviewRepository.countInProgressByAdjusterId(adjusterId)).willReturn(0L);
-  }
-
-  private static AdjusterIdentityRow identity(
-      String name, String avatarUrl, Integer casesReviewed, Integer completedConsultCount,
-      java.math.BigDecimal ratingMean, Integer reviewCount) {
-    return new AdjusterIdentityRow() {
-      @Override
-      public String getName() {
-        return name;
-      }
-
-      @Override
-      public String getAvatarUrl() {
-        return avatarUrl;
-      }
-
-      @Override
-      public Integer getCasesReviewed() {
-        return casesReviewed;
-      }
-
-      @Override
-      public Integer getCompletedConsultCount() {
-        return completedConsultCount;
-      }
-
-      @Override
-      public java.math.BigDecimal getRatingMean() {
-        return ratingMean;
-      }
-
-      @Override
-      public Integer getReviewCount() {
-        return reviewCount;
-      }
-    };
+    given(adjusterHomeRepository.countPendingPool()).willReturn(0L);
+    given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(0L);
+    given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
+        .willReturn(new AdjusterIdentityRow("이름", null, null, null, null, null));
+    given(adjusterHomeRepository.countCompletedBetween(eq(adjusterId), any(), any())).willReturn(0L);
+    given(adjusterHomeRepository.countInProgress(adjusterId)).willReturn(0L);
   }
 
   private static InProgressCaseRow inProgressRow(String reportStatus, String reviewStatus) {

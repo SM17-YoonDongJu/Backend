@@ -1,4 +1,4 @@
-package com.soma.backend.domain.report.controller;
+package com.soma.backend.domain.adjuster.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
 
-import com.soma.backend.domain.report.dto.AdjusterHomeResponse;
-import com.soma.backend.domain.report.service.AdjusterHomeQueryService;
+import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse;
+import com.soma.backend.domain.adjuster.service.AdjusterHomeQueryService;
 import com.soma.backend.global.response.ApiResponse;
 import com.soma.backend.global.security.CustomUserDetails;
 

@@ -24,7 +24,7 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
       String caseNo,
       String title,
       String accidentType,
-      String region,
+      List<String> region,
       String status,
       Long claimedMinAmount,
       Long claimedMaxAmount,

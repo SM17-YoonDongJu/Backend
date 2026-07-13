@@ -31,11 +31,4 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
       + "AND rv.status = com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING")
   long countConsultationConvertedByAdjusterId(@Param("adjusterId") UUID adjusterId);
-
-  /** 홈 "진행 중인 사건" 카운트 — 요청 사정사의 미완료 검수(SENT·COUNSELING). */
-  @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
-      + "AND rv.status IN ("
-      + "com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
-      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING)")
-  long countInProgressByAdjusterId(@Param("adjusterId") UUID adjusterId);
 }

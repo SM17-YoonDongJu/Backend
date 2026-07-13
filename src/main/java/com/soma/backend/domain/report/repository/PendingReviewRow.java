@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.soma.backend.domain.report.entity.AccidentType;
@@ -12,7 +13,7 @@ public record PendingReviewRow(
     String caseNo,
     String title,
     AccidentType accidentType,
-    String region,
+    List<String> region,
     ReportStatus status,
     Long claimedMinAmount,
     Long claimedMaxAmount,

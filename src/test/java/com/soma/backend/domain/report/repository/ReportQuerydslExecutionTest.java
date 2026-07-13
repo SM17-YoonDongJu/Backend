@@ -38,6 +38,24 @@ class ReportQuerydslExecutionTest {
   }
 
   @Test
+  @DisplayName("findPendingReviewRows — region 필터가 users.region 배열 contains(array_contains)로 실행된다")
+  void pendingReviewRowsRegionFilterExecutes() {
+    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
+        null, null, "서울", UUID.randomUUID(), PageRequest.of(0, 20));
+
+    assertThat(page).isNotNull();
+    assertThat(page.getContent()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("findRegionByReportId — users.region 배열 컬럼 단일 조회(fetchOne)가 실행된다")
+  void findRegionByReportIdExecutes() {
+    List<String> region = reportRepository.findRegionByReportId(UUID.randomUUID());
+
+    assertThat(region).isNull();
+  }
+
+  @Test
   @DisplayName("findReviewedReportRows — reports·users 엔티티 조인 + 카운트 쿼리가 실행된다")
   void reviewedReportRowsExecutes() {
     Page<ReviewedReportRow> page = reportReviewRepository.findReviewedReportRows(
@@ -45,14 +63,5 @@ class ReportQuerydslExecutionTest {
 
     assertThat(page).isNotNull();
     assertThat(page.getContent()).isEmpty();
-  }
-
-  @Test
-  @DisplayName("findInProgressCases — reports 엔티티 조인 + status IN 조회가 실행된다")
-  void inProgressCasesExecutes() {
-    List<InProgressCaseRow> rows = reportReviewRepository.findInProgressCases(
-        UUID.randomUUID(), PageRequest.of(0, 5));
-
-    assertThat(rows).isEmpty();
   }
 }
