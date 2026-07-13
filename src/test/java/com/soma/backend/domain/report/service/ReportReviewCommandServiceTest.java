@@ -213,8 +213,6 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.of(persistedReview()));
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of())))
         .isInstanceOf(BusinessException.class)
@@ -228,8 +226,6 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportWithStatus(ReportStatus.COUNSELING)));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.of(persistedReview()));
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of())))
         .isInstanceOf(BusinessException.class)

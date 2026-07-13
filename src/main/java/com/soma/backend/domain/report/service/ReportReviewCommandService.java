@@ -66,6 +66,10 @@ public class ReportReviewCommandService {
       }
     }
 
+    // 상태 전이 검증을 스켈레톤 생성 앞에 둔다: 검수 대상이 아니면(CLOSED·COUNSELING) 여기서 조기 예외.
+    // 스켈레톤은 REQUIRES_NEW로 먼저 커밋되므로, '던질 수 있는 것'을 스켈레톤 생성 전에 모두 끝내 고아 행을 막는다.
+    report.applyReviewStart();
+
     // 동시성: 스켈레톤 멱등 생성(별도 트랜잭션) 후 관리 엔티티로 로드 → check-then-insert 경쟁의 UK 충돌 500 제거.
     ReportReview reportReview = getOrCreateSkeleton(reportId, adjusterId);
     reportReview.updateReviewContent(request.estimateMinAmount(), request.estimateMaxAmount(),
@@ -80,7 +84,6 @@ public class ReportReviewCommandService {
     }
     reportReviewRepository.save(reportReview);
 
-    report.applyReviewStart();
     report = reportRepository.save(report);
 
     return new ReviewReportResponse(
