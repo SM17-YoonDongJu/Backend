@@ -108,7 +108,7 @@ class ChatRoomControllerTest {
     UUID me = UUID.randomUUID();
     authenticateAs(me, "USER");
     given(chatConsultationCommandService.accept(me, roomId)).willReturn(new ConsultationDecisionResponse(
-        roomId, ChatRoomStatus.ACTIVE, ReviewStatus.ACCEPTED, UUID.randomUUID(), ReportStatus.CLOSED));
+        roomId, ChatRoomStatus.CLOSED, ReviewStatus.ACCEPTED, UUID.randomUUID(), ReportStatus.CLOSED));
 
     mockMvc.perform(patch("/chats/{id}/accept", roomId))
         .andExpect(status().isOk())

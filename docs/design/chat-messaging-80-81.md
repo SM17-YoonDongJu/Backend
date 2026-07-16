@@ -9,7 +9,7 @@
 
 ## 0. 확정 결정 (2026-07-16)
 
-1. **상담 수락 = chat 도메인 소유.** `ChatConsultationCommandService.accept`가 report 엔티티를 직접 호출: 내 `ReportReview.accept()`(→ACCEPTED) + 형제 제안 `reject()`(→REJECTED) + `Report.accept(adjusterId)`(COUNSELING→CLOSED) + SYSTEM 메시지. **내 채팅방은 ACTIVE 유지**(매칭됐으니 계속 대화), 형제 방은 CLOSED. 엔드포인트 `PATCH /chats/{chatRoomId}/accept`.
+1. **상담 수락 = chat 도메인 소유.** `ChatConsultationCommandService.accept`가 report 엔티티를 직접 호출: 내 `ReportReview.accept()`(→ACCEPTED) + 형제 제안 `reject()`(→REJECTED) + `Report.accept(adjusterId)`(COUNSELING→CLOSED) + SYSTEM 메시지. **내 채팅방·형제 방 모두 CLOSED**(상담 종료). 엔드포인트 `PATCH /chats/{chatRoomId}/accept`.
 2. **상담 거절 = chat 도메인.** `PATCH /chats/{chatRoomId}/reject`. 내 `ReportReview.reject()`(→REJECTED) + report **COUNSELING→AWAITING_ADOPTION**(전이표에 우리가 추가) + `chatroom.close()`(→CLOSED) + SYSTEM 메시지. 다른 제안은 유지.
 3. **상태 분리 (핵심).** `chatroom.status`는 **방 생명주기 `ACTIVE`/`CLOSED`만**(양 경로 공통). **수락/거절 결정은 `report_reviews.status`**(SENT/COUNSELING/ACCEPTED/REJECTED, 이미 존재)에 둔다. 결정 상태를 chatroom에 중복시키지 않는다.
 4. **안읽음 = `chatroom` 읽음 커서 2컬럼**(별도 테이블 없음).
@@ -143,8 +143,8 @@ CREATE INDEX idx_chatroom_messages_room_created
 
 ### ④ PATCH `/chats/{chatRoomId}/accept` — 상담 수락(사용자)
 - 주체=소유자(user_id==me). `report_review_id` 있는 파이프라인 방만. 방 ACTIVE·report COUNSELING 전제.
-- 동작(단일 트랜잭션): 내 제안(`report_review_id`) `ReportReview.accept()` + 형제 제안(같은 report_id) `reject()` + `Report.accept()`(COUNSELING→CLOSED) + SYSTEM 메시지. **내 방은 ACTIVE 유지**, 형제 방은 `close()`.
-- data: `{ chat_room_id, chat_room_status:"ACTIVE", review_status:"ACCEPTED", report_id, report_status:"CLOSED" }`
+- 동작(단일 트랜잭션): 내 제안(`report_review_id`) `ReportReview.accept()` + 형제 제안(같은 report_id) `reject()` + `Report.accept()`(COUNSELING→CLOSED) + SYSTEM 메시지. **내 방·형제 방 모두 `close()`**.
+- data: `{ chat_room_id, chat_room_status:"CLOSED", review_status:"ACCEPTED", report_id, report_status:"CLOSED" }`
 - 200 / 401 / 403(소유자 아님) / 404 / 409(이미 결정/COUNSELING 아님, 또는 report_review_id 없는 검색 방).
 
 ### ⑤ PATCH `/chats/{chatRoomId}/reject` — 상담 거절(사용자) **[추가]**
@@ -215,7 +215,7 @@ QueryDSL은 develop 배선됨(PR #110). `*RepositoryCustom`/`*RepositoryImpl` + 
 - 전송: 둘 다 없음 400, 첨부만/캡션+첨부, key roomId 접두 검증, 롤백 시 미발행, CLOSED 방 409.
 - 업로드: 화이트리스트 밖/용량 400, private 저장, 비참여자 403.
 - 읽음: 내 커서만, 이후 unread=0.
-- 수락: 소유자 아님 403, 검색 방(report_review_id null) 409, review ACCEPTED·형제 REJECTED·report CLOSED·내 방 ACTIVE·형제 방 CLOSED 원자성.
+- 수락: 소유자 아님 403, 검색 방(report_review_id null) 409, review ACCEPTED·형제 REJECTED·report CLOSED·내 방·형제 방 CLOSED 원자성.
 - 거절: `COUNSELING→AWAITING_ADOPTION`(D3), review REJECTED, 방 CLOSED, 타 제안 유지.
 - WS: 쿠키 없는 핸드셰이크 거부, 비참여자 구독 거부, 로컬 2인스턴스 relay.
 - `@SpringBootTest` + 실제 test_db, MockMvc.
@@ -229,6 +229,6 @@ QueryDSL은 develop 배선됨(PR #110). `*RepositoryCustom`/`*RepositoryImpl` + 
 3. **D1** 채팅방 생성 주체(테스트 시드).
 4. **D5** 공유 리포트 사용자용 조회 API — report 팀 신설.
 5. 첨부 허용 MIME·용량 상한, presigned URL 만료(예: 5분).
-6. 수락 후 방 ACTIVE 유지(계속 대화) 확정 / 거절·형제 방 CLOSED 시 읽기 전용 여부.
+6. 수락·거절 모두 방 CLOSED — 종료 후 읽기 전용/숨김 처리(프론트) 확정.
 ```
 

@@ -53,6 +53,7 @@ public class ChatConsultationCommandService {
     myReview.accept();
     rejectSiblingReviews(report.getId(), myReview.getId());
     report.accept(room.getAdjusterId());
+    room.close();
     closeSiblingRooms(report.getId(), room.getId());
     appendSystemMessage(room, ACCEPT_SYSTEM_MESSAGE);
 

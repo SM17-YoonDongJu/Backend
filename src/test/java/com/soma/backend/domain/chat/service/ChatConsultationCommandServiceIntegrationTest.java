@@ -87,7 +87,7 @@ class ChatConsultationCommandServiceIntegrationTest {
   }
 
   @Test
-  @DisplayName("정상 수락: 내 제안 ACCEPTED·형제 제안 REJECTED·report CLOSED·내 방 ACTIVE 유지·형제 방 CLOSED"
+  @DisplayName("정상 수락: 내 제안 ACCEPTED·형제 제안 REJECTED·report CLOSED·내 방·형제 방 CLOSED"
       + " + SYSTEM 메시지 저장")
   void accept_persistsAtomicTransitionAcrossAggregates() {
     Report report = counselingReport();
@@ -98,7 +98,7 @@ class ChatConsultationCommandServiceIntegrationTest {
 
     ConsultationDecisionResponse response = chatConsultationCommandService.accept(customer.getId(), myRoom.getId());
 
-    assertThat(response.chatRoomStatus()).isEqualTo(ChatRoomStatus.ACTIVE);
+    assertThat(response.chatRoomStatus()).isEqualTo(ChatRoomStatus.CLOSED);
     assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.ACCEPTED);
     assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
 
@@ -112,7 +112,7 @@ class ChatConsultationCommandServiceIntegrationTest {
     assertThat(reloadedSibling.getStatus()).isEqualTo(ReviewStatus.REJECTED);
     assertThat(reloadedReport.getStatus()).isEqualTo(ReportStatus.CLOSED);
     assertThat(reloadedReport.getAdjusterId()).isEqualTo(adjuster1.getId());
-    assertThat(reloadedMyRoom.getStatus()).isEqualTo(ChatRoomStatus.ACTIVE);
+    assertThat(reloadedMyRoom.getStatus()).isEqualTo(ChatRoomStatus.CLOSED);
     assertThat(reloadedSiblingRoom.getStatus()).isEqualTo(ChatRoomStatus.CLOSED);
 
     List<ChatMessage> myRoomMessages = chatMessageRepository.findByCursor(myRoom.getId(), null, null, 10);
