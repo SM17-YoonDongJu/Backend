@@ -33,6 +33,7 @@ public class ChatConsultationCommandService {
 
   private static final String ACCEPT_SYSTEM_MESSAGE = "상담이 시작되었습니다.";
   private static final String REJECT_SYSTEM_MESSAGE = "상담이 종료되었습니다.";
+  private static final String SIBLING_CLOSED_SYSTEM_MESSAGE = "다른 사정사가 선택되어 상담이 종료되었습니다.";
 
   private final ChatRoomRepository chatRoomRepository;
   private final ChatMessageRepository chatMessageRepository;
@@ -116,7 +117,7 @@ public class ChatConsultationCommandService {
     }
   }
 
-  /** 같은 리포트의 형제 방(다른 사정사)을 종료한다. close()는 멱등이라 상태 확인 없이 호출한다. */
+  /** 같은 리포트의 형제 방(다른 사정사)을 종료하고 각 방에 종료 안내를 브로드캐스트한다. close()는 멱등. */
   private void closeSiblingRooms(UUID reportId, UUID myRoomId) {
     List<ChatRoom> siblings = chatRoomRepository.findByReportId(reportId);
     for (ChatRoom sibling : siblings) {
@@ -124,6 +125,7 @@ public class ChatConsultationCommandService {
         continue;
       }
       sibling.close();
+      appendSystemMessage(sibling, SIBLING_CLOSED_SYSTEM_MESSAGE);
     }
   }
 

@@ -119,6 +119,11 @@ class ChatConsultationCommandServiceIntegrationTest {
     assertThat(myRoomMessages).hasSize(1);
     assertThat(myRoomMessages.get(0).getMessageType()).isEqualTo(ChatMessageType.SYSTEM);
     assertThat(myRoomMessages.get(0).getSenderId()).isNull();
+
+    List<ChatMessage> siblingRoomMessages =
+        chatMessageRepository.findByCursor(siblingRoom.getId(), null, null, 10);
+    assertThat(siblingRoomMessages).hasSize(1);
+    assertThat(siblingRoomMessages.get(0).getMessageType()).isEqualTo(ChatMessageType.SYSTEM);
   }
 
   @Test

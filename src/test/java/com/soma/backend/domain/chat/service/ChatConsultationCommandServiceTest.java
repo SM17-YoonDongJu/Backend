@@ -144,7 +144,8 @@ class ChatConsultationCommandServiceTest {
       assertThat(response.reportId()).isEqualTo(reportId);
       assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
 
-      verify(chatEventPublisher, times(1)).publishAfterCommit(any());
+      // 내 방 + 형제 방 각각 SYSTEM 종료 안내 브로드캐스트 → 2회 발행
+      verify(chatEventPublisher, times(2)).publishAfterCommit(any());
     }
 
     @Test

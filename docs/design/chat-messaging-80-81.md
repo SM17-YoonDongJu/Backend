@@ -143,7 +143,7 @@ CREATE INDEX idx_chatroom_messages_room_created
 
 ### ④ PATCH `/chats/{chatRoomId}/accept` — 상담 수락(사용자)
 - 주체=소유자(user_id==me). `report_review_id` 있는 파이프라인 방만. 방 ACTIVE·report COUNSELING 전제.
-- 동작(단일 트랜잭션): 내 제안(`report_review_id`) `ReportReview.accept()` + 형제 제안(같은 report_id) `reject()` + `Report.accept()`(COUNSELING→CLOSED) + SYSTEM 메시지. **내 방·형제 방 모두 `close()`**.
+- 동작(단일 트랜잭션): 내 제안(`report_review_id`) `ReportReview.accept()` + 형제 제안(같은 report_id) `reject()` + `Report.accept()`(COUNSELING→CLOSED) + SYSTEM 메시지. **내 방·형제 방 모두 `close()`** — 형제 방에도 "다른 사정사 선택" 종료 SYSTEM 메시지를 각 방 토픽으로 브로드캐스트.
 - data: `{ chat_room_id, chat_room_status:"CLOSED", review_status:"ACCEPTED", report_id, report_status:"CLOSED" }`
 - 200 / 401 / 403(소유자 아님) / 404 / 409(이미 결정/COUNSELING 아님, 또는 report_review_id 없는 검색 방).
 
