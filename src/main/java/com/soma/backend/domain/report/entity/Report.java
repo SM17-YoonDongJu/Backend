@@ -45,7 +45,7 @@ public class Report extends BaseEntity {
     ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_ADOPTION,
         EnumSet.of(ReportStatus.AWAITING_ADOPTION, ReportStatus.COUNSELING));
     ALLOWED_TRANSITIONS.put(ReportStatus.COUNSELING,
-        EnumSet.of(ReportStatus.COUNSELING, ReportStatus.CLOSED));
+        EnumSet.of(ReportStatus.COUNSELING, ReportStatus.CLOSED, ReportStatus.AWAITING_ADOPTION));
     ALLOWED_TRANSITIONS.put(ReportStatus.CLOSED, EnumSet.of(ReportStatus.CLOSED));
   }
 
@@ -150,6 +150,17 @@ public class Report extends BaseEntity {
     }
     this.adjusterId = adjusterId;
     applyReviewTransition(ReportStatus.CLOSED);
+  }
+
+  /**
+   * 상담 거절 시 리포트를 재채택 대기(AWAITING_ADOPTION)로 되돌린다(채팅 거절 플로우, chat 도메인 호출).
+   * COUNSELING 상태에서만 허용 — 그 외 상태면 INVALID_STATUS_TRANSITION.
+   */
+  public void reopenForAdoption() {
+    if (this.status != ReportStatus.COUNSELING) {
+      throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+    }
+    applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
   }
 
   /** 리포트 소유자(요청 사용자) 여부 — 상세/제안/decide 인가 가드에 사용(design.md §8). */

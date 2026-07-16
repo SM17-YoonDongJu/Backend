@@ -19,6 +19,9 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
 
   Optional<ReportReview> findByReportIdAndAdjusterId(UUID reportId, UUID adjusterId);
 
+  /** 같은 리포트의 형제 제안(다른 사정사) 조회 — 채팅 상담 수락 시 형제 제안 일괄 거절에 사용(chat 도메인). */
+  List<ReportReview> findByReportId(UUID reportId);
+
   /**
    * 검수 행 멱등 생성(스켈레톤). UK(report_id, adjuster_id) 충돌 시 DB가 무시하므로,
    * 같은 사정사의 최초 검수 동시 제출에도 UK 충돌 500이 나지 않는다. 이후 SELECT→UPDATE로 내용 갱신.
