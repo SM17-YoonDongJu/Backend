@@ -12,12 +12,10 @@ import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 import com.soma.backend.domain.chat.entity.ChatRoom;
-import com.soma.backend.domain.chat.entity.ChatRoomStatus;
 import com.soma.backend.domain.chat.repository.ChatMessageRepository;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
-import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -85,10 +83,10 @@ public class ChatConsultationCommandService {
   private ChatRoom loadOwnedConsultableRoom(UUID me, UUID roomId) {
     ChatRoom room = chatRoomRepository.findById(roomId)
         .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
-    if (!me.equals(room.getUserId())) {
+    if (!room.isOwnedBy(me)) {
       throw new BusinessException(ErrorCode.CHAT_NOT_ROOM_OWNER);
     }
-    if (!room.hasSharedReport() || room.getReportId() == null) {
+    if (!room.canDecideConsultation()) {
       throw new BusinessException(ErrorCode.CHAT_CONSULTATION_UNAVAILABLE);
     }
     return room;
@@ -111,22 +109,20 @@ public class ChatConsultationCommandService {
       if (sibling.getId().equals(myReviewId)) {
         continue;
       }
-      if (sibling.getStatus() == ReviewStatus.SENT || sibling.getStatus() == ReviewStatus.COUNSELING) {
+      if (sibling.isDecidable()) {
         sibling.reject();
       }
     }
   }
 
-  /** 같은 리포트의 형제 방(다른 사정사)을 종료한다. */
+  /** 같은 리포트의 형제 방(다른 사정사)을 종료한다. close()는 멱등이라 상태 확인 없이 호출한다. */
   private void closeSiblingRooms(UUID reportId, UUID myRoomId) {
     List<ChatRoom> siblings = chatRoomRepository.findByReportId(reportId);
     for (ChatRoom sibling : siblings) {
       if (sibling.getId().equals(myRoomId)) {
         continue;
       }
-      if (sibling.getStatus() == ChatRoomStatus.ACTIVE) {
-        sibling.close();
-      }
+      sibling.close();
     }
   }
 

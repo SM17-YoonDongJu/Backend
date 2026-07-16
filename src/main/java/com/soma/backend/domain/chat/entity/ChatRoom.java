@@ -68,6 +68,11 @@ public class ChatRoom extends BaseEntity {
     return accountId != null && (accountId.equals(userId) || accountId.equals(adjusterId));
   }
 
+  /** 방 소유자(상담을 요청한 고객) 여부 — 수락/거절 인가 가드. */
+  public boolean isOwnedBy(UUID accountId) {
+    return accountId != null && accountId.equals(userId);
+  }
+
   /** 상대방 계정 id. me가 고객이면 사정사, 사정사면 고객. */
   public UUID counterpartOf(UUID me) {
     return me.equals(userId) ? adjusterId : userId;
@@ -76,6 +81,11 @@ public class ChatRoom extends BaseEntity {
   /** 공유 리포트(사정사 검수 결과)가 연결된 파이프라인 방인지 — 검색 방은 false. */
   public boolean hasSharedReport() {
     return reportReviewId != null;
+  }
+
+  /** 상담 결정(수락/거절)이 가능한 파이프라인 방인지 — 제안·리포트가 모두 연결된 경우만. */
+  public boolean canDecideConsultation() {
+    return reportReviewId != null && reportId != null;
   }
 
   /** 내 읽음 커서(안읽음 계산용). */
