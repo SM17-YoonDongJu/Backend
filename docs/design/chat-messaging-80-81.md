@@ -168,7 +168,7 @@ CREATE INDEX idx_chatroom_messages_room_created
 
 ## 5. WebSocket(STOMP) + Redis relay
 
-- 엔드포인트 `/ws-chat`(SockJS 옵션). 브로커 `enableSimpleBroker("/topic")`, prefix `/app`.
+- 엔드포인트 `/ws-chat`(native WebSocket). 브로커 `enableSimpleBroker("/topic")`, prefix `/app`.
 - 구독 `/topic/chat.rooms.{chatRoomId}`. 클라는 구독만, 전송은 REST(③) → `@MessageMapping` 불필요.
 - 핸드셰이크: `HandshakeInterceptor`에서 `CookieProvider.readCookie(req, ACCESS_TOKEN_COOKIE)` → `JwtProvider.validate/getUserId` → Principal. 실패 시 거부(401 `CHAT_WS_UNAUTHORIZED`).
 - 구독 인가: `ChannelInterceptor`(SUBSCRIBE)에서 목적지 roomId 참여자 검증.

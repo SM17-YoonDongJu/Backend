@@ -17,7 +17,7 @@ import com.soma.backend.global.security.ChatHandshakeInterceptor;
 import com.soma.backend.global.security.ChatSubscribeInterceptor;
 
 /**
- * STOMP over WebSocket 설정(설계서 §5). 엔드포인트 {@code /ws-chat}(native + SockJS 폴백), SimpleBroker
+ * STOMP over WebSocket 설정(설계서 §5). 엔드포인트 {@code /ws-chat}(native WebSocket), SimpleBroker
  * {@code /topic}, 앱 prefix {@code /app}. 쿠키 기반 핸드셰이크 인증({@link ChatHandshakeInterceptor} +
  * {@link ChatHandshakeHandler})과 SUBSCRIBE 참여자 인가({@link ChatSubscribeInterceptor})를 배선한다.
  * 클라이언트는 구독만 하고 전송은 REST(③)라 {@code @MessageMapping}은 두지 않는다.
@@ -48,11 +48,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         .setAllowedOriginPatterns(origins)
         .addInterceptors(chatHandshakeInterceptor)
         .setHandshakeHandler(chatHandshakeHandler);
-    registry.addEndpoint("/ws-chat")
-        .setAllowedOriginPatterns(origins)
-        .addInterceptors(chatHandshakeInterceptor)
-        .setHandshakeHandler(chatHandshakeHandler)
-        .withSockJS();
   }
 
   @Override
