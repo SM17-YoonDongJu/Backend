@@ -158,7 +158,7 @@ CREATE INDEX idx_chatroom_messages_room_created
 - data: `{ chat_room_id, read_at }`. 200 / 401 / 403 / 404.
 
 ### ⑦ POST `/chats/{chatRoomId}/attachments` — 첨부 업로드 **[추가]**
-- 주체=참여자. `multipart/form-data`의 `file`. 검증(화이트리스트 pdf/jpg/png·용량) → private S3(key `chat/{roomId}/{uuid}_{name}`).
+- 주체=참여자. `multipart/form-data`의 `file`. 검증(화이트리스트 pdf/jpg/png·용량 + **매직바이트 시그니처가 선언 MIME과 일치**해야 함 — 위장 업로드 차단) → private S3(key `chat/{roomId}/{uuid}_{name}`).
 - data: `{ attachment_key, name, content_type, size }` → ③의 `attachment`로 전달.
 - 201 / 400(형식·용량) / 401 / 403 / 404. `infra/s3` 업로더 신설. 조회는 ②가 presigned GET.
 

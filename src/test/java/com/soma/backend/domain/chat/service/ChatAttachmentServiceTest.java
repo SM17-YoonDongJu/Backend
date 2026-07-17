@@ -68,14 +68,27 @@ class ChatAttachmentServiceTest {
   void upload_allowedTypeAndSize_succeeds() {
     given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(activeRoom()));
     given(chatAttachmentUploader.upload(eq(roomId), any())).willReturn("chat/" + roomId + "/uuid_photo.png");
-    MultipartFile file = new MockMultipartFile("file", "photo.png", "image/png", new byte[]{1, 2, 3});
+    byte[] pngBytes = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    MultipartFile file = new MockMultipartFile("file", "photo.png", "image/png", pngBytes);
 
     UploadAttachmentResponse response = service.upload(userId, roomId, file);
 
     assertThat(response.attachmentKey()).isEqualTo("chat/" + roomId + "/uuid_photo.png");
     assertThat(response.name()).isEqualTo("photo.png");
     assertThat(response.contentType()).isEqualTo("image/png");
-    assertThat(response.size()).isEqualTo(3);
+    assertThat(response.size()).isEqualTo(8);
+  }
+
+  @Test
+  @DisplayName("선언은 image/jpeg인데 실제 바이트가 JPEG 시그니처가 아니면 CHAT_ATTACHMENT_TYPE_NOT_ALLOWED(400)")
+  void upload_spoofedMime_throws400() {
+    given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(activeRoom()));
+    MultipartFile file = new MockMultipartFile("file", "evil.jpg", "image/jpeg", "not a real jpeg".getBytes());
+
+    assertThatThrownBy(() -> service.upload(userId, roomId, file))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CHAT_ATTACHMENT_TYPE_NOT_ALLOWED));
+    verify(chatAttachmentUploader, never()).upload(any(), any());
   }
 
   @Test
