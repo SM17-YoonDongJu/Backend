@@ -3,12 +3,14 @@ package com.soma.backend.domain.user.service;
 import java.util.List;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.auth.entity.SocialAccount;
 import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
@@ -40,7 +42,7 @@ public class UserService {
    */
   @Transactional(readOnly = true)
   public UserMeResponse getMe(UUID userId) {
-    return UserMeResponse.from(findActiveUser(userId));
+    return UserMeResponse.from(findActiveUser(userId), resolveSocialProvider(userId));
   }
 
   /**
@@ -61,7 +63,7 @@ public class UserService {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
     user.updateProfile(newPhone, request.region(), request.avatarUrl());
-    return UserMeResponse.from(user);
+    return UserMeResponse.from(user, resolveSocialProvider(userId));
   }
 
   /**
@@ -79,6 +81,17 @@ public class UserService {
     socialAccountRepository.deleteByUserId(userId);
     outboxEventPublisher.publishAuthCleanup(userId, socials);
     authTokenService.expireCookies(response);
+  }
+
+  /**
+   * 연결된 소셜 계정의 provider(kakao·naver 등)를 표시용으로 파생한다. provider는 별도 Aggregate
+   * (SocialAccount)에 있으므로 user_id로 조회해 첫 계정의 값을 쓴다. 미연동이면 {@code null}.
+   */
+  private @Nullable String resolveSocialProvider(UUID userId) {
+    return socialAccountRepository.findByUserId(userId).stream()
+        .findFirst()
+        .map(SocialAccount::getProvider)
+        .orElse(null);
   }
 
   private User findActiveUser(UUID userId) {

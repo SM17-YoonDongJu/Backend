@@ -79,6 +79,38 @@ class UserServiceTest {
   }
 
   @Test
+  @DisplayName("getMe-연결된 소셜 계정이 있으면 socialProvider를 파생해 내려준다")
+  void getMe_withSocialAccount_returnsProvider() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    SocialAccount social = mock(SocialAccount.class);
+    given(social.getProvider()).willReturn("kakao");
+    given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
+    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(social));
+
+    // When
+    UserMeResponse result = userService.getMe(userId);
+
+    // Then
+    assertThat(result.socialProvider()).isEqualTo("kakao");
+  }
+
+  @Test
+  @DisplayName("getMe-연결된 소셜 계정이 없으면 socialProvider는 null이다")
+  void getMe_noSocialAccount_providerNull() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
+    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of());
+
+    // When
+    UserMeResponse result = userService.getMe(userId);
+
+    // Then
+    assertThat(result.socialProvider()).isNull();
+  }
+
+  @Test
   @DisplayName("getMe-회원이 없으면 USER_NOT_FOUND를 던진다")
   void getMe_notFound_throws() {
     // Given
