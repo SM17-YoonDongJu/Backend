@@ -101,7 +101,7 @@ public class ReportReview extends BaseEntity {
   /** 종료 상태(ACCEPTED/REJECTED)에서의 재결정을 차단 — CLOSED 리포트와 제안 상태 불일치를 막는다. */
   private void ensureDecidable() {
     if (!isDecidable()) {
-      throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+      throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
     }
   }
 

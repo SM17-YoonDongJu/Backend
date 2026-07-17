@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 public enum ErrorCode {
 
   // 400 Bad Request — 요청 자체가 잘못됨
+  BAD_REQUEST(HttpStatus.BAD_REQUEST, "요청이 올바르지 않습니다."),
   INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 형식이 올바르지 않습니다."),
   VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "입력값 검증에 실패했습니다."),
   MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, "필수 입력값이 누락되었습니다."),
@@ -25,7 +26,6 @@ public enum ErrorCode {
 
   // 404 Not Found — 리소스 없음
   USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
-  POST_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 게시물/리포트를 찾을 수 없습니다."),
   SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "구독 정보를 찾을 수 없습니다."),
 
   // 409 Conflict — 리소스 상태 충돌
@@ -52,7 +52,7 @@ public enum ErrorCode {
   // Report (도메인 특화)
   REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트를 찾을 수 없습니다."),
   REPORT_ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트 쟁점을 찾을 수 없습니다."),
-  INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "허용되지 않는 상태 전이입니다."),
+  INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "허용되지 않는 상태 전이입니다."),
   PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "제안을 찾을 수 없습니다."),
   REPORT_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종결된 리포트입니다."),
   CLAIM_DETAILS_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "청구 상세 유형이 사고 유형과 일치하지 않습니다."),

@@ -63,14 +63,14 @@ class ReportTest {
   }
 
   @Test
-  @DisplayName("AWAITING_INSPECTION에서 COUNSELING으로 건너뛰면 INVALID_STATUS_TRANSITION")
+  @DisplayName("AWAITING_INSPECTION에서 COUNSELING으로 건너뛰면 INVALID_STATE_TRANSITION")
   void inspectionToCounselingRejected() {
     Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
 
     assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.COUNSELING))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -81,7 +81,7 @@ class ReportTest {
     assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.COUNSELING))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     report.applyReviewTransition(ReportStatus.CLOSED);
     assertThat(report.getStatus()).isEqualTo(ReportStatus.CLOSED);
@@ -95,7 +95,7 @@ class ReportTest {
     assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.CLOSED))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -119,19 +119,19 @@ class ReportTest {
   }
 
   @Test
-  @DisplayName("applyReviewStart: COUNSELING·CLOSED는 검수 대상이 아니므로 INVALID_STATUS_TRANSITION")
+  @DisplayName("applyReviewStart: COUNSELING·CLOSED는 검수 대상이 아니므로 INVALID_STATE_TRANSITION")
   void reviewStartRejectsNonReviewable() {
     Report counseling = reportWithStatus(ReportStatus.COUNSELING);
     assertThatThrownBy(counseling::applyReviewStart)
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     Report closed = reportWithStatus(ReportStatus.CLOSED);
     assertThatThrownBy(closed::applyReviewStart)
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -147,30 +147,30 @@ class ReportTest {
   }
 
   @Test
-  @DisplayName("markNotSelected: CLOSED·COUNSELING은 미채택 대상이 아니므로 INVALID_STATUS_TRANSITION")
+  @DisplayName("markNotSelected: CLOSED·COUNSELING은 미채택 대상이 아니므로 INVALID_STATE_TRANSITION")
   void markNotSelectedRejectsTerminalOrCounseling() {
     Report closed = reportWithStatus(ReportStatus.CLOSED);
     assertThatThrownBy(closed::markNotSelected)
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     Report counseling = reportWithStatus(ReportStatus.COUNSELING);
     assertThatThrownBy(counseling::markNotSelected)
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
-  @DisplayName("NOT_SELECTED 리포트는 신규 검수 대상이 아니다(applyReviewStart → INVALID_STATUS_TRANSITION)")
+  @DisplayName("NOT_SELECTED 리포트는 신규 검수 대상이 아니다(applyReviewStart → INVALID_STATE_TRANSITION)")
   void notSelectedBlocksNewReview() {
     Report report = reportWithStatus(ReportStatus.NOT_SELECTED);
 
     assertThatThrownBy(report::applyReviewStart)
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -184,12 +184,12 @@ class ReportTest {
     assertThatThrownBy(() -> toClosed.applyReviewTransition(ReportStatus.CLOSED))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     Report toAdoption = reportWithStatus(ReportStatus.NOT_SELECTED);
     assertThatThrownBy(() -> toAdoption.applyReviewTransition(ReportStatus.AWAITING_ADOPTION))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 }

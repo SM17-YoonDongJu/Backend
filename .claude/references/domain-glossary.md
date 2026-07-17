@@ -229,11 +229,12 @@ FORBIDDEN                // 권한 부족 (미활성 사정사 채택 API, 타�
 
 // 404 Not Found — 대상 리소스 없음
 USER_NOT_FOUND           // 해당 사용자 없음
-POST_NOT_FOUND           // 해당 리포트 / 매칭 요청 / 신청서 없음
+REPORT_NOT_FOUND         // 해당 리포트 없음 (구 POST_NOT_FOUND 대체 — 리포트/게시물 code 일원화)
 SUBSCRIPTION_NOT_FOUND   // 해당 구독 정보 없음
 
 // 409 Conflict — 현재 리소스 상태와 충돌
 DUPLICATE_RESOURCE       // 이미 존재하는 리소스 재생성 (닉네임 중복, 이미 진행 중인 상담 등)
+INVALID_STATE_TRANSITION // 허용되지 않는 상태 전이 (COUNSELING 아닌 제안 채택 등, 구 INVALID_STATUS_TRANSITION 400→409)
 
 // 422 Unprocessable Entity — 형식은 맞으나 비즈니스 규칙상 처리 불가
 PAYMENT_FAILED           // 결제 처리 실패 (PG 거절, 카드 한도 초과, 잔액 부족 등)

@@ -142,14 +142,14 @@ public class Report extends BaseEntity {
   /**
    * 사용자가 제안(REPORT_REVIEWS)을 채택해 담당 사정사를 확정한다(design.md §6 decide).
    * COUNSELING 상태에서만 허용 — 이미 CLOSED면 REPORT_ALREADY_CLOSED, 그 외 상태면
-   * INVALID_STATUS_TRANSITION(예: 아직 상담 전).
+   * INVALID_STATE_TRANSITION(예: 아직 상담 전).
    */
   public void accept(UUID adjusterId) {
     if (this.status == ReportStatus.CLOSED) {
       throw new BusinessException(ErrorCode.REPORT_ALREADY_CLOSED);
     }
     if (this.status != ReportStatus.COUNSELING) {
-      throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+      throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
     }
     this.adjusterId = adjusterId;
     applyReviewTransition(ReportStatus.CLOSED);
@@ -157,11 +157,11 @@ public class Report extends BaseEntity {
 
   /**
    * 상담 거절 시 리포트를 재채택 대기(AWAITING_ADOPTION)로 되돌린다(채팅 거절 플로우, chat 도메인 호출).
-   * COUNSELING 상태에서만 허용 — 그 외 상태면 INVALID_STATUS_TRANSITION.
+   * COUNSELING 상태에서만 허용 — 그 외 상태면 INVALID_STATE_TRANSITION.
    */
   public void reopenForAdoption() {
     if (this.status != ReportStatus.COUNSELING) {
-      throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+      throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
     }
     applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
   }
@@ -183,12 +183,12 @@ public class Report extends BaseEntity {
   }
 
   /**
-   * 검수 반영에 의한 상태 전이. 허용표(design.md §4)를 벗어나면 400 INVALID_STATUS_TRANSITION.
+   * 검수 반영에 의한 상태 전이. 허용표(design.md §4)를 벗어나면 400 INVALID_STATE_TRANSITION.
    */
   public void applyReviewTransition(ReportStatus target) {
     Set<ReportStatus> allowed = ALLOWED_TRANSITIONS.getOrDefault(status, Set.of());
     if (!allowed.contains(target)) {
-      throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+      throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
     }
     this.status = target;
   }
@@ -196,13 +196,13 @@ public class Report extends BaseEntity {
   /**
    * 사정사 검수 착수/반영에 의한 상태 파생 전이. 사정사는 target을 지정하지 않고 현재 status에서 파생한다.
    * AWAITING_INSPECTION → AWAITING_ADOPTION(착수), AWAITING_ADOPTION → 유지(재반영). 그 외(COUNSELING·CLOSED)는
-   * 검수 대상이 아니므로 400 INVALID_STATUS_TRANSITION. 검수 내용은 REPORTS가 아니라 REPORT_REVIEWS에만 저장하며,
+   * 검수 대상이 아니므로 400 INVALID_STATE_TRANSITION. 검수 내용은 REPORTS가 아니라 REPORT_REVIEWS에만 저장하며,
    * REPORTS는 이 생명주기 status 전이만 반영한다(A8 격리).
    */
   public void applyReviewStart() {
     ReportStatus target = switch (status) {
       case AWAITING_INSPECTION, AWAITING_ADOPTION -> ReportStatus.AWAITING_ADOPTION;
-      default -> throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+      default -> throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
     };
     applyReviewTransition(target);
   }

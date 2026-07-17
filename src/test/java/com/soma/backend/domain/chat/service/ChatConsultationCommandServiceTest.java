@@ -203,7 +203,7 @@ class ChatConsultationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("이미 결정된 내 제안(REJECTED)을 다시 수락하면 INVALID_STATUS_TRANSITION(400)"
+    @DisplayName("이미 결정된 내 제안(REJECTED)을 다시 수락하면 INVALID_STATE_TRANSITION(400)"
         + " — 형제 제안·report·방은 건드리지 않고 즉시 실패한다(fail-fast 원자성)")
     void accept_myReviewAlreadyDecided_throwsInvalidTransitionWithoutSideEffects() {
       ChatRoom room = pipelineRoom(ChatRoomStatus.ACTIVE);
@@ -215,7 +215,7 @@ class ChatConsultationCommandServiceTest {
 
       assertThatThrownBy(() -> service.accept(userId, roomId))
           .isInstanceOfSatisfying(BusinessException.class,
-              ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION));
+              ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
 
       // myReview.accept()가 가장 먼저 실행되어 실패하므로 형제 조회·report 상태 변경·메시지 발행이 전혀 없어야 한다.
       verify(reportReviewRepository, never()).findByReportId(any());
@@ -280,7 +280,7 @@ class ChatConsultationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("이미 결정된 제안(ACCEPTED)을 다시 거절하면 INVALID_STATUS_TRANSITION(400)")
+    @DisplayName("이미 결정된 제안(ACCEPTED)을 다시 거절하면 INVALID_STATE_TRANSITION(400)")
     void reject_alreadyDecided_throwsInvalidTransition() {
       ChatRoom room = pipelineRoom(ChatRoomStatus.ACTIVE);
       ReportReview myReview = reviewWithId(reviewId, reportId, adjusterId, ReviewStatus.ACCEPTED);
@@ -291,11 +291,11 @@ class ChatConsultationCommandServiceTest {
 
       assertThatThrownBy(() -> service.reject(userId, roomId))
           .isInstanceOfSatisfying(BusinessException.class,
-              ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION));
+              ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     }
 
     @Test
-    @DisplayName("report가 COUNSELING이 아니면 INVALID_STATUS_TRANSITION(400)"
+    @DisplayName("report가 COUNSELING이 아니면 INVALID_STATE_TRANSITION(400)"
         + " — DB 원자성(실패 시 미반영)은 통합 테스트에서 검증")
     void reject_reportNotCounseling_throwsInvalidTransition() {
       ChatRoom room = pipelineRoom(ChatRoomStatus.ACTIVE);
@@ -312,7 +312,7 @@ class ChatConsultationCommandServiceTest {
       // ChatConsultationCommandServiceIntegrationTest에서 실제 트랜잭션으로 검증한다.
       assertThatThrownBy(() -> service.reject(userId, roomId))
           .isInstanceOfSatisfying(BusinessException.class,
-              ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION));
+              ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     }
   }
 }
