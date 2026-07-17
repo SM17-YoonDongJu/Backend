@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,6 +22,15 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
 
   /** 같은 리포트의 형제 제안(다른 사정사) 조회 — 채팅 상담 수락 시 형제 제안 일괄 거절에 사용(chat 도메인). */
   List<ReportReview> findByReportId(UUID reportId);
+
+  /**
+   * pending-review 목록 항목에 붙일, 요청 사정사 본인의 리포트별 검수 상태. 페이지의 report_id 묶음으로
+   * 한 번에 조회한다(N+1 방지). 본인 검수가 없는 리포트는 결과에 없다(→ 응답에서 null 처리).
+   */
+  @Query("SELECT new com.soma.backend.domain.report.repository.ReportReviewStatusRow(rv.reportId, rv.status) "
+      + "FROM ReportReview rv WHERE rv.adjusterId = :adjusterId AND rv.reportId IN :reportIds")
+  List<ReportReviewStatusRow> findAdjusterReviewStatuses(
+      @Param("adjusterId") UUID adjusterId, @Param("reportIds") Collection<UUID> reportIds);
 
   /**
    * 검수 행 멱등 생성(스켈레톤). UK(report_id, adjuster_id) 충돌 시 DB가 무시하므로,
