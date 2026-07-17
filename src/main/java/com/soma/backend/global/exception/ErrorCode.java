@@ -76,7 +76,10 @@ public enum ErrorCode {
   CHAT_DIRECT_JOIN_FORBIDDEN(HttpStatus.FORBIDDEN, "1:1 채팅방에는 입장할 수 없습니다."),
   CHAT_INVALID_MEMBER_COUNT(HttpStatus.BAD_REQUEST, "채팅방 멤버 구성이 올바르지 않습니다."),
   CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "메시지 내용이 비어 있습니다."),
-  CHAT_WS_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "WebSocket 인증에 실패했습니다.");
+  CHAT_WS_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "WebSocket 인증에 실패했습니다."),
+
+  // Notification (도메인 특화)
+  NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다.");
 
   private final HttpStatus status;
   private final String message;
