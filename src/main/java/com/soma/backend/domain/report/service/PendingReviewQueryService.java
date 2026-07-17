@@ -23,6 +23,7 @@ import com.soma.backend.domain.report.repository.PendingReviewRow;
 import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
+import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
@@ -43,12 +44,14 @@ public class PendingReviewQueryService {
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;
   private final ReportIssueRepository reportIssueRepository;
+  private final ReportReviewRepository reportReviewRepository;
 
-  public PendingReviewSummaryResponse getSummary() {
+  public PendingReviewSummaryResponse getSummary(UUID adjusterId) {
     long pendingCount = reportRepository.countPending();
     LocalDateTime dueSoonThreshold = LocalDateTime.now().minusDays(SLA_DAYS - DUE_SOON_WINDOW_DAYS);
     long dueSoonCount = reportRepository.countDueSoon(dueSoonThreshold);
-    return new PendingReviewSummaryResponse(pendingCount, dueSoonCount);
+    long inProgressCount = reportReviewRepository.countInProgressByAdjusterId(adjusterId);
+    return new PendingReviewSummaryResponse(pendingCount, dueSoonCount, inProgressCount);
   }
 
   public PendingReviewListResponse getPendingReviewList(
