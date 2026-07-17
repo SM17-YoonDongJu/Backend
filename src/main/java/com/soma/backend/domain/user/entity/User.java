@@ -17,6 +17,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import com.soma.backend.domain.common.entity.BaseEntity;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 
 /**
  * USERS Aggregate Root. 회원 계정 정보를 관리한다.
@@ -119,5 +121,16 @@ public class User extends BaseEntity {
    */
   public boolean isWithdrawn() {
     return this.status == UserStatus.WITHDRAWN;
+  }
+
+  /**
+   * 손해사정사 자격 신청 접수에 따른 역할 전이. USER만 UNCERTIFICATED_ADJUSTER로 전이할 수 있고,
+   * 이미 사정사(미인증/인증)거나 관리자면 중복 신청으로 보아 {@code DUPLICATE_RESOURCE}를 던진다.
+   */
+  public void applyForAdjuster() {
+    if (this.role != Role.USER) {
+      throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
+    }
+    this.role = Role.UNCERTIFICATED_ADJUSTER;
   }
 }
