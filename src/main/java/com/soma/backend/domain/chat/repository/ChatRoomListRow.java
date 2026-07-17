@@ -28,5 +28,6 @@ public record ChatRoomListRow(
     String adjusterAvatarUrl,
     String lastMessage,
     LocalDateTime lastMessageAt,
-    Long unreadCount) {
+    Long unreadCount,
+    LocalDateTime createdAt) {
 }

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.chat.dto.ChatRoomDetailResponse;
 import com.soma.backend.domain.chat.dto.ChatRoomListResponse;
 import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.dto.ReadResponse;
@@ -40,6 +41,13 @@ public class ChatRoomController {
       @AuthenticationPrincipal CustomUserDetails principal) {
     UUID me = requireUserId(principal);
     return ResponseEntity.ok(ApiResponse.ok(chatRoomQueryService.listMyRooms(me)));
+  }
+
+  @GetMapping("/chats/{chatRoomId}")
+  public ResponseEntity<ApiResponse<ChatRoomDetailResponse>> getRoom(
+      @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
+    UUID me = requireUserId(principal);
+    return ResponseEntity.ok(ApiResponse.ok(chatRoomQueryService.getRoom(me, chatRoomId)));
   }
 
   @PatchMapping("/chats/{chatRoomId}/accept")
