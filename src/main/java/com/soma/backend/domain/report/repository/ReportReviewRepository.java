@@ -60,7 +60,8 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
 
   @Query(value = "SELECT rv.report_id AS reportId, r.case_no AS caseNo, r.title AS title, "
       + "r.accident_type AS accidentType, u.region AS region, rv.status AS status, "
-      + "rv.created_at AS reviewedAt "
+      + "rv.created_at AS reviewedAt, "
+      + "rv.estimate_min_amount AS confirmedMinAmount, rv.estimate_max_amount AS confirmedMaxAmount "
       + "FROM report_reviews rv "
       + "JOIN reports r ON r.id = rv.report_id "
       + "JOIN users u ON u.id = r.user_id "

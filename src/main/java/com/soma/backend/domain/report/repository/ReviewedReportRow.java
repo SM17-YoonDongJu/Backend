@@ -19,4 +19,10 @@ public interface ReviewedReportRow {
   String getStatus();
 
   LocalDateTime getReviewedAt();
+
+  /** 사정사가 확정한 예상 보상 금액 범위 하한(report_reviews.estimate_min_amount). 미확정 시 null. */
+  Long getConfirmedMinAmount();
+
+  /** 사정사가 확정한 예상 보상 금액 범위 상한(report_reviews.estimate_max_amount). 미확정 시 null. */
+  Long getConfirmedMaxAmount();
 }

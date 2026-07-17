@@ -2,11 +2,15 @@ package com.soma.backend.domain.report.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -16,9 +20,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import com.soma.backend.domain.report.dto.ReviewedReportListResponse;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
+import com.soma.backend.domain.report.repository.ReviewedReportRow;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
@@ -116,5 +125,39 @@ class ReviewedReportQueryServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.VALIDATION_ERROR);
+  }
+
+  @Test
+  @DisplayName("목록 아이템에 확정 금액(min/max)이 매핑되고 rating은 소스 부재로 항상 null이다")
+  void reviewedReportsMapConfirmedAmountsAndNullRating() {
+    given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(1L);
+    given(reportReviewRepository.countConsultationConvertedByAdjusterId(adjusterId)).willReturn(0L);
+    given(reportReviewRepository.countByAdjusterIdAndCreatedAtBetween(eq(adjusterId), any(), any()))
+        .willReturn(0L);
+
+    ReviewedReportRow row = mock(ReviewedReportRow.class);
+    UUID reportId = UUID.randomUUID();
+    given(row.getReportId()).willReturn(reportId);
+    given(row.getCaseNo()).willReturn("2026-000123");
+    given(row.getTitle()).willReturn("교통사고 검수");
+    given(row.getAccidentType()).willReturn("traffic");
+    given(row.getRegion()).willReturn("서울");
+    given(row.getStatus()).willReturn("SENT");
+    given(row.getReviewedAt()).willReturn(LocalDateTime.of(2026, 5, 10, 9, 0));
+    given(row.getConfirmedMinAmount()).willReturn(1_000_000L);
+    given(row.getConfirmedMaxAmount()).willReturn(3_000_000L);
+    Page<ReviewedReportRow> page = new PageImpl<>(List.of(row), PageRequest.of(0, 20), 1);
+    given(reportReviewRepository.findReviewedReportRows(eq(adjusterId), any(), any(), any(), any(Pageable.class)))
+        .willReturn(page);
+
+    ReviewedReportListResponse response =
+        service.getReviewedReports(adjusterId, "ALL", "2026-05", PageRequest.of(0, 20));
+
+    assertThat(response.items()).hasSize(1);
+    ReviewedReportListResponse.Item item = response.items().get(0);
+    assertThat(item.reportId()).isEqualTo(reportId);
+    assertThat(item.confirmedMinAmount()).isEqualTo(1_000_000L);
+    assertThat(item.confirmedMaxAmount()).isEqualTo(3_000_000L);
+    assertThat(item.rating()).isNull();
   }
 }
