@@ -3,6 +3,8 @@ package com.soma.backend.domain.report.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.BeanUtils;
@@ -132,5 +134,39 @@ class ReportTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("accept: COUNSELING이면 담당 사정사를 확정하고 CLOSED로 종결한다")
+  void acceptFromCounseling() {
+    Report report = reportWithStatus(ReportStatus.COUNSELING);
+    UUID adjusterId = UUID.randomUUID();
+
+    report.accept(adjusterId);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.CLOSED);
+    assertThat(report.getAdjusterId()).isEqualTo(adjusterId);
+  }
+
+  @Test
+  @DisplayName("accept: 아직 상담 전(COUNSELING 아님)이면 409 INVALID_STATE_TRANSITION")
+  void acceptBeforeCounselingRejected() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+
+    assertThatThrownBy(() -> report.accept(UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("accept: 이미 CLOSED면 409 REPORT_ALREADY_CLOSED")
+  void acceptWhenClosedRejected() {
+    Report report = reportWithStatus(ReportStatus.CLOSED);
+
+    assertThatThrownBy(() -> report.accept(UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.REPORT_ALREADY_CLOSED);
   }
 }

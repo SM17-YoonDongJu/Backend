@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 public enum ErrorCode {
 
   // 400 Bad Request — 요청 자체가 잘못됨
+  // BAD_REQUEST: @Valid 바디 검증 실패 시 GlobalExceptionHandler가 내보내는 전역 400 code(필드 메시지는 동적).
+  BAD_REQUEST(HttpStatus.BAD_REQUEST, "요청이 올바르지 않습니다."),
   INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 형식이 올바르지 않습니다."),
   VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "입력값 검증에 실패했습니다."),
   MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, "필수 입력값이 누락되었습니다."),
@@ -30,6 +32,11 @@ public enum ErrorCode {
 
   // 409 Conflict — 리소스 상태 충돌
   DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "이미 존재하는 리소스입니다."),
+  // INVALID_STATE_TRANSITION: 현재 리소스 상태 때문에 요청이 충돌(예: 상담 중이 아닌 제안 채택). 내부 검수
+  //   생명주기 전이 위반(400 INVALID_STATUS_TRANSITION)과 달리, 클라이언트가 409로 구분·분기해야 하는 케이스.
+  INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서 처리할 수 없는 요청입니다."),
+  // CLOSED: 종료된 리소스(예: 비활성 상담방 메시지 전송)에 대한 요청. throw 배선은 채팅 구현 시 추가.
+  CLOSED(HttpStatus.CONFLICT, "이미 종료되어 처리할 수 없습니다."),
 
   // 422 Unprocessable Content — 비즈니스 규칙 위반
   PAYMENT_FAILED(HttpStatus.UNPROCESSABLE_CONTENT, "결제 처리에 실패했습니다."),
