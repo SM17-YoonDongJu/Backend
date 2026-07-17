@@ -42,8 +42,9 @@ public class ChatConsultationCommandService {
   private final ChatEventPublisher chatEventPublisher;
 
   /**
-   * 상담 수락: 내 제안 ACCEPTED + 형제 제안 REJECTED + report COUNSELING→CLOSED. 내 방은 ACTIVE 유지,
-   * 형제 방은 CLOSED. SYSTEM 메시지 브로드캐스트.
+   * 상담 수락: 내 제안 ACCEPTED + 형제 제안 REJECTED + report COUNSELING→CLOSED. 내 방은 CLOSED하지 않고
+   * ACTIVE로 유지해 수락 후에도 담당 사정사와 대화를 이어가며, 형제 방(다른 사정사)만 CLOSED한다.
+   * SYSTEM 메시지 브로드캐스트.
    */
   @Transactional
   public ConsultationDecisionResponse accept(UUID me, UUID roomId) {
@@ -54,7 +55,6 @@ public class ChatConsultationCommandService {
     myReview.accept();
     rejectSiblingReviews(report.getId(), myReview.getId());
     report.accept(room.getAdjusterId());
-    room.close();
     closeSiblingRooms(report.getId(), room.getId());
     appendSystemMessage(room, ACCEPT_SYSTEM_MESSAGE);
 

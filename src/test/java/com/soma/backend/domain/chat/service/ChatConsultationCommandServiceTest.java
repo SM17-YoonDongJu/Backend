@@ -110,7 +110,7 @@ class ChatConsultationCommandServiceTest {
   class Accept {
 
     @Test
-    @DisplayName("정상 수락: 내 제안 ACCEPTED, 형제 제안 REJECTED, report CLOSED, 내 방·형제 방 CLOSED")
+    @DisplayName("정상 수락: 내 제안 ACCEPTED, 형제 제안 REJECTED, report CLOSED, 내 방 ACTIVE 유지·형제 방 CLOSED")
     void accept_happyPath_transitionsAtomically() {
       ChatRoom room = pipelineRoom(ChatRoomStatus.ACTIVE);
       ReportReview myReview = reviewWithId(reviewId, reportId, adjusterId, ReviewStatus.SENT);
@@ -135,16 +135,16 @@ class ChatConsultationCommandServiceTest {
       assertThat(siblingReview.getStatus()).isEqualTo(ReviewStatus.REJECTED);
       assertThat(report.getStatus()).isEqualTo(ReportStatus.CLOSED);
       assertThat(report.getAdjusterId()).isEqualTo(adjusterId);
-      assertThat(room.getStatus()).isEqualTo(ChatRoomStatus.CLOSED);
+      assertThat(room.getStatus()).isEqualTo(ChatRoomStatus.ACTIVE);
       assertThat(siblingRoom.getStatus()).isEqualTo(ChatRoomStatus.CLOSED);
 
       assertThat(response.chatRoomId()).isEqualTo(roomId);
-      assertThat(response.chatRoomStatus()).isEqualTo(ChatRoomStatus.CLOSED);
+      assertThat(response.chatRoomStatus()).isEqualTo(ChatRoomStatus.ACTIVE);
       assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.ACCEPTED);
       assertThat(response.reportId()).isEqualTo(reportId);
       assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
 
-      // 내 방 + 형제 방 각각 SYSTEM 종료 안내 브로드캐스트 → 2회 발행
+      // 내 방(수락 안내) + 형제 방(종료 안내) 각각 SYSTEM 브로드캐스트 → 2회 발행
       verify(chatEventPublisher, times(2)).publishAfterCommit(any());
     }
 
