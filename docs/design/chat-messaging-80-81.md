@@ -122,8 +122,9 @@ CREATE INDEX idx_chatroom_messages_room_created
 공통: 성공 `{status,message,data}`, 실패 `{status,code,message}`, 필드 **snake_case**. 인증은 `access_token` 쿠키(HttpOnly). 컨트롤러 `ResponseEntity<ApiResponse<T>>`.
 
 ### ① GET `/chats` — 내 채팅방 목록
-- data: `{ rooms: [ { chat_room_id, report_id, report_review_id, status, review_status, counterpart:{user_id,name}, last_message, last_message_at, unread_count } ] }`
+- data: `{ rooms: [ { chat_room_id, report_id, report_review_id, status, review_status, case_no, accident_type, counterpart:{user_id,name,avatar_url}, last_message, last_message_at, unread_count } ] }`
   - `status` = chatroom 생명주기(ACTIVE/CLOSED). `review_status` = report_reviews.status(SENT/COUNSELING/ACCEPTED/REJECTED) — 파이프라인 방만, 검색 방은 report_id·report_review_id·review_status 모두 **null**.
+  - `case_no`·`accident_type` = 연결 리포트(reports) LEFT JOIN — 검색 방은 **null**. `accident_type`은 enum 값(예 `traffic`). `counterpart.avatar_url` = 상대방 users.avatar_url(미설정 시 null). (FE 요청 카드 #48/PR #53 반영)
 - 정렬 `last_message_at DESC NULLS LAST`. `unread_count` = 상관 서브쿼리(상대가 보낸 메시지 중 내 last_read_at 이후 COUNT).
 - 200 / 401.
 

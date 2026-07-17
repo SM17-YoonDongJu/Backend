@@ -11,6 +11,7 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import com.soma.backend.domain.chat.entity.QChatMessage;
 import com.soma.backend.domain.chat.entity.QChatRoom;
+import com.soma.backend.domain.report.entity.QReport;
 import com.soma.backend.domain.report.entity.QReportReview;
 import com.soma.backend.domain.user.entity.QUser;
 
@@ -31,6 +32,7 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
     QChatRoom room = QChatRoom.chatRoom;
     QChatMessage message = QChatMessage.chatMessage;
     QReportReview review = QReportReview.reportReview;
+    QReport report = QReport.report;
     QUser userAccount = new QUser("userAccount");
     QUser adjusterAccount = new QUser("adjusterAccount");
 
@@ -55,15 +57,20 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
             room.reportReviewId,
             room.status,
             review.status,
+            report.caseNo,
+            report.accidentType,
             room.userId,
             room.adjusterId,
             userAccount.nickname,
             adjusterAccount.nickname,
+            userAccount.avatarUrl,
+            adjusterAccount.avatarUrl,
             room.lastMessage,
             room.lastMessageAt,
             unreadCount))
         .from(room)
         .leftJoin(review).on(review.id.eq(room.reportReviewId))
+        .leftJoin(report).on(report.id.eq(room.reportId))
         .leftJoin(userAccount).on(userAccount.id.eq(room.userId))
         .leftJoin(adjusterAccount).on(adjusterAccount.id.eq(room.adjusterId))
         .where(room.userId.eq(me).or(room.adjusterId.eq(me)))

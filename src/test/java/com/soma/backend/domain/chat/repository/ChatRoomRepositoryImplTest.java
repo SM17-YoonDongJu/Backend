@@ -143,12 +143,16 @@ class ChatRoomRepositoryImplTest {
     assertThat(pipelineRow.reportId()).isEqualTo(report.getId());
     assertThat(pipelineRow.reportReviewId()).isEqualTo(review.getId());
     assertThat(pipelineRow.reviewStatus()).isEqualTo(ReviewStatus.SENT);
+    assertThat(pipelineRow.caseNo()).isEqualTo("20260716-100");
+    assertThat(pipelineRow.accidentType()).isEqualTo(AccidentType.MEDICAL_INDEMNITY);
 
     ChatRoomListRow searchRow =
         rows.stream().filter(row -> row.chatRoomId().equals(searchRoom.getId())).findFirst().orElseThrow();
     assertThat(searchRow.reportId()).isNull();
     assertThat(searchRow.reportReviewId()).isNull();
     assertThat(searchRow.reviewStatus()).isNull();
+    assertThat(searchRow.caseNo()).isNull();
+    assertThat(searchRow.accidentType()).isNull();
   }
 
   @Test

@@ -32,6 +32,7 @@ public class ChatRoomQueryService {
     boolean iAmUser = me.equals(row.userId());
     UUID counterpartId = iAmUser ? row.adjusterId() : row.userId();
     String counterpartName = iAmUser ? row.adjusterNickname() : row.userNickname();
+    String counterpartAvatarUrl = iAmUser ? row.adjusterAvatarUrl() : row.userAvatarUrl();
     long unread = row.unreadCount() == null ? 0L : row.unreadCount();
     return new ChatRoomSummaryResponse(
         row.chatRoomId(),
@@ -39,7 +40,9 @@ public class ChatRoomQueryService {
         row.reportReviewId(),
         row.status(),
         row.reviewStatus(),
-        new ChatRoomSummaryResponse.Counterpart(counterpartId, counterpartName),
+        row.caseNo(),
+        row.accidentType(),
+        new ChatRoomSummaryResponse.Counterpart(counterpartId, counterpartName, counterpartAvatarUrl),
         row.lastMessage(),
         row.lastMessageAt(),
         unread);
