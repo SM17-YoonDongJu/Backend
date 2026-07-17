@@ -2,20 +2,30 @@ package com.soma.backend.domain.report.dto;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 
 import com.soma.backend.domain.report.repository.ReviewedReportRow;
 
-/** API#5 응답(stats + items + page 메타). */
+/**
+ * API#5 응답(stats + status_counts + items + page 메타).
+ *
+ * <p>{@code statusCounts}는 필터 탭 건수 배지용으로 {@code total}과 {@code ReviewStatus} enum 값을 키로 한
+ * 상태별 건수를 담는다(예: {@code {"total":12,"SENT":5,...}}). 월 필터는 반영하되 status 탭 필터는 미반영이라
+ * 어떤 탭이 선택돼도 전체 분포를 보여준다(FE #94).
+ */
 public record ReviewedReportListResponse(
-    Stats stats, List<Item> items, int page, int size, long totalElements, int totalPages) {
+    Stats stats, Map<String, Long> statusCounts, List<Item> items,
+    int page, int size, long totalElements, int totalPages) {
 
-  public static ReviewedReportListResponse from(Stats stats, Page<ReviewedReportRow> page) {
+  public static ReviewedReportListResponse from(
+      Stats stats, Map<String, Long> statusCounts, Page<ReviewedReportRow> page) {
     List<Item> items = page.getContent().stream().map(Item::from).toList();
     return new ReviewedReportListResponse(
-        stats, items, page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+        stats, statusCounts, items,
+        page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
   }
 
   /**

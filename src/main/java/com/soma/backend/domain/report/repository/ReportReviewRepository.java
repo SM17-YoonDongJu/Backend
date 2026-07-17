@@ -83,6 +83,22 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
       Pageable pageable);
 
   /**
+   * API#5 필터 탭 배지용 — 요청 사정사 본인 검수의 상태별 건수. 월 필터는 목록과 동일하게 적용하되
+   * status 탭 필터는 걸지 않는다(어떤 탭이 선택돼도 전체 분포 배지를 보여야 하므로). JPQL 생성자 표현식으로
+   * StatusCount(status, count)를 만든다(네이티브 미사용).
+   */
+  @Query("SELECT new com.soma.backend.domain.report.repository.StatusCount(rv.status, COUNT(rv)) "
+      + "FROM ReportReview rv "
+      + "WHERE rv.adjusterId = :adjusterId "
+      + "AND (:monthFrom IS NULL OR rv.createdAt >= :monthFrom) "
+      + "AND (:monthTo IS NULL OR rv.createdAt < :monthTo) "
+      + "GROUP BY rv.status")
+  List<StatusCount> countByStatusGrouped(
+      @Param("adjusterId") UUID adjusterId,
+      @Param("monthFrom") LocalDateTime monthFrom,
+      @Param("monthTo") LocalDateTime monthTo);
+
+  /**
    * GET /reports/{reportId}/proposals 목록(design.md §6). REJECTED는 노출하지 않는다.
    * NOTE(backend-developer): design.md는 rating 출처로 {@code adjuster_profiles.rating_mean}을
    * 지정하지만 V1 스키마에 해당 컬럼이 없다 — {@code adjuster_reviews.score} 평균으로 대체했다(ReportRepository와 동일 이슈).
