@@ -76,6 +76,7 @@ public enum ErrorCode {
   CHAT_ATTACHMENT_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "허용되지 않는 첨부 형식입니다."),
   CHAT_ATTACHMENT_TOO_LARGE(HttpStatus.BAD_REQUEST, "첨부 용량이 허용 범위를 초과했습니다."),
   CHAT_ATTACHMENT_KEY_MISMATCH(HttpStatus.BAD_REQUEST, "첨부 키가 채팅방과 일치하지 않습니다."),
+  CHAT_ATTACHMENT_TOO_MANY(HttpStatus.BAD_REQUEST, "첨부 개수가 허용 범위를 초과했습니다."),
   CHAT_ATTACHMENT_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "첨부 파일 업로드에 실패했습니다."),
   CHAT_WS_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "WebSocket 인증에 실패했습니다.");
 

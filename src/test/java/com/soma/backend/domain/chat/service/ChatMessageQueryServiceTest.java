@@ -26,6 +26,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.soma.backend.domain.chat.ChatRoomFixture;
 import com.soma.backend.domain.chat.dto.ChatMessageListResponse;
 import com.soma.backend.domain.chat.dto.ChatMessageResponse;
+import com.soma.backend.domain.chat.entity.ChatAttachment;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 import com.soma.backend.domain.chat.entity.ChatRoom;
@@ -160,21 +161,22 @@ class ChatMessageQueryServiceTest {
   @DisplayName("첨부 메시지는 presigned GET URL로 치환되고, is_mine은 sender_id==me로 판정된다")
   void getMessages_attachmentMessage_getsPresignedUrlAndIsMineFlag() {
     ChatMessage attachment = ChatMessage.attachment(
-        roomId, adjusterId, ChatMessageType.IMAGE, "chat/" + roomId + "/uuid_photo.png",
-        "photo.png", "image/png", 1234L, null);
+        roomId, adjusterId, ChatMessageType.IMAGE,
+        List.of(new ChatAttachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 1234L)), null);
     ReflectionTestUtils.setField(attachment, "id", UUID.randomUUID());
     ReflectionTestUtils.setField(attachment, "createdAt", LocalDateTime.now());
 
     given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(activeRoom()));
     given(chatMessageRepository.findByCursor(any(), any(), any(), anyInt())).willReturn(List.of(attachment));
-    given(chatAttachmentUploader.presignedGetUrl(attachment.getAttachmentKey()))
+    given(chatAttachmentUploader.presignedGetUrl("chat/" + roomId + "/uuid_photo.png"))
         .willReturn("https://s3.example/presigned-url");
 
     ChatMessageListResponse response = service.getMessages(userId, roomId, null, 30);
 
     ChatMessageResponse messageResponse = response.messages().get(0);
-    assertThat(messageResponse.attachment().url()).isEqualTo("https://s3.example/presigned-url");
-    assertThat(messageResponse.attachment().name()).isEqualTo("photo.png");
+    assertThat(messageResponse.attachments()).hasSize(1);
+    assertThat(messageResponse.attachments().get(0).url()).isEqualTo("https://s3.example/presigned-url");
+    assertThat(messageResponse.attachments().get(0).name()).isEqualTo("photo.png");
     assertThat(messageResponse.isMine()).isFalse();
   }
 }

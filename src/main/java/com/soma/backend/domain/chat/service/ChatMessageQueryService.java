@@ -64,20 +64,22 @@ public class ChatMessageQueryService {
   }
 
   private ChatMessageResponse toResponse(ChatMessage message, UUID roomId, UUID me) {
-    ChatMessageResponse.Attachment attachment = null;
-    if (message.hasAttachment()) {
-      attachment = new ChatMessageResponse.Attachment(
-          chatAttachmentUploader.presignedGetUrl(message.getAttachmentKey()),
-          message.getAttachmentName(),
-          message.getAttachmentContentType());
-    }
+    List<ChatMessageResponse.Attachment> attachments = message.hasAttachment()
+        ? message.getAttachments().stream()
+            .map(attachment -> new ChatMessageResponse.Attachment(
+                chatAttachmentUploader.presignedGetUrl(attachment.attachmentKey()),
+                attachment.name(),
+                attachment.contentType(),
+                attachment.size()))
+            .toList()
+        : List.of();
     return new ChatMessageResponse(
         message.getId(),
         roomId,
         message.getSenderId(),
         message.getMessageType(),
         message.getContent(),
-        attachment,
+        attachments,
         message.isMine(me),
         message.getCreatedAt());
   }

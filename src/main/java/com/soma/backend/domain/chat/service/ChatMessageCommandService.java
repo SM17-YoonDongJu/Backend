@@ -1,5 +1,7 @@
 package com.soma.backend.domain.chat.service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -10,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.chat.dto.ChatMessageResponse;
 import com.soma.backend.domain.chat.dto.SendMessageRequest;
+import com.soma.backend.domain.chat.entity.ChatAttachment;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 import com.soma.backend.domain.chat.entity.ChatRoom;
@@ -25,12 +28,14 @@ import com.soma.backend.infra.s3.ChatAttachmentUploader;
 /**
  * 채팅 메시지 전송(설계서 §4 ③). 저장 + last_message 비정규화 후 커밋되면 Redis relay로 브로드캐스트한다
  * (afterCommit — 롤백 시 미발행). 첨부는 저장된 key만 참조하며 응답·브로드캐스트에는 단기 presigned URL을 담는다.
+ * 한 메시지에 여러 첨부를 담을 수 있고, 모두 이미지면 IMAGE·하나라도 비이미지면 FILE로 분류한다.
  */
 @Service
 @RequiredArgsConstructor
 public class ChatMessageCommandService {
 
   private static final int PREVIEW_MAX = 100;
+  private static final int MAX_ATTACHMENTS = 10;
   private static final String ATTACHMENT_PREVIEW = "[첨부]";
 
   private final ChatRoomRepository chatRoomRepository;
@@ -49,7 +54,7 @@ public class ChatMessageCommandService {
       throw new BusinessException(ErrorCode.CHAT_ROOM_CLOSED);
     }
 
-    boolean hasAttachment = request.attachment() != null;
+    boolean hasAttachment = request.attachments() != null && !request.attachments().isEmpty();
     boolean hasContent = StringUtils.hasText(request.content());
     if (!hasAttachment && !hasContent) {
       throw new BusinessException(ErrorCode.CHAT_MESSAGE_EMPTY);
@@ -66,26 +71,34 @@ public class ChatMessageCommandService {
   }
 
   private ChatMessage buildAttachmentMessage(UUID me, UUID roomId, SendMessageRequest request) {
-    SendMessageRequest.Attachment attachment = request.attachment();
-    if (!StringUtils.hasText(attachment.attachmentKey())
-        || !StringUtils.hasText(attachment.name())
-        || !StringUtils.hasText(attachment.contentType())) {
-      throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_EMPTY);
+    List<SendMessageRequest.Attachment> requested = request.attachments();
+    if (requested.size() > MAX_ATTACHMENTS) {
+      throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_TOO_MANY);
     }
-    if (!attachment.attachmentKey().startsWith("chat/" + roomId + "/")) {
-      throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_KEY_MISMATCH);
+    String keyPrefix = "chat/" + roomId + "/";
+    List<ChatAttachment> attachments = new ArrayList<>(requested.size());
+    boolean allImages = true;
+    for (SendMessageRequest.Attachment item : requested) {
+      if (!StringUtils.hasText(item.attachmentKey())
+          || !StringUtils.hasText(item.name())
+          || !StringUtils.hasText(item.contentType())) {
+        throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_EMPTY);
+      }
+      if (!item.attachmentKey().startsWith(keyPrefix)) {
+        throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_KEY_MISMATCH);
+      }
+      if (!isImage(item.contentType())) {
+        allImages = false;
+      }
+      attachments.add(new ChatAttachment(item.attachmentKey(), item.name(), item.contentType(), item.size()));
     }
-    ChatMessageType type = deriveType(attachment.contentType());
+    ChatMessageType type = allImages ? ChatMessageType.IMAGE : ChatMessageType.FILE;
     String caption = StringUtils.hasText(request.content()) ? request.content() : null;
-    return ChatMessage.attachment(roomId, me, type, attachment.attachmentKey(),
-        attachment.name(), attachment.contentType(), null, caption);
+    return ChatMessage.attachment(roomId, me, type, attachments, caption);
   }
 
-  private ChatMessageType deriveType(String contentType) {
-    if (contentType != null && contentType.startsWith("image/")) {
-      return ChatMessageType.IMAGE;
-    }
-    return ChatMessageType.FILE;
+  private boolean isImage(String contentType) {
+    return contentType != null && contentType.startsWith("image/");
   }
 
   private String buildPreview(ChatMessage message) {
@@ -100,37 +113,51 @@ public class ChatMessageCommandService {
   }
 
   private ChatMessageResponse toResponse(ChatMessage message, UUID roomId, UUID me) {
-    ChatMessageResponse.Attachment attachment = message.hasAttachment()
-        ? new ChatMessageResponse.Attachment(
-            chatAttachmentUploader.presignedGetUrl(message.getAttachmentKey()),
-            message.getAttachmentName(),
-            message.getAttachmentContentType())
-        : null;
     return new ChatMessageResponse(
         message.getId(),
         roomId,
         message.getSenderId(),
         message.getMessageType(),
         message.getContent(),
-        attachment,
+        toResponseAttachments(message),
         message.isMine(me),
         message.getCreatedAt());
   }
 
+  private List<ChatMessageResponse.Attachment> toResponseAttachments(ChatMessage message) {
+    if (!message.hasAttachment()) {
+      return List.of();
+    }
+    return message.getAttachments().stream()
+        .map(attachment -> new ChatMessageResponse.Attachment(
+            chatAttachmentUploader.presignedGetUrl(attachment.attachmentKey()),
+            attachment.name(),
+            attachment.contentType(),
+            attachment.size()))
+        .toList();
+  }
+
   private ChatBroadcastMessage toBroadcast(ChatMessage message) {
-    ChatBroadcastMessage.Attachment attachment = message.hasAttachment()
-        ? new ChatBroadcastMessage.Attachment(
-            chatAttachmentUploader.presignedGetUrl(message.getAttachmentKey()),
-            message.getAttachmentName(),
-            message.getAttachmentContentType())
-        : null;
     return new ChatBroadcastMessage(
         message.getRoomId(),
         message.getId(),
         message.getSenderId(),
         message.getMessageType().name(),
         message.getContent(),
-        attachment,
+        toBroadcastAttachments(message),
         message.getCreatedAt());
+  }
+
+  private List<ChatBroadcastMessage.Attachment> toBroadcastAttachments(ChatMessage message) {
+    if (!message.hasAttachment()) {
+      return List.of();
+    }
+    return message.getAttachments().stream()
+        .map(attachment -> new ChatBroadcastMessage.Attachment(
+            chatAttachmentUploader.presignedGetUrl(attachment.attachmentKey()),
+            attachment.name(),
+            attachment.contentType(),
+            attachment.size()))
+        .toList();
   }
 }

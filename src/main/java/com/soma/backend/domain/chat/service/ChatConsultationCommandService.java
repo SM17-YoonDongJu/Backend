@@ -134,6 +134,6 @@ public class ChatConsultationCommandService {
     ChatMessage system = chatMessageRepository.save(ChatMessage.system(room.getId(), text));
     room.touchLastMessage(text, system.getCreatedAt());
     chatEventPublisher.publishAfterCommit(new ChatBroadcastMessage(
-        room.getId(), system.getId(), null, ChatMessageType.SYSTEM.name(), text, null, system.getCreatedAt()));
+        room.getId(), system.getId(), null, ChatMessageType.SYSTEM.name(), text, List.of(), system.getCreatedAt()));
   }
 }

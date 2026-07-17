@@ -67,7 +67,7 @@
 | Root | 테이블 | 불변식 |
 |------|--------|--------|
 | **ChatRoom** | `chatroom` | 참여자 user_id·adjuster_id 2인 고정(1:1). `report_review_id`(nullable)로 상담 대상 제안(공유 리포트) 식별 — 검색 방은 null. `status`는 생명주기 `ACTIVE→CLOSED`만(결정 상태 아님). 읽음 커서는 본인 것만 |
-| **ChatMessage** | `chatroom_messages` | 불변(append-only). sender는 참여자. TEXT는 content 필수, 첨부는 attachment_key 필수, SYSTEM은 서버 생성 |
+| **ChatMessage** | `chatroom_messages` | 불변(append-only). sender는 참여자. TEXT는 content 필수, 첨부는 attachments(jsonb 배열) 1개 이상, SYSTEM은 서버 생성 |
 
 수락/거절은 chat 서비스가 `ReportRepository`·`ReportReviewRepository`를 주입해 **크로스-도메인 쓰기**(불변식은 report 엔티티가 방어).
 
@@ -113,7 +113,7 @@ CREATE INDEX idx_chatroom_messages_room_created
 ```
 
 - `ChatRoom extends BaseEntity`(created_at/updated_at) → `updated_at` 추가로 validate 통과. `ChatMessage`는 불변이라 BaseEntity 미상속, `created_at`만 매핑.
-- 첨부는 컬럼 방식(메시지당 1첨부). `attachment_key`는 private S3 key만 저장, 조회 시 presigned GET URL로 변환.
+- 첨부는 **`V16__chat_message_attachments_array.sql`에서 단수 4컬럼 → `attachments`(jsonb 배열)로 전환**(FE 요청 #48: 한 메시지에 여러 첨부). 배열 요소 `{attachment_key,name,content_type,size}`는 private S3 key만 저장하고 조회 시 presigned GET URL로 변환한다(`user_claims.details` jsonb 패턴 재사용, `@JdbcTypeCode(SqlTypes.JSON)`). S3 키 스킴·업로드 방식은 불변 — 프론트가 파일마다 ⑦을 호출해 확보한 key들을 ③의 배열로 전송.
 
 ---
 
@@ -130,17 +130,17 @@ CREATE INDEX idx_chatroom_messages_room_created
 
 ### ② GET `/chats/{chatRoomId}/messages?cursor=&size=` — 커서 이력
 - Query `cursor`(opaque, 첫 페이지 생략), `size`(기본 30, 최대 100).
-- data: `{ messages:[ { message_id, sender_id, message_type, content, attachment:{url,name,content_type}|null, is_mine, created_at } ], next_cursor, has_next }` (최신순)
+- data: `{ messages:[ { message_id, sender_id, message_type, content, attachments:[{url,name,content_type,size}], is_mine, created_at } ], next_cursor, has_next }` (최신순, 첨부 없으면 빈 배열)
 - 커서 = base64(`{epochSecond}_{nano}_{messageId}`)(밀리초 절삭 없이 나노초 정밀도 보존), 정렬 `created_at DESC, id DESC`.
-- 첨부 `attachment.url`은 조회 시 생성하는 **단기 presigned GET URL**.
+- 첨부 `attachments[].url`은 조회 시 생성하는 **단기 presigned GET URL**.
 - 200 / 401 / 403(비참여자) / 404.
 
 ### ③ POST `/chats/{chatRoomId}/messages` — 전송(텍스트/첨부)
-- body: `{ content?, attachment?:{ attachment_key, name, content_type } }`(⑦ 응답 메타) — 최소 1개. 첨부+캡션 가능.
-- `message_type` 서버 파생: content_type 이미지 → IMAGE, 그 외 첨부 → FILE, 없으면 TEXT.
+- body: `{ content?, attachments?:[{ attachment_key, name, content_type, size }] }`(⑦ 응답 메타) — content·attachments 중 최소 1개. 한 메시지에 첨부 여러 개(최대 10)·캡션 동시 가능.
+- `message_type` 서버 파생: 첨부가 모두 이미지 → IMAGE, 하나라도 비이미지 → FILE, 첨부 없으면 TEXT.
 - 저장 → `last_message/last_message_at` 갱신 → **afterCommit** Redis publish → STOMP `/topic/chat.rooms.{id}`.
-- data: `{ message_id, chat_room_id, sender_id, message_type, content, attachment:{url,name,content_type}|null, created_at }` (url은 presigned)
-- 201 / 400(둘 다 없음) / 401 / 403 / 404 / 409(CLOSED 방).
+- data: `{ message_id, chat_room_id, sender_id, message_type, content, attachments:[{url,name,content_type,size}], created_at }` (url은 presigned, 첨부 없으면 빈 배열)
+- 201 / 400(둘 다 없음·첨부 10개 초과·key 불일치) / 401 / 403 / 404 / 409(CLOSED 방).
 
 ### ④ PATCH `/chats/{chatRoomId}/accept` — 상담 수락(사용자)
 - 주체=소유자(user_id==me). `report_review_id` 있는 파이프라인 방만. 방 ACTIVE·report COUNSELING 전제.
@@ -160,7 +160,7 @@ CREATE INDEX idx_chatroom_messages_room_created
 
 ### ⑦ POST `/chats/{chatRoomId}/attachments` — 첨부 업로드 **[추가]**
 - 주체=참여자. `multipart/form-data`의 `file`. 검증(화이트리스트 pdf/jpg/png·용량 + **매직바이트 시그니처가 선언 MIME과 일치**해야 함 — 위장 업로드 차단) → private S3(key `chat/{roomId}/{uuid}_{name}`).
-- data: `{ attachment_key, name, content_type, size }` → ③의 `attachment`로 전달.
+- data: `{ attachment_key, name, content_type, size }` → ③의 `attachments` 배열 요소로 전달(파일마다 ⑦ 호출).
 - 201 / 400(형식·용량) / 401 / 403 / 404. `infra/s3` 업로더 신설. 조회는 ②가 presigned GET.
 
 > **공유 리포트 열기**: `report_review_id`(=proposal_id)로 프론트가 report 팀의 사용자용 제안 상세 조회 API(D5)를 연다. 내용(예상 보상 범위·쟁점·보장·특약·근거)은 REPORT_REVIEWS에 있음. `report_review_id`가 null(검색 방)이면 버튼 숨김.

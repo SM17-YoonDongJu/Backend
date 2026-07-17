@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -105,13 +106,14 @@ class ChatMessageCommandServiceTest {
     stubSave();
 
     SendMessageRequest.Attachment attachment =
-        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png");
-    ChatMessageResponse response = service.send(userId, roomId, new SendMessageRequest("캡션입니다", attachment));
+        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 1234L);
+    ChatMessageResponse response =
+        service.send(userId, roomId, new SendMessageRequest("캡션입니다", List.of(attachment)));
 
     assertThat(response.messageType()).isEqualTo(ChatMessageType.IMAGE);
     assertThat(response.content()).isEqualTo("캡션입니다");
-    assertThat(response.attachment()).isNotNull();
-    assertThat(response.attachment().url()).isEqualTo("https://s3.example/presigned");
+    assertThat(response.attachments()).hasSize(1);
+    assertThat(response.attachments().get(0).url()).isEqualTo("https://s3.example/presigned");
   }
 
   @Test
@@ -123,10 +125,31 @@ class ChatMessageCommandServiceTest {
     stubSave();
 
     SendMessageRequest.Attachment attachment =
-        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_doc.pdf", "doc.pdf", "application/pdf");
-    ChatMessageResponse response = service.send(userId, roomId, new SendMessageRequest(null, attachment));
+        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_doc.pdf", "doc.pdf", "application/pdf", null);
+    ChatMessageResponse response = service.send(userId, roomId, new SendMessageRequest(null, List.of(attachment)));
 
     assertThat(response.messageType()).isEqualTo(ChatMessageType.FILE);
+  }
+
+  @Test
+  @DisplayName("한 메시지에 첨부 여러 개: 이미지+파일 혼합이면 FILE, 응답에 첨부 배열 전체가 담긴다")
+  void send_multipleAttachments_returnsAllAndDerivesFileWhenMixed() {
+    ChatRoom room = activeRoom();
+    given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
+    given(chatAttachmentUploader.presignedGetUrl(any())).willReturn("https://s3.example/presigned");
+    stubSave();
+
+    SendMessageRequest.Attachment image =
+        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 10L);
+    SendMessageRequest.Attachment pdf =
+        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_doc.pdf", "doc.pdf", "application/pdf", 20L);
+    ChatMessageResponse response =
+        service.send(userId, roomId, new SendMessageRequest(null, List.of(image, pdf)));
+
+    assertThat(response.messageType()).isEqualTo(ChatMessageType.FILE);
+    assertThat(response.attachments()).hasSize(2);
+    assertThat(response.attachments()).extracting(ChatMessageResponse.Attachment::name)
+        .containsExactly("photo.png", "doc.pdf");
   }
 
   @Test
@@ -135,10 +158,10 @@ class ChatMessageCommandServiceTest {
     ChatRoom room = activeRoom();
     given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
 
-    SendMessageRequest.Attachment attachment =
-        new SendMessageRequest.Attachment("chat/" + UUID.randomUUID() + "/uuid_doc.pdf", "doc.pdf", "application/pdf");
+    SendMessageRequest.Attachment attachment = new SendMessageRequest.Attachment(
+        "chat/" + UUID.randomUUID() + "/uuid_doc.pdf", "doc.pdf", "application/pdf", null);
 
-    assertThatThrownBy(() -> service.send(userId, roomId, new SendMessageRequest(null, attachment)))
+    assertThatThrownBy(() -> service.send(userId, roomId, new SendMessageRequest(null, List.of(attachment))))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CHAT_ATTACHMENT_KEY_MISMATCH));
     verify(chatMessageRepository, never()).save(any());
