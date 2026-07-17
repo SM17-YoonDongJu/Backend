@@ -1,7 +1,6 @@
 package com.soma.backend.domain.chat.service;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
@@ -91,21 +90,21 @@ public class ChatMessageQueryService {
   }
 
   private String encodeCursor(ChatMessage message) {
-    long epochMillis = message.getCreatedAt().toInstant(ZoneOffset.UTC).toEpochMilli();
-    String raw = epochMillis + "_" + message.getId();
+    LocalDateTime createdAt = message.getCreatedAt();
+    String raw = createdAt.toEpochSecond(ZoneOffset.UTC) + "_" + createdAt.getNano() + "_" + message.getId();
     return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
   }
 
   private Cursor parseCursor(String cursor) {
     try {
       String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-      String[] parts = raw.split("_", 2);
-      if (parts.length != 2) {
+      String[] parts = raw.split("_", 3);
+      if (parts.length != 3) {
         throw new BusinessException(ErrorCode.INVALID_REQUEST);
       }
-      LocalDateTime createdAt = LocalDateTime.ofInstant(
-          Instant.ofEpochMilli(Long.parseLong(parts[0])), ZoneOffset.UTC);
-      return new Cursor(createdAt, UUID.fromString(parts[1]));
+      LocalDateTime createdAt = LocalDateTime.ofEpochSecond(
+          Long.parseLong(parts[0]), Integer.parseInt(parts[1]), ZoneOffset.UTC);
+      return new Cursor(createdAt, UUID.fromString(parts[2]));
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.INVALID_REQUEST);
     }

@@ -1,6 +1,7 @@
 package com.soma.backend.infra.s3;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -41,15 +43,15 @@ public class ChatAttachmentUploader {
    */
   public String upload(UUID roomId, MultipartFile file) {
     String key = buildKey(roomId, file.getOriginalFilename());
-    try {
-      PutObjectRequest request = PutObjectRequest.builder()
-          .bucket(bucket)
-          .key(key)
-          .contentType(file.getContentType())
-          .contentLength(file.getSize())
-          .build();
-      s3Client.putObject(request, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-    } catch (IOException ex) {
+    PutObjectRequest request = PutObjectRequest.builder()
+        .bucket(bucket)
+        .key(key)
+        .contentType(file.getContentType())
+        .contentLength(file.getSize())
+        .build();
+    try (InputStream inputStream = file.getInputStream()) {
+      s3Client.putObject(request, RequestBody.fromInputStream(inputStream, file.getSize()));
+    } catch (IOException | SdkException ex) {
       throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_UPLOAD_FAILED);
     }
     return key;

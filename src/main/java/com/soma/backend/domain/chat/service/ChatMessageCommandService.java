@@ -67,6 +67,11 @@ public class ChatMessageCommandService {
 
   private ChatMessage buildAttachmentMessage(UUID me, UUID roomId, SendMessageRequest request) {
     SendMessageRequest.Attachment attachment = request.attachment();
+    if (!StringUtils.hasText(attachment.attachmentKey())
+        || !StringUtils.hasText(attachment.name())
+        || !StringUtils.hasText(attachment.contentType())) {
+      throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_EMPTY);
+    }
     if (!attachment.attachmentKey().startsWith("chat/" + roomId + "/")) {
       throw new BusinessException(ErrorCode.CHAT_ATTACHMENT_KEY_MISMATCH);
     }

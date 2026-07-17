@@ -130,7 +130,7 @@ CREATE INDEX idx_chatroom_messages_room_created
 ### ② GET `/chats/{chatRoomId}/messages?cursor=&size=` — 커서 이력
 - Query `cursor`(opaque, 첫 페이지 생략), `size`(기본 30, 최대 100).
 - data: `{ messages:[ { message_id, sender_id, message_type, content, attachment:{url,name,content_type}|null, is_mine, created_at } ], next_cursor, has_next }` (최신순)
-- 커서 = base64(`{createdAtEpochMillis}_{messageId}`), 정렬 `created_at DESC, id DESC`.
+- 커서 = base64(`{epochSecond}_{nano}_{messageId}`)(밀리초 절삭 없이 나노초 정밀도 보존), 정렬 `created_at DESC, id DESC`.
 - 첨부 `attachment.url`은 조회 시 생성하는 **단기 presigned GET URL**.
 - 200 / 401 / 403(비참여자) / 404.
 
