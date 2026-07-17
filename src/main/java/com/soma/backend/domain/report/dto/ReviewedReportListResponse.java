@@ -40,15 +40,27 @@ public record ReviewedReportListResponse(
       long totalCount) {
   }
 
-  /** 목록 아이템. */
+  /**
+   * 목록 아이템. {@code accidentType}·{@code status}는 DB 문자열 값으로 내린다. {@code confirmedMinAmount}·
+   * {@code confirmedMaxAmount}는 사정사 추산 확정 범위(REPORT_REVIEWS.estimate_min/max_amount), {@code rating}은
+   * 고객의 사건별 평점(미작성 시 null)이다(FE #59).
+   */
   public record Item(
       UUID reportId, String caseNo, String title, String accidentType, String region, String status,
-      LocalDateTime reviewedAt) {
+      LocalDateTime reviewedAt, Long confirmedMinAmount, Long confirmedMaxAmount, Integer rating) {
 
     public static Item from(ReviewedReportRow row) {
       return new Item(
-          row.getReportId(), row.getCaseNo(), row.getTitle(), row.getAccidentType(), row.getRegion(),
-          row.getStatus(), row.getReviewedAt());
+          row.reportId(),
+          row.caseNo(),
+          row.title(),
+          row.accidentType() == null ? null : row.accidentType().getValue(),
+          row.region(),
+          row.status() == null ? null : row.status().name(),
+          row.reviewedAt(),
+          row.confirmedMinAmount(),
+          row.confirmedMaxAmount(),
+          row.rating());
     }
   }
 }
