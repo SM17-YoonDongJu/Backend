@@ -32,6 +32,20 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId")
   long countByAdjusterId(@Param("adjusterId") UUID adjusterId);
 
+  /**
+   * 마이페이지 활동 집계 — 요청 사용자(리포트 소유자)가 받은 제안 총수. 거절(REJECTED) 포함(받은 제안 누적).
+   * ReportReview는 Report를 객체가 아니라 report_id로 참조하므로 소유자 필터는 서브쿼리로 건다.
+   */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv "
+      + "WHERE rv.reportId IN (SELECT r.id FROM Report r WHERE r.userId = :userId)")
+  long countProposalsByReportOwner(@Param("userId") UUID userId);
+
+  /** 마이페이지 활동 집계 — 요청 사용자의 리포트에 달린 제안 중 상담 전환(COUNSELING) 수. */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv "
+      + "WHERE rv.status = com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING "
+      + "AND rv.reportId IN (SELECT r.id FROM Report r WHERE r.userId = :userId)")
+  long countConsultsByReportOwner(@Param("userId") UUID userId);
+
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
       + "AND rv.createdAt >= :from AND rv.createdAt < :to")
   long countByAdjusterIdAndCreatedAtBetween(

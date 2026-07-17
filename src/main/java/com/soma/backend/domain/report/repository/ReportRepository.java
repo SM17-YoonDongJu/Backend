@@ -31,6 +31,15 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION")
   long countPending();
 
+  /** 마이페이지 활동 집계 — 요청 사용자가 만든 리포트 총수(GET /users/me/activity-summary). */
+  @Query("SELECT COUNT(r) FROM Report r WHERE r.userId = :userId")
+  long countByUserId(@Param("userId") UUID userId);
+
+  /** 마이페이지 활동 집계 — 요청 사용자의 종결(CLOSED) 리포트 수. */
+  @Query("SELECT COUNT(r) FROM Report r WHERE r.userId = :userId "
+      + "AND r.status = com.soma.backend.domain.report.entity.ReportStatus.CLOSED")
+  long countClosedByUserId(@Param("userId") UUID userId);
+
   /** 홈 검수 대기 풀 카운트 — 검수 대기(AWAITING_INSPECTION)와 채택 대기(AWAITING_ADOPTION) 합산. */
   @Query("SELECT COUNT(r) FROM Report r WHERE r.status IN ("
       + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
