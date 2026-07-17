@@ -2,6 +2,7 @@ package com.soma.backend.domain.report.repository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,6 +13,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportStatus;
 
 /** Report Aggregate Spring Data JPA 리포지토리 + 목록/요약 조회 전용 파생 쿼리(N+1 방지). */
 public interface ReportRepository extends JpaRepository<Report, UUID> {
@@ -30,6 +32,14 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION")
   long countPending();
+
+  /**
+   * 미채택(NOT_SELECTED) 자동 전이 대상 — 지정 상태(검수 대기·채택 대기)로 threshold 이전에 접수된 리포트.
+   * 이미 CLOSED·COUNSELING·NOT_SELECTED인 리포트는 sources에 없어 자연히 제외된다.
+   */
+  @Query("SELECT r FROM Report r WHERE r.status IN :sources AND r.createdAt < :threshold")
+  List<Report> findExpiredForNotSelection(
+      @Param("sources") Collection<ReportStatus> sources, @Param("threshold") LocalDateTime threshold);
 
   /** 홈 검수 대기 풀 카운트 — 검수 대기(AWAITING_INSPECTION)와 채택 대기(AWAITING_ADOPTION) 합산. */
   @Query("SELECT COUNT(r) FROM Report r WHERE r.status IN ("

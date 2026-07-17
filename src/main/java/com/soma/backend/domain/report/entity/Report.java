@@ -41,12 +41,15 @@ public class Report extends BaseEntity {
 
   static {
     ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_INSPECTION,
-        EnumSet.of(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION));
+        EnumSet.of(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION, ReportStatus.NOT_SELECTED));
     ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_ADOPTION,
-        EnumSet.of(ReportStatus.AWAITING_ADOPTION, ReportStatus.COUNSELING));
+        EnumSet.of(ReportStatus.AWAITING_ADOPTION, ReportStatus.COUNSELING, ReportStatus.NOT_SELECTED));
     ALLOWED_TRANSITIONS.put(ReportStatus.COUNSELING,
         EnumSet.of(ReportStatus.COUNSELING, ReportStatus.CLOSED));
     ALLOWED_TRANSITIONS.put(ReportStatus.CLOSED, EnumSet.of(ReportStatus.CLOSED));
+    // 미채택 이후에도 상담이 잡히면 COUNSELING으로 재개 가능. 단 CLOSED 직행·재검수(AWAITING_ADOPTION 복귀)는 불가.
+    ALLOWED_TRANSITIONS.put(ReportStatus.NOT_SELECTED,
+        EnumSet.of(ReportStatus.NOT_SELECTED, ReportStatus.COUNSELING));
   }
 
   @Id
@@ -152,6 +155,16 @@ public class Report extends BaseEntity {
     applyReviewTransition(ReportStatus.CLOSED);
   }
 
+  /**
+   * 미채택(NOT_SELECTED) 자동 전이. 접수 후 기한(1주일) 내에 상담 완료(CLOSED)되지 못했거나(케이스1)
+   * 검수를 하나도 받지 못한(케이스2) 리포트를 스케줄러 스윕이 전이시킨다. 검수 대기·채택 대기에서만
+   * 진입한다(전이표) — 이후 {@link #applyReviewStart()}가 NOT_SELECTED에서 예외를 던져 신규 사정사 검수는
+   * 차단되고, 진행 중인 상담/채팅은 이 전이로 닫지 않는다(chat 도메인이 별도 소유). 종료 상태는 아니며,
+   * 이후 상담이 잡히면 COUNSELING으로 재개될 수 있다(전이표: NOT_SELECTED → COUNSELING 허용).
+   */
+  public void markNotSelected() {
+    applyReviewTransition(ReportStatus.NOT_SELECTED);
+  }
   /** 리포트 소유자(요청 사용자) 여부 — 상세/제안/decide 인가 가드에 사용(design.md §8). */
   public boolean isOwnedBy(UUID userId) {
     return this.userId != null && this.userId.equals(userId);
