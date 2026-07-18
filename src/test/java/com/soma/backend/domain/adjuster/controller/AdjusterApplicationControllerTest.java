@@ -75,7 +75,8 @@ class AdjusterApplicationControllerTest {
 
   private String validBody() {
     return "{"
-        + "\"name\":\"홍길동\",\"speciality\":\"신체\",\"license_no\":\"제2024-0001호\","
+        + "\"name\":\"홍길동\",\"phone\":\"010-1234-5678\",\"specialties\":[\"신체\"],"
+        + "\"license_no\":\"제2024-0001호\","
         + "\"affiliation\":\"INDEPENDENT\",\"region\":\"서울 송파\","
         + "\"registration_image_url\":\"https://x/reg.pdf\"}";
   }
@@ -108,7 +109,7 @@ class AdjusterApplicationControllerTest {
   @DisplayName("POST-필수 필드가 누락되면 400")
   void apply_invalidBody_returns400() throws Exception {
     UUID userId = UUID.randomUUID();
-    String body = "{\"speciality\":\"신체\"}";
+    String body = "{\"specialties\":[\"신체\"]}";
 
     mockMvc.perform(post("/users/adjuster-applications").with(authenticatedAs(userId))
             .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -133,7 +134,7 @@ class AdjusterApplicationControllerTest {
   void getMyApplication_returns200() throws Exception {
     UUID userId = UUID.randomUUID();
     AdjusterApplicationResponse response = new AdjusterApplicationResponse(
-        UUID.randomUUID(), "PENDING", null, "홍길동", "신체", "제2024-0001호",
+        UUID.randomUUID(), "PENDING", null, "홍길동", "010-1234-5678", List.of("신체"), "제2024-0001호",
         List.of(), null, null);
     given(queryService.getMyApplication(userId)).willReturn(response);
 

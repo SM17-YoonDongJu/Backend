@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -46,7 +47,7 @@ class AdjusterApplicationCommandServiceTest {
 
   private CreateAdjusterApplicationRequest request(String licenseNo, String licenseImageUrl) {
     return new CreateAdjusterApplicationRequest(
-        "홍길동", "신체", licenseNo, licenseImageUrl, 5, "소개",
+        "홍길동", "010-1234-5678", List.of("신체"), licenseNo, licenseImageUrl, 5, "소개",
         "INDEPENDENT", "서울 송파", "https://x/reg.pdf");
   }
 
@@ -99,16 +100,31 @@ class AdjusterApplicationCommandServiceTest {
   }
 
   @Test
-  @DisplayName("이미 사정사(role≠USER)면 역할 전이에서 DUPLICATE_RESOURCE")
-  void apply_alreadyAdjuster() {
+  @DisplayName("이미 인증 사정사(CERTIFICATED_ADJUSTER)면 역할 전이에서 DUPLICATE_RESOURCE")
+  void apply_alreadyCertifiedAdjuster() {
     given(adjusterApplicationRepository.existsByUserIdAndStatus(userId, ApplicationStatus.PENDING))
         .willReturn(false);
-    User adjuster = userWithRole(Role.UNCERTIFICATED_ADJUSTER);
+    User adjuster = userWithRole(Role.CERTIFICATED_ADJUSTER);
     given(userRepository.findById(userId)).willReturn(Optional.of(adjuster));
 
     assertThatThrownBy(() -> service.apply(userId, request("제2024-0001호", null)))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_RESOURCE));
     verify(adjusterApplicationRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("반려 후 재신청(UNCERTIFICATED_ADJUSTER·PENDING 없음)이면 재접수되어 PENDING을 반환한다")
+  void apply_resubmitAfterRejected() {
+    given(adjusterApplicationRepository.existsByUserIdAndStatus(userId, ApplicationStatus.PENDING))
+        .willReturn(false);
+    User reapplicant = userWithRole(Role.UNCERTIFICATED_ADJUSTER);
+    given(userRepository.findById(userId)).willReturn(Optional.of(reapplicant));
+
+    CreateAdjusterApplicationResponse response = service.apply(userId, request("제2024-0001호", null));
+
+    assertThat(response.status()).isEqualTo("PENDING");
+    assertThat(reapplicant.getRole()).isEqualTo(Role.UNCERTIFICATED_ADJUSTER);
+    verify(adjusterApplicationRepository).save(any());
   }
 }

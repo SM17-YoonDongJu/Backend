@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -42,8 +45,12 @@ public class AdjusterApplication extends BaseEntity {
   @Column(name = "name", nullable = false, length = 100)
   private String name;
 
-  @Column(name = "speciality", length = 30)
-  private String speciality;
+  @Column(name = "phone", length = 20)
+  private String phone;
+
+  @JdbcTypeCode(SqlTypes.ARRAY)
+  @Column(name = "specialties", columnDefinition = "text[]")
+  private List<String> specialties;
 
   @Column(name = "license_no", length = 100)
   private String licenseNo;
@@ -87,13 +94,14 @@ public class AdjusterApplication extends BaseEntity {
    * PENDING으로 함께 생성한다. licenseNo/licenseImageUrl 최소 하나 충족 검증은 호출 서비스가 수행한다.
    */
   public static AdjusterApplication create(
-      UUID userId, String name, String speciality, String licenseNo, String licenseImageUrl,
-      Integer career, String introduction, Affiliation affiliation, String region,
-      String registrationImageUrl) {
+      UUID userId, String name, String phone, List<String> specialties, String licenseNo,
+      String licenseImageUrl, Integer career, String introduction, Affiliation affiliation,
+      String region, String registrationImageUrl) {
     AdjusterApplication application = new AdjusterApplication();
     application.userId = userId;
     application.name = name;
-    application.speciality = speciality;
+    application.phone = phone;
+    application.specialties = specialties;
     application.licenseNo = licenseNo;
     application.licenseImageUrl = licenseImageUrl;
     application.career = career;

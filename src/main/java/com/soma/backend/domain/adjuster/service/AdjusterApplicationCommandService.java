@@ -45,9 +45,9 @@ public class AdjusterApplicationCommandService {
     user.applyForAdjuster();
 
     AdjusterApplication application = AdjusterApplication.create(
-        userId, request.name(), request.speciality(), request.licenseNo(), request.licenseImageUrl(),
-        request.career(), request.introduction(), parseAffiliation(request.affiliation()),
-        request.region(), request.registrationImageUrl());
+        userId, request.name(), request.phone(), request.specialties(), request.licenseNo(),
+        request.licenseImageUrl(), request.career(), request.introduction(),
+        parseAffiliation(request.affiliation()), request.region(), request.registrationImageUrl());
     adjusterApplicationRepository.save(application);
 
     return CreateAdjusterApplicationResponse.from(application);

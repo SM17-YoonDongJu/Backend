@@ -1,8 +1,11 @@
 package com.soma.backend.domain.adjuster.dto;
 
+import java.util.List;
+
 import org.jspecify.annotations.Nullable;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -15,7 +18,9 @@ import jakarta.validation.constraints.Size;
  */
 public record CreateAdjusterApplicationRequest(
     @NotBlank(message = "이름은 필수입니다.") @Size(max = 100) String name,
-    @NotBlank(message = "자격 구분은 필수입니다.") @Size(max = 30) String speciality,
+    @NotBlank(message = "연락처는 필수입니다.") @Size(max = 20) String phone,
+    @NotEmpty(message = "전문분야는 최소 하나 이상 필요합니다.")
+        List<@NotBlank @Size(max = 30) String> specialties,
     @Nullable @Size(max = 100) String licenseNo,
     @Nullable @Size(max = 500) String licenseImageUrl,
     @Nullable Integer career,
