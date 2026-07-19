@@ -2,15 +2,11 @@ package com.soma.backend.domain.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,7 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import jakarta.servlet.http.HttpServletResponse;
 
-import com.soma.backend.domain.auth.entity.SocialAccount;
 import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
@@ -163,11 +158,7 @@ class UserServiceTest {
     // Given
     UUID userId = UUID.randomUUID();
     User user = activeUser();
-    SocialAccount social = mock(SocialAccount.class);
-    given(social.getProvider()).willReturn("kakao");
-    given(social.getProviderUserId()).willReturn("kakao-1");
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
-    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(social));
 
     // When
     userService.withdraw(userId, response);
@@ -176,7 +167,7 @@ class UserServiceTest {
     assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     assertThat(user.getPhoneNumber()).isNull();
     then(socialAccountRepository).should().deleteByUserId(userId);
-    then(outboxEventPublisher).should().publishAuthCleanup(eq(userId), anyList());
+    then(outboxEventPublisher).should().publishAuthCleanup(userId);
     then(authTokenService).should().expireCookies(response);
   }
 }
