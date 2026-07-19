@@ -36,6 +36,14 @@ public class SecurityConfig {
   @Value("${app.cors.allowed-origin-patterns}")
   private List<String> allowedOriginPatterns;
 
+  /**
+   * 개발 환경에서 API 문서(Scalar)를 인증 없이 열지 여부. 기본 {@code false}(운영 보호)이며,
+   * {@code application-dev.yml}에서만 {@code true}로 개방해 {@code /docs}·{@code /scalar.html}·
+   * {@code /v3/api-docs}를 permitAll 한다. 프로파일 하드코딩 대신 설정값으로 제어한다.
+   */
+  @Value("${app.docs.public:false}")
+  private boolean docsPublic;
+
   @Bean
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     return http
@@ -47,9 +55,14 @@ public class SecurityConfig {
         .anonymous(AbstractHttpConfigurer::disable)
         .sessionManagement(session ->
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-        .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/auth/**", "/ws/**", "/actuator/health", "/actuator/health/**").permitAll()
-            .anyRequest().authenticated())
+        .authorizeHttpRequests(auth -> {
+          auth.requestMatchers("/auth/**", "/ws/**", "/actuator/health", "/actuator/health/**").permitAll();
+          if (docsPublic) {
+            // dev 전용: Scalar API 문서 경로를 인증 없이 개방(app.docs.public=true, 운영은 기본 false).
+            auth.requestMatchers("/docs", "/scalar.html", "/v3/api-docs", "/v3/api-docs/**").permitAll();
+          }
+          auth.anyRequest().authenticated();
+        })
         .exceptionHandling(ex -> ex
             .authenticationEntryPoint(restAuthenticationEntryPoint)
             .accessDeniedHandler(restAccessDeniedHandler))

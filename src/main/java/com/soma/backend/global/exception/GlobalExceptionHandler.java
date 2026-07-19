@@ -1,7 +1,6 @@
 package com.soma.backend.global.exception;
 
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -27,9 +26,9 @@ public class GlobalExceptionHandler {
     String message = ex.getBindingResult().getFieldErrors().stream()
         .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
         .findFirst()
-        .orElse(ErrorCode.VALIDATION_ERROR.getMessage());
+        .orElse(ErrorCode.BAD_REQUEST.getMessage());
     return ResponseEntity.badRequest()
-        .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, "BAD_REQUEST", message));
+        .body(ErrorResponse.of(ErrorCode.BAD_REQUEST, message));
   }
 
   /**

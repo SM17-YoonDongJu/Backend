@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +19,15 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
 
   List<Report> findAllByIdIn(List<UUID> ids);
 
+  /**
+   * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이
+   * 원자 증가하므로, count-then-insert 경쟁으로 인한 case_no UNIQUE 위반(→500)을 원천 차단한다(ReportHold 관례).
+   */
+  @Query(value = "INSERT INTO report_case_sequences (day, seq) VALUES (:day, 1) "
+      + "ON CONFLICT (day) DO UPDATE SET seq = report_case_sequences.seq + 1 "
+      + "RETURNING seq", nativeQuery = true)
+  int nextCaseNoSequence(@Param("day") LocalDate day);
+
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION")
   long countPending();
@@ -31,12 +41,13 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
    * 아직 엔티티로 모델링되지 않은 테이블을 조인하는 읽기 전용 projection이라 QueryDSL로 표현할 수 없다.
    * 하네스의 native query 금지 규칙에 대한 '문서화된 예외'로 유지한다(해당 도메인 모델링 시 QueryDSL로 전환):
    *   - findReviewContext : user_claims / insurance_products / insurers (미매핑)
-   * findAdjusterIdentity는 adjuster_profiles를 AdjusterProfile 엔티티로 매핑하며 QueryDSL로 전환·이관됨(→ domain/adjuster).
+   * diagnosis·hospitalization은 user_claims details(jsonb) 전환으로 컬럼에서 제거됨(추후 details 기반 노출).
+   * region(text[])은 findRegionByReportId(QueryDSL)로 별도 조회하므로 여기서는 선택하지 않는다.
    */
   @Query(value = "SELECT u.nickname AS nickname, u.gender AS gender, u.birth_date AS birthDate, "
       + "u.created_at AS joinedAt, "
-      + "uc.accident_type AS claimAccidentType, uc.diagnosis AS diagnosis, uc.accident_date AS accidentDate, "
-      + "CAST(uc.hospitalization AS text) AS hospitalization, uc.description AS claimDescription, "
+      + "uc.accident_type AS claimAccidentType, uc.accident_date AS accidentDate, "
+      + "uc.description AS claimDescription, "
       + "uc.additional_information AS additionalInformation, "
       + "ip.product_name AS productName, ins.name AS insurerName "
       + "FROM reports r "

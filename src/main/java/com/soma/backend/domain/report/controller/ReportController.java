@@ -1,0 +1,77 @@
+package com.soma.backend.domain.report.controller;
+
+import java.util.UUID;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import lombok.RequiredArgsConstructor;
+
+import com.soma.backend.domain.report.dto.CreateReportRequest;
+import com.soma.backend.domain.report.dto.CreateReportResponse;
+import com.soma.backend.domain.report.dto.ProposalDecisionRequest;
+import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
+import com.soma.backend.domain.report.dto.ProposalListResponse;
+import com.soma.backend.domain.report.service.ProposalQueryService;
+import com.soma.backend.domain.report.service.ReportCommandService;
+import com.soma.backend.global.response.ApiResponse;
+import com.soma.backend.global.security.CurrentUserId;
+
+/**
+ * 고객(user) 리포트 플로우 API(design.md §1, §6). 인가는 @CurrentUserId(로그인) +
+ * 서비스 레이어 소유 검증(design.md §8)이 담당한다.
+ * (목록 조회 GET /reports는 일반 사용자의 미검수 리포트 조회 차단 정책으로 제거 — #106.)
+ * (상세 조회 GET /reports/{reportId}는 develop 검수 대기 상세와 경로가 충돌해 제거 — 추후 재개발.)
+ */
+@RestController
+@RequiredArgsConstructor
+public class ReportController {
+
+  private final ReportCommandService reportCommandService;
+  private final ProposalQueryService proposalQueryService;
+
+  /**
+   * 사건 정보 입력
+   */
+  @PostMapping("/reports")
+  public ResponseEntity<ApiResponse<CreateReportResponse>> create(
+      @CurrentUserId UUID userId, @RequestBody CreateReportRequest request) {
+    CreateReportResponse data = reportCommandService.createReport(userId, request);
+    return ResponseEntity.status(HttpStatus.ACCEPTED)
+        .body(ApiResponse.accepted("리포트 생성을 시작했습니다.", data));
+  }
+
+  /**
+   * 검수+제안 목록 조회
+   */
+  @GetMapping("/reports/{reportId}/proposals")
+  public ResponseEntity<ApiResponse<ProposalListResponse>> proposals(
+      @CurrentUserId UUID userId,
+      @PathVariable UUID reportId,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "10") int size) {
+    return ResponseEntity.ok(
+        ApiResponse.ok(proposalQueryService.getProposals(userId, reportId, page, size)));
+  }
+
+  /**
+   * 제안 찬성/거절
+   */
+  @PatchMapping("/reports/{reportId}/proposals/{proposalId}")
+  public ResponseEntity<ApiResponse<ProposalDecisionResponse>> decide(
+      @CurrentUserId UUID userId,
+      @PathVariable UUID reportId,
+      @PathVariable UUID proposalId,
+      @RequestBody ProposalDecisionRequest request) {
+    ProposalDecisionResponse data =
+        reportCommandService.decide(userId, reportId, proposalId, request.status());
+    return ResponseEntity.ok(ApiResponse.ok(data));
+  }
+}

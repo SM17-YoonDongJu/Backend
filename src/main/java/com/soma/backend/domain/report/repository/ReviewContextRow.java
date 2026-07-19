@@ -16,11 +16,7 @@ public interface ReviewContextRow {
 
   String getClaimAccidentType();
 
-  String getDiagnosis();
-
   LocalDate getAccidentDate();
-
-  String getHospitalization();
 
   String getClaimDescription();
 

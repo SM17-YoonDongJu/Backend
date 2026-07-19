@@ -13,6 +13,8 @@ import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportReviewIssue;
+import com.soma.backend.domain.report.entity.claim.ClaimDetails;
+import com.soma.backend.domain.report.entity.claim.Hospitalization;
 import com.soma.backend.domain.report.repository.ReviewContextRow;
 
 /**
@@ -33,7 +35,7 @@ public record ReviewWorkspaceResponse(
     boolean isMasked,
     Long offeredAmount,
     Client client,
-    Claim claim,
+    ClaimContext claim,
     List<AttachmentItem> attachments,
     Estimate aiEstimate,
     Estimate adjusterEstimate,
@@ -47,8 +49,8 @@ public record ReviewWorkspaceResponse(
     Progress progress) {
 
   public static ReviewWorkspaceResponse from(
-      Report report, ReviewContextRow context, List<String> region, List<ReportIssue> aiIssues,
-      ReportReview review, List<ReportAttachment> attachments) {
+      Report report, ReviewContextRow context, List<String> region, ClaimDetails claimDetails,
+      List<ReportIssue> aiIssues, ReportReview review, List<ReportAttachment> attachments) {
     boolean started = review != null;
     List<IssueItem> issues = mergeIssues(aiIssues, review);
     List<AttachmentItem> attachmentItems = attachments.stream().map(AttachmentItem::from).toList();
@@ -69,7 +71,7 @@ public record ReviewWorkspaceResponse(
         Boolean.TRUE.equals(report.getIsMasked()),
         report.getOfferedAmount(),
         Client.from(context, region),
-        Claim.from(context),
+        ClaimContext.from(context, claimDetails),
         attachmentItems,
         aiEstimate,
         adjusterEstimate,
@@ -136,24 +138,30 @@ public record ReviewWorkspaceResponse(
     }
   }
 
-  /** ②③ 사고·청구·가입 보험(user_claims + insurance_products + insurers). */
-  public record Claim(
+  /**
+   * ②③ 사고·청구·가입 보험 맥락. 진단(diagnosis)·입원(hospitalizations)은 user_claims.details
+   * (sealed {@link ClaimDetails})에서 구조 그대로 읽고, 나머지 사고 정보·상품/보험사는 조회 프로젝션에서 온다.
+   * 도메인 엔티티 {@code UserClaim}과 구분하기 위해 ClaimContext로 둔다(뷰 조각).
+   */
+  public record ClaimContext(
       String accidentType,
-      String diagnosis,
       LocalDate accidentDate,
-      String hospitalization,
+      List<String> diagnosis,
+      List<Hospitalization> hospitalizations,
       String description,
       String additionalInformation,
       String productName,
       String insurerName) {
 
-    public static Claim from(ReviewContextRow context) {
+    public static ClaimContext from(ReviewContextRow context, ClaimDetails details) {
       if (context == null) {
         return null;
       }
-      return new Claim(
-          context.getClaimAccidentType(), context.getDiagnosis(), context.getAccidentDate(),
-          context.getHospitalization(), context.getClaimDescription(), context.getAdditionalInformation(),
+      return new ClaimContext(
+          context.getClaimAccidentType(), context.getAccidentDate(),
+          details == null ? null : details.diagnosis(),
+          details == null ? null : details.hospitalizations(),
+          context.getClaimDescription(), context.getAdditionalInformation(),
           context.getProductName(), context.getInsurerName());
     }
   }
