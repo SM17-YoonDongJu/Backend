@@ -23,7 +23,7 @@ https://github.com/revfactory/harness 코드를 기반으로하여 우리 프로
 request.md
   -> backend-analyst
   -> design.md
-  -> backend/security/realtime developer
+  -> backend/security/realtime/infra developer
   -> summary.md
   -> qa-reviewer
   -> review-report.md
@@ -70,6 +70,7 @@ request.md
 | `backend-developer` | Controller, Service, Repository, 비즈니스 로직 |
 | `security-developer` | Spring Security, JWT, OAuth2, RBAC, Redis Refresh Token |
 | `realtime-developer` | WebSocket/STOMP, 채팅, presence, FCM 오프라인 푸시 |
+| `infra-developer` | 관측성(actuator)·JVM/GC·DB 풀·Kafka producer 배선·docker 하드닝·PII 로깅·smoke test |
 | `qa-reviewer` | 코드 리뷰, 테스트, 보안/컴플라이언스 검증 |
 
 역할을 분리한 이유는 다음과 같다.
@@ -173,6 +174,7 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 - `_workspace/02_backend/summary.md`: 비즈니스 구현 요약
 - `_workspace/02_security/summary.md`: 보안 구현 요약
 - `_workspace/02_realtime/summary.md`: 실시간 기능 구현 요약
+- `_workspace/02_infra/summary.md`: 인프라·관측성·배포 하드닝 구현 요약
 - `_workspace/03_qa/review-report.md`: QA 결과
 
 중요한 원칙:
@@ -196,6 +198,7 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 - PostgreSQL + Flyway
 - `ddl-auto=validate`
 - Redis
+- Kafka (spring-kafka — OCR 트리거 producer + 트랜잭셔널 아웃박스 릴레이)
 - Firebase Admin SDK
 - S3 SDK
 - Jackson snake_case

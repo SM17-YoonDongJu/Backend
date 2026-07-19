@@ -11,12 +11,13 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 1. JWT 발급·검증·갱신 (Access Token + Refresh Token, RTR 방식)
 2. Redis Refresh Token 저장·조회·삭제 (`refresh:{userId}` 키, TTL 관리)
 3. OAuth2 소셜 로그인 연동 (카카오·네이버 커스텀 Provider)
-4. Spring Security FilterChain 구성 (JwtAuthenticationFilter, CORS, CSRF)
+4. Spring Security FilterChain 구성 — `JwtFilter`(OncePerRequestFilter, `JwtAuthenticationFilter` 아님): `Authorization: Bearer` 헤더 우선, 없으면 `access_token` HttpOnly 쿠키 폴백. CORS(`allowCredentials(true)` + `allowedOriginPatterns`), CSRF
 5. RBAC: USER·CERTIFICATED_ADJUSTER·UNCERTIFICATED_ADJUSTER·ADMIN 역할별 엔드포인트 접근 제어 (UNCERTIFICATED_ADJUSTER는 케이스 채택 등 핵심 API에서 403)
-6. OAuth2SuccessHandler, CustomUserDetailsService 구현
+6. 수동 REST OAuth 코드교환 — `OAuthLoginService`가 인가코드로 프로바이더 토큰·프로필을 조회(`RestClientOAuthClient`로 카카오·네이버 호출)해 기존 회원은 쿠키 발급, 신규 회원은 가입 티켓(`SignupTicket`) 반환. Spring `oauth2Login`·`OAuth2SuccessHandler`·`CustomUserDetailsService`는 사용하지 않는다
 
 ## 작업 원칙
 - spring-security-impl 스킬을 참조한다
+- 토큰 전송은 **HttpOnly 쿠키** 기반 — `AuthTokenService`가 발급을 오케스트레이션하고 `CookieProvider`가 `access_token`(Path `/`)·`refresh_token`(Path `/auth`) 쿠키를 생성·조회·만료한다. 응답 바디로 토큰을 내려주지 않는다
 - Refresh Token은 RTR(Refresh Token Rotation) 적용 — 재발급은 Lua 원자적 CAS(`rotate(userId, oldToken, newToken)`)로 저장값 대조·교체를 한 번에 수행, 동시 재발급 경쟁 창 없음
 - Redis는 JWT Refresh Token 저장 전용. Redis 키는 `refresh:{userId}` 단일 패턴만 사용
 - OAuth2 Client ID·Secret·Redirect URI는 환경변수로 관리, 코드 하드코딩 금지
@@ -25,7 +26,7 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 
 ## Redis 담당 범위
 - `refresh:{userId}` — Refresh Token 값, TTL = RT 만료 시간
-- RTR: `/api/auth/reissue` 호출 시 `rotate` Lua 스크립트로 `GET`→비교→`SET`(PX)/`DEL` 원자 수행 — `RotateResult` ROTATED/NOT_FOUND/MISMATCH 반환
+- RTR: `/auth/reissue` 호출 시 `rotate` Lua 스크립트로 `GET`→비교→`SET`(PX)/`DEL` 원자 수행 — `RotateResult` ROTATED/NOT_FOUND/MISMATCH 반환
 - 로그아웃: `refresh:{userId}` 즉시 삭제
 - 탈취/재사용 감지: 저장값 없음(NOT_FOUND) → 401, 저장값 불일치(MISMATCH, 이미 회전됨) → Lua가 키 삭제 후 401
 

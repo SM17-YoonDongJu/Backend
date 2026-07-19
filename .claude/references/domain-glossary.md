@@ -2,7 +2,7 @@
 
 > **출처:** Notion — API 명세서(개별 페이지 20개) + 기능리스트(개별 페이지 20개)  
 > **규칙:** 이 파일의 모든 항목은 위 Notion 페이지 출처로만 작성한다. 임의 해석·추측 금지.  
-> **최종 동기화:** 2026-07-14
+> **최종 동기화:** 2026-07-20
 
 ---
 
@@ -37,26 +37,36 @@
 [AI 초안 생성 완료]
         ↓
 AWAITING_INSPECTION  ← 검수 대기. 사정사 채택 가능 목록에 노출됨.
-        ↓  (1건 이상 검수 리포트 등록 완료)
-AWAITING_ADOPTION    ← 사용자 선택 대기. 복수 검수 리포트 비교 가능.
-        ↓  (사용자가 사정사 선택 → ChatRoom 즉시 생성)
-COUNSELING           ← 채팅 중. WebSocket 채널 개설됨. 거절 없음.
-        ↓  (사정사가 최종 리포트를 REPORTS 테이블에 등록)
-CLOSED               ← 상담 종료. 사정사 최종 리포트 확정. AI 리포트와 사정사 리포트를
-                       같은 REPORTS 테이블에서 구분하는 enum 값.
+        ↓  (1건 이상 검수 제안(REPORT_REVIEWS) 등록 완료)
+AWAITING_ADOPTION    ← 사용자 선택 대기. 복수 검수 제안 비교 가능.
+        ↓  (사용자가 제안을 선택해 상담 시작 → ChatRoom 개설)
+COUNSELING           ← 채팅 중. WebSocket 채널 개설됨. 여기서 사용자가 최종 결정을 내린다.
+        ├─ (사용자가 제안 수락 → 담당 사정사 확정) → CLOSED
+        └─ (사용자가 상담 거절) → AWAITING_ADOPTION (다른 제안을 다시 선택 가능)
+CLOSED               ← 상담 종료. 사용자가 제안을 **수락**해 담당 사정사가 확정된 종료 상태.
+                       (사정사 최종 리포트 등록이 아니라 사용자 수락이 트리거다.)
+
+NOT_SELECTED         ← 미채택. 접수 후 1주일 내 상담 완료(CLOSED)되지 못했거나 검수를 하나도
+                       받지 못한 리포트가 스케줄러 스윕(ReportNotSelectionSweeper)으로 도달하는 상태.
+                       AWAITING_INSPECTION·AWAITING_ADOPTION에서만 진입. **종료 상태 아님** —
+                       신규 사정사 검수는 차단되지만, 이후 상담이 잡히면 COUNSELING으로 재개된다
+                       (NOT_SELECTED → COUNSELING 허용, CLOSED 직행은 없음).
 ```
+
+> 상태 전이 허용표(`Report.applyReviewTransition`): AWAITING_INSPECTION→{AWAITING_ADOPTION, NOT_SELECTED}, AWAITING_ADOPTION→{COUNSELING, NOT_SELECTED}, COUNSELING→{CLOSED, AWAITING_ADOPTION}, NOT_SELECTED→{COUNSELING}, CLOSED→(종료).
 
 ### 상태별 사용자 표시 문자열 (API 응답 `status` 필드)
 
-| DB/도메인 코드 | 사용자 표시 문자열 | 사정사 채택 가능 | 사용자 리포트 열람 | 매칭 요청 가능 |
-|--------------|-----------------|----------------|------------------|--------------|
+| DB/도메인 코드 | 사용자 표시 문자열 | 사정사 채택 가능 | 사용자 리포트 열람 | 제안 선택(상담 시작) 가능 |
+|--------------|-----------------|----------------|------------------|------------------------|
 | (생성 중) | `생성 중` | — | — | — |
 | `AWAITING_INSPECTION` | `채택 대기중` | ✅ | ❌ (AI 초안 직접 접근 차단) | ❌ |
-| `AWAITING_ADOPTION` | `채택 대기중` | ✅ (계속 채택 가능) | ✅ (검수된 리포트만) | ✅ |
-| `COUNSELING` | `상담 중` | — | ✅ | ❌ |
+| `AWAITING_ADOPTION` | `채택 대기중` | ✅ (계속 채택 가능) | ✅ (검수된 제안만) | ✅ |
+| `COUNSELING` | `상담 중` | — | ✅ | 결정 단계(수락/거절) |
 | `CLOSED` | `완료` | — | ✅ | ❌ |
+| `NOT_SELECTED` | (표시 문자열 코드 미확정) | ❌ (신규 검수 차단) | ✅ | 재개 시 COUNSELING 가능 |
 
-> 리포트 `status` 필터·응답 값 표기: `생성 중` / `채택 대기중` / `상담 중` / `완료`
+> 리포트 `status` 필터·응답 값 표기: `생성 중` / `채택 대기중` / `상담 중` / `완료`. `NOT_SELECTED`(미채택)의 사용자 표시 문자열은 코드에 아직 정의되지 않음.
 
 ---
 
@@ -70,20 +80,23 @@ CLOSED               ← 상담 종료. 사정사 최종 리포트 확정. AI �
 ---
 
 
-## 5. 매칭 플로우 상세
+## 5. 매칭(제안 선택) 플로우 상세
 
-### 매칭 요청 (즉시 연결)
-- 사용자가 검수 리포트 목록에서 사정사를 **직접 선택** (알고리즘 추천 아님)
-- 선택 즉시 매칭 확정 + WebSocket 채팅 채널 개설 + 양측 FCM/APNs 알림 — **사정사 수락 단계 없음**
-- API 응답에 `chatRoomId` 포함
-- API: `POST /matches/{reportID}` — Body: `{ "adjusterId": "uuid" }`
-- **ChatRoom 생성 책임**: backend-developer가 매칭 서비스 로직 안에서 `ChatService.createRoom(userId, adjusterId)`를 호출한다. realtime-developer는 `ChatService.createRoom()`을 구현하고 노출한다.
-- 동시에 복수 사정사에게 매칭 요청 **불가** (1건씩 순차 요청)
-- 이미 진행 중인 상담이 있으면 `DUPLICATE_RESOURCE(409)` 반환
+> ⚠️ 실제 구현에는 별도 `match` 도메인/엔티티/컨트롤러가 없다(`domain/match`에 `.gitkeep`만 존재, `MATCHING_*` 에러코드는 예약만 되고 미사용). 매칭은 **report 제안(REPORT_REVIEWS) 선택 + chat 상담 결정**으로 구현된다.
+
+### 제안 조회·선택
+- 사용자가 검수 제안 목록에서 사정사를 **직접 선택** (알고리즘 추천 아님)
+- 제안 목록 조회: `GET /reports/{reportId}/proposals` (검수 등록된 REPORT_REVIEWS 목록)
+- 제안을 선택해 상담을 시작하면 리포트가 `AWAITING_ADOPTION → COUNSELING`으로 전이되고 ChatRoom(WebSocket)이 개설된다.
+
+### 상담 결정 (수락/거절) — 사용자(방 소유자)만
+- **수락(확정)**: `PATCH /chats/{chatRoomId}/accept` — 내 제안 `ACCEPTED`, 리포트 `COUNSELING → CLOSED`, 형제 제안(다른 사정사) `REJECTED` + 형제 채팅방 CLOSED. 내 방은 ACTIVE로 유지해 대화 지속. `PATCH /reports/{reportId}/proposals/{proposalId}`(Body `{ "status": "ACCEPTED" }`)도 동일하게 리포트를 CLOSED로 확정한다.
+- **거절**: `PATCH /chats/{chatRoomId}/reject` — 내 제안 `REJECTED`, 리포트 `COUNSELING → AWAITING_ADOPTION`(다른 제안 재선택 가능) + 방 CLOSED. `PATCH /reports/{reportId}/proposals/{proposalId}`(Body `{ "status": "REJECTED" }`)는 해당 제안만 REJECTED로 두고 리포트 상태는 유지한다.
+- 수락/거절 주체는 방 소유자(user)다 — 아니면 `CHAT_NOT_ROOM_OWNER(403)`, 결정 불가 방이면 `CHAT_CONSULTATION_UNAVAILABLE(409)`.
 
 ### 제약
 - 보험업법 §189: 협상·합의 대리 기능 미제공. 정보 제공과 사정사 연결만 수행.
-- 거절·수락 엔드포인트 없음 — 사용자가 선택하면 바로 COUNSELING 전이.
+- CLOSED 트리거는 **사용자의 제안 수락**이다(사정사 리포트 등록이 아님). COUNSELING에서 거절하면 AWAITING_ADOPTION으로 되돌아간다.
 
 ---
 
@@ -91,8 +104,8 @@ CLOSED               ← 상담 종료. 사정사 최종 리포트 확정. AI �
 
 | 항목 | 값 | 비고 |
 |------|-----|------|
-| Access Token 만료 | **15분** | JWT stateless |
-| Refresh Token 만료 | **30일** | Redis TTL 저장 (`refresh:{userId}`) |
+| Access Token 만료 | **30분** | JWT stateless (`jwt.access-token-expiry=1800000`) |
+| Refresh Token 만료 | **14일** | Redis TTL 저장 (`refresh:{userId}`, `jwt.refresh-token-expiry=1209600000`) |
 | Redis 저장소 | ElastiCache Redis | |
 | 소셜 로그인 | 카카오, 네이버 OAuth2 | `provider`: `kakao` / `naver` |
 | CSRF 방지 | OAuth2 콜백 시 `state` 파라미터 사용 (선택) | |
@@ -130,13 +143,18 @@ CLOSED               ← 상담 종료. 사정사 최종 리포트 확정. AI �
 | 파라미터 | 타입 | 필수 | 설명 |
 |---------|------|------|------|
 | `name` | string | Y | 실명 |
-| `speciality` | string | Y | 자격 분야: `신체` / `교통` |
+| `phone` | string | Y | 연락처 |
+| `specialties` | string[] | Y | 전문분야 복수(NotEmpty). 단수 `speciality`(구)는 V19에서 `specialties text[]`로 복수화됨 |
 | `licenseNo` | string | N* | 자격증 번호 (PDF 미제출 시 필수) |
 | `licenseImageUrl` | string | N* | 자격증 PDF S3 URL (번호 미입력 시 필수) |
 | `career` | int | N | 연차 |
-| `introduce` | string | N | 자기소개 |
+| `introduction` | string | N | 자기소개 (구 `introduce` 오타 정정) |
+| `affiliation` | string | Y | 소속 형태 코드 `INDEPENDENT` / `FIRM` (enum `Affiliation`) |
+| `region` | string | Y | 활동 지역 |
+| `registrationImageUrl` | string | Y | 등록증 파일 S3 URL |
 
-> `licenseNo`와 `licenseImageUrl` 중 **최소 하나는 필수**
+> `licenseNo`와 `licenseImageUrl` 중 **최소 하나는 필수**(`hasLicenseProof`, 서비스에서 검증 — 위반 시 `MISSING_REQUIRED_FIELD`).
+> 신청 접수 시 증빙 문서 2종(`LICENSE`/`REGISTRATION`, enum `DocumentType`)이 `PENDING`(enum `DocumentStatus`: `PENDING`/`APPROVED`/`RESUBMIT_REQUIRED`)으로 `ADJUSTER_APPLICATION_DOCUMENTS`에 함께 생성된다(V15).
 
 ### 신청서 상태 (`ADJUSTER_APPLICATIONS.status`)
 | 값 | 설명 |
@@ -193,23 +211,41 @@ CLOSED               ← 상담 종료. 사정사 최종 리포트 확정. AI �
 > 홈 대시보드는 요약 카드(검수 대기 풀·진행 중·이번 달 완료·누적·상담 전환·평점) + 진행 중 사건 미리보기를 1회 호출로 내리는 조회 전용 BFF다. 누적 검수·상담·평점은 `adjuster_profiles` 비정규화 컬럼에서, '이번 달 완료'만 `report_reviews` 실시간 집계로 낸다. 검수 대기 목록은 미포함(프론트가 검수 대기 목록 API로 조회). `CERTIFICATED_ADJUSTER`·`UNCERTIFICATED_ADJUSTER`만 접근(그 외 403). 조회는 `AdjusterHomeRepository`(QueryDSL 크로스-애그리거트 읽기 모델)가 담당한다.
 > `/adjusters/me/reviewed-reports`(내 검수 내역, API#5)는 아직 report 도메인 코드에 있다 — 경로만 adjuster-facing.
 
-### matching 도메인
+### 매칭(제안 선택) — report/chat 도메인
+> 별도 `/matches` 엔드포인트·`match` 도메인은 없다(구 `POST /matches/{reportID}` 폐기). 매칭은 아래 제안 조회 + 상담 결정으로 구현된다.
+
 | 기능 | Method | Path |
 |------|--------|------|
-| 상담 신청 (즉시 매칭) | POST | `/matches/{reportID}` |
+| 검수 제안 목록 조회 | GET | `/reports/{reportId}/proposals` |
+| 제안 채택/거절 | PATCH | `/reports/{reportId}/proposals/{proposalId}` (Body `{ "status": "ACCEPTED" \| "REJECTED" }`) |
+| 상담 수락(확정) | PATCH | `/chats/{chatRoomId}/accept` |
+| 상담 거절 | PATCH | `/chats/{chatRoomId}/reject` |
 
 ### chat 도메인
 | 기능 | Method | Path |
 |------|--------|------|
 | 채팅방 목록 조회 | GET | `/chats` |
+| 채팅방 상세 조회 | GET | `/chats/{chatRoomId}` |
+| 읽음 처리 | POST | `/chats/{chatRoomId}/read` |
 
-> 메시지 송수신은 WebSocket(STOMP)으로 처리. REST는 목록 조회만.
+> 메시지 송수신은 WebSocket(STOMP)으로 처리. REST는 목록/상세/읽음·상담 결정만.
 
-### payment 도메인
+### notification 도메인
 | 기능 | Method | Path |
 |------|--------|------|
-| 구독 신청 | POST | `/subscriptions` |
-| 결제 내역 조회 | GET | `/payments/history` |
+| 내 알림 목록 조회 | GET | `/users/me/notifications` |
+| 알림 전체 읽음 | PATCH | `/users/me/notifications/read-all` |
+| 알림 1건 읽음 | PATCH | `/users/me/notifications/{notificationId}/read` |
+| 알림 설정 조회 | GET | `/users/me/notification-settings` |
+| 알림 설정 수정 | PATCH | `/users/me/notification-settings` |
+
+### payment 도메인 `[계획/미구현]`
+> payment·subscription 도메인은 아직 코드에 없다(엔티티·컨트롤러·서비스 부재, `PAYMENT_FAILED` 에러코드만 예약). 아래 경로는 기획상 계획이며 현재 미구현이다.
+
+| 기능 | Method | Path |
+|------|--------|------|
+| 구독 신청 `[미구현]` | POST | `/subscriptions` |
+| 결제 내역 조회 `[미구현]` | GET | `/payments/history` |
 
 ### admin 도메인
 | 기능 | Method | Path |
@@ -239,12 +275,14 @@ FORBIDDEN                // 권한 부족 (미활성 사정사 채택 API, 타�
 
 // 404 Not Found — 대상 리소스 없음
 USER_NOT_FOUND           // 해당 사용자 없음
-REPORT_NOT_FOUND         // 해당 리포트 없음 (구 POST_NOT_FOUND 대체 — 리포트/게시물 code 일원화)
+POST_NOT_FOUND           // 게시물/리포트 없음 (구 code — REPORT_NOT_FOUND와 공존, 일원화 안 됨)
+REPORT_NOT_FOUND         // 해당 리포트 없음
 SUBSCRIPTION_NOT_FOUND   // 해당 구독 정보 없음
 
 // 409 Conflict — 현재 리소스 상태와 충돌
 DUPLICATE_RESOURCE       // 이미 존재하는 리소스 재생성 (닉네임 중복, 이미 진행 중인 상담 등)
-INVALID_STATE_TRANSITION // 허용되지 않는 상태 전이 (COUNSELING 아닌 제안 채택 등, 구 INVALID_STATUS_TRANSITION 400→409)
+INVALID_STATE_TRANSITION // (409) 리소스 상태 충돌 (COUNSELING 아닌 제안 채택 등) — 아래 INVALID_STATUS_TRANSITION(400)과 별개로 공존
+CLOSED                   // (409) 종료된 리소스에 대한 요청 (비활성 상담방 메시지 전송 등)
 
 // 422 Unprocessable Entity — 형식은 맞으나 비즈니스 규칙상 처리 불가
 PAYMENT_FAILED           // 결제 처리 실패 (PG 거절, 카드 한도 초과, 잔액 부족 등)
@@ -256,7 +294,23 @@ EXTERNAL_API_ERROR       // 외부 연동 실패 (PG, 카카오/네이버 OAuth,
 
 // 503 Service Unavailable — 서버 일시 이용 불가
 SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더 동반)
+
+// 도메인 특화 코드 (ErrorCode.java 실재 — 위 공통 카탈로그와 함께 존재)
+BAD_REQUEST              // (400) @Valid 바디 검증 실패 시 전역 400 code
+REFRESH_TOKEN_NOT_FOUND  // (401) 리프레시 토큰 없음
+UNSUPPORTED_PROVIDER     // (400) 미지원 소셜 로그인 제공자
+ADJUSTER_NOT_FOUND       // (404) 손해사정사 없음
+REPORT_ISSUE_NOT_FOUND   // (404) 리포트 쟁점 없음
+INVALID_STATUS_TRANSITION// (400) 검수 생명주기 전이 위반 (INVALID_STATE_TRANSITION 409와 별개)
+PROPOSAL_NOT_FOUND       // (404) 제안(REPORT_REVIEWS) 없음
+REPORT_ALREADY_CLOSED    // (409) 이미 종결된 리포트
+CLAIM_DETAILS_TYPE_MISMATCH // (400) 청구 상세 유형이 사고 유형과 불일치
+MATCHING_NOT_FOUND / MATCHING_ALREADY_EXISTS // (404/409) 예약만 — match 도메인 미구현
+CHAT_ROOM_NOT_FOUND / CHAT_NOT_A_MEMBER / CHAT_NOT_ROOM_OWNER / CHAT_CONSULTATION_UNAVAILABLE / CHAT_ROOM_CLOSED / CHAT_ATTACHMENT_* / CHAT_WS_UNAUTHORIZED // 채팅 도메인
+NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 ```
+
+> ⚠️ 위는 **핵심 카탈로그**다. 실제 `ErrorCode.java`에는 구 code(`POST_NOT_FOUND`·`INVALID_STATUS_TRANSITION`)가 신규 code와 함께 잔존하며 도메인 특화 code가 다수 있다 — 정본은 `ErrorCode.java`.
 
 ---
 
@@ -283,17 +337,33 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 - **주요 필드**: `review`(사정사 최종 의견, 고객 노출), `estimate_min_amount`/`estimate_max_amount`, `applicable_guarantees[]`/`omitted_special_contract[]`/`basis_terms_precedents[]`(사정사 수정본), `status`(SENT/COUNSELING/REJECTED/ACCEPTED — ERD 2026-07 정합)
 - **RAG 피드백**: AI 개선 피드백은 본 범위 제외(다음 티켓). 현재 `review`는 고객 노출 최종 의견 용도.
 
-### REPORT_REVIEW_ISSUES (사정사별 쟁점 검수 테이블)
+### REPORT_ISSUES_REVIEWS (사정사별 쟁점 검수 테이블)
+- **테이블명**: `report_issues_reviews` (V10에서 `report_review_issues` → `report_issues_reviews`로 리네이밍)
 - **목적**: 사정사가 쟁점(REPORT_ISSUES=AI 초안)을 검수·수정하거나 **신규 추가(ADDED)** 한 결과를 사정사별로 격리 저장
-- **생성 시점**: 검수 반영(PATCH) 시 해당 REPORT_REVIEWS 하위로 쟁점 전량 교체 저장
-- **주요 필드**: `report_issue_id`(nullable — null이면 사정사 신규 쟁점), `title`/`description`(신규·수정 내용), `review_status`(ACCEPTED/MODIFIED/EXCLUDED/**ADDED**), `adjuster_opinion`/`modified_reason`/`excluded_reason`
-- **관계**: REPORT_REVIEWS 1:N REPORT_REVIEW_ISSUES, REPORT_ISSUES 1:N REPORT_REVIEW_ISSUES(nullable)
+- **생성 시점**: 검수 반영(PATCH) 시 해당 REPORT_REVIEWS 하위로 쟁점 upsert 저장
+- **주요 필드**: `report_issue_id`(nullable — null이면 사정사 신규 쟁점), `title`/`description`(신규·수정 내용), `impact_amount`(사정사 확정 영향금액 — V9 추가), `review_status`(ACCEPTED/MODIFIED/EXCLUDED/**ADDED**), `adjuster_opinion`/`modified_reason`/`excluded_reason`
+- **관계**: REPORT_REVIEWS 1:N REPORT_ISSUES_REVIEWS, REPORT_ISSUES 1:N REPORT_ISSUES_REVIEWS(nullable)
 
-### ADJUSTER_REVIEW (사용자 평가 테이블)
+### ADJUSTER_REVIEWS (사용자 평가 테이블)
+- **테이블명**: `adjuster_reviews`(복수형)
 - **목적**: 매칭 완료(CLOSED) 후 사용자가 담당 사정사를 평가한 기록
-- **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시
-- **필드**: `score`(정수), `review`(텍스트)
+- **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시 (평가 수집 쓰기 경로는 별도 티켓 — 현재 엔티티는 조회 전용 매핑)
+- **필드**: `user_id`, `adjuster_id`, `report_id`(사건 연결 — V26 추가, nullable), `score`(정수, 엔티티 매핑), `review`(텍스트 — DB 컬럼 존재하나 현재 엔티티 미매핑)
 - **제약**: 사용자 1인 + 사정사 1인 조합으로 중복 평가 방지
+
+### REPORT_HOLDS (사정사별 보류 테이블)
+- **목적**: 검수 대기 화면에서 사정사가 사건을 보류한 기록(보류 모달). junction — (report_id, adjuster_id) UK.
+- **필드**: `report_id`, `adjuster_id`, `reason`(enum `HoldReason`: `NEED_MORE_DOCUMENTS`/`OUT_OF_SPECIALTY`/`SCHEDULE_CONFLICT`/`OTHER`), `reason_detail`(V7 추가 — `OTHER`면 필수)
+
+### NOTIFICATIONS (인앱 알림함)
+- **목적**: 사용자별 인앱 알림 1건(제목·본문·읽음 여부). 발송 토큰(device_tokens)·수신 설정(notification_settings)과 분리된 알림함 목록/읽음 전용(V18).
+- **필드**: `user_id`, `type`(enum `NotificationType`, varchar 저장), `title`, `body`, `is_read`, `created_at`
+- **NotificationType 값(11개)**: 고객계 `REVIEW_COMPLETE`/`RECEIVED_PROPOSAL`/`CONSULT_ACCEPTED`/`ANALYSIS_COMPLETE`/`IDENTITY_VERIFIED`/`CHAT_MESSAGE`/`SETTLEMENT_NOTICE`/`PROPOSAL_CLOSED`, 사정사계 `NEW_REVIEW_REQUEST`/`REVIEW_DEADLINE_SOON`/`CONSULT_REQUESTED`
+- **비고**: 생성 배선(이벤트→row insert)은 별도 티켓 범위. 생성 후 읽음만 전이(updated_at 없음).
+
+### NOTIFICATION_SETTINGS (알림 수신 토글)
+- **목적**: 사용자별 알림 수신 on/off 토글(USERS 1:1, user_id PK). off면 해당 type 미발송(producer 배선에서 적용).
+- **토글**: `new_review_request`·`consult_message`·`settlement_notice`·`review_deadline_soon`·`review_complete`·`received_proposal`·`consult_accepted`·`analysis_complete`·`identity_verified`·`marketing`. V21에서 consult_accepted·analysis_complete·identity_verified·review_deadline_soon 4종 추가. 기본값은 정산·마케팅만 false.
 
 
 ---
@@ -303,8 +373,10 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 ### REPORTS (AI 초안 — 불변)
 | 필드 | 타입 | 설명 |
 |------|------|------|
+| `case_no` | varchar(100) | 사람용 사건번호 `yyyyMMdd-NNN`(당일 시퀀스 발급) |
+| `title` | varchar | 리포트 제목(nullable) |
 | `accident_type` | enum | `medical_indemnity, traffic, disability, cancer_diagnosis, fire, liability, other` (영문) |
-| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED` |
+| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED` |
 | `claimed_min_amount` | bigint | 최소 청구 금액 (단정 표현 금지 — 범위로 표현) |
 | `claimed_max_amount` | bigint | 최대 청구 금액 |
 | `offered_amount` | bigint | 보험사 지급 금액 |
@@ -313,12 +385,12 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 | `basis_terms_precedents` | string[] | 근거 약관·판례 (AI 원본) |
 | `treatment` | text | 질병명 |
 | `question` | text | 사용자 질문 입력 |
-| `confidence_level` | enum | `HIGH`, `MEDIUM`, `LOW` — AI 초안 신뢰수준(nullable, AI 파이프라인 산출) |
+| `confidence_level` | varchar(10) | AI 초안 신뢰수준 문자열(nullable, FastAPI 산출 읽기전용 — 코드에 enum 검증 없음, `HIGH`/`MEDIUM`/`LOW` 관례값) |
 | `is_masked` | boolean | 본문·첨부 PII 마스킹 적용 여부(OCR 마스킹 결과 기반) |
 | `documents` | jsonb | `{name: s3_url}` 첨부 비정규화 맵 — **검수 대기 화면(API#6) 첨부 표기용**. 상세 첨부는 REPORT_ATTACHMENTS(리치) |
 | `adjuster_id` | uuid | 담당 사정사 ID (매칭 전 null) |
 
-> 쟁점은 `REPORTS.issue[]` 배열이 아니라 **REPORT_ISSUES 테이블**로 분리(AI 초안). 사정사 검수 결과는 **REPORT_REVIEW_ISSUES**(격리).
+> 쟁점은 `REPORTS.issue[]` 배열이 아니라 **REPORT_ISSUES 테이블**로 분리(AI 초안). 사정사 검수 결과는 **REPORT_ISSUES_REVIEWS**(격리, `report_issues_reviews`).
 > `region`은 REPORTS에 없음 → 검수 화면 노출 시 `USERS.region` 조인(비식별).
 > ⚠️ `POST /reports` 요청 파라미터 `accidentType`(신체/교통 명세)과 DB enum(영문) 매핑은 서버 내부 처리.
 > REPORT_ISSUES.`ai_status`: `CONFIRMED`/`TRUSTED`/`INFO` (AI 쟁점 신뢰등급, FastAPI 산출 — Spring은 읽기만).
@@ -329,30 +401,44 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `license_no` | varchar | 금융위원회 등록번호 (UK) |
+| `user_id` | uuid | USERS 1:1 연결 (UK) |
+| `license_no` | varchar | 금융위원회 등록번호 |
+| `name` | varchar | 사정사 표시 이름 |
+| `headline` | varchar | 한 줄 소개 |
 | `specialties` | text[] | 전문분야 복수(후유장애·교통사고·장해등급 재산정 등) |
 | `career` | int | 연차(수동 입력) |
+| `cases_accepted` | int | 누적 채택 수(비정규화) |
 | `cases_reviewed` | int | 누적 검수 수(비정규화) |
 | `completed_consult_count` | int | 상담 완료 수(비정규화) |
 | `rating_mean` | numeric | 평균 평점(비정규화, 후기 등록 시 갱신) |
 | `review_count` | int | 후기 수(비정규화) |
 | `careers` | jsonb | 주요 경력 `[{period, company}]` |
-| `activity_region` | text[] | 활동 지역(복수 — V13에서 배열 전환) |
-| `registration_url` | text | 등록증 URL (V12 추가) |
-| `updated_at` | timestamp | 수정 시각 (V12 추가) |
+| `consult_methods` | text[] | 상담 방식(복수) |
+| `activity_region` | text[] | 활동 지역(복수 — V23에서 배열 전환) |
+| `verified_at` | timestamp | 자격 검증 시각 |
+| `introduction` | text | 자기소개 |
+| `registration_url` | text | 등록증 URL (V22 추가) |
+| `updated_at` | timestamp | 수정 시각 (BaseEntity, V22 정렬) |
 
 > ⚠️ 구독 플랜은 ADJUSTER_PROFILES가 아니라 **SUBSCRIPTIONS.plan**이 단일 진실(`none`/`basic`/`premium`)이다 — ERD·스키마에 `adjuster_profiles.subscription_plan` 컬럼은 없다(구 표기 정정). `speciality varchar`(단수) 표기도 실제는 `specialties text[]`(복수 배열)로 정정.
 
-### SUBSCRIPTIONS
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| `plan` | enum | `none`, `basic`, `premium` (ADJUSTER_PROFILES.subscription_plan과 동일 체계) |
-| `billing_cycle` | enum | `MONTHLY` |
-| `status` | enum | `ACTIVE`, `EXPIRED`, `CANCELED` |
-| `expires_at` | date | 구독 만료일 |
+### SUBSCRIPTIONS `[테이블만 존재, 엔티티 미구현]`
+> V1에 테이블만 있고 대응 엔티티/도메인은 없다. 타입은 varchar/timestamp(아래), enum 값은 애플리케이션 관례.
 
-### PAYMENTS
-| 필드 | 타입 | 설명 |
+| 필드 | 타입(V1 스키마) | 설명 |
+|------|------|------|
+| `adjuster_id` | uuid (NOT NULL, FK users) | 구독 소유 사정사 |
+| `plan` | varchar(20) | `none`/`basic`/`premium` 관례값 |
+| `billing_cycle` | varchar(20) | `MONTHLY` 관례값 |
+| `status` | varchar(20) | `ACTIVE`/`EXPIRED`/`CANCELED` 관례값 |
+| `started_at` | timestamp | 구독 시작 시각 |
+| `expires_at` | timestamp | 구독 만료 시각 |
+| `next_billing_at` | timestamp | 다음 결제 예정 시각 |
+
+### PAYMENTS `[미구현/계획 — 스키마 없음]`
+> ⚠️ `payments` 테이블은 어떤 마이그레이션에도 존재하지 않으며 엔티티도 없다. 아래는 기획상 계획 필드다(실재 스키마 아님). `PAYMENT_FAILED` 에러코드만 예약되어 있다.
+
+| 필드(계획) | 타입 | 설명 |
 |------|------|------|
 | `amount` | int | 결제 금액 (원) |
 | `type` | enum | `SUBSCRIPTION` |
@@ -362,13 +448,32 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 ### ADJUSTER_APPLICATIONS
 | 필드 | 타입 | 설명 |
 |------|------|------|
+| `user_id` | uuid | 신청 사용자 |
 | `name` | varchar | 실명 |
-| `speciality` | varchar | `신체` / `교통` |
+| `phone` | varchar(20) | 연락처 (V19 추가) |
+| `specialties` | text[] | 전문분야 복수 (V19에서 단수 `speciality varchar` → 복수 배열로 전환) |
 | `license_no` | varchar | 자격증 번호 (nullable) |
 | `license_image_url` | varchar | 자격증 PDF S3 URL (nullable) |
 | `career` | int | 연차 (nullable) |
 | `introduction` | text | 자기소개 (nullable) — 컬럼명은 `introduction`(구 `introduce` 오타 정정) |
+| `affiliation` | enum | 소속 형태 `INDEPENDENT` / `FIRM` (enum `Affiliation`) |
+| `region` | varchar | 활동 지역 |
+| `registration_image_url` | varchar | 등록증 파일 S3 URL |
 | `status` | enum | `PENDING`, `APPROVED`, `REJECTED` (ERD 정합 — 구 `ACCEPTED` 표기 정정) |
+| `reject_reason` | text | 반려 사유 (nullable) |
+| `rejected_at` | timestamp | 반려 시각 (nullable) |
+
+### ADJUSTER_APPLICATION_DOCUMENTS (증빙 문서 심사 — V15)
+> ADJUSTER_APPLICATIONS 1:N. 신청 접수 시 문서 2종을 함께 생성한다(Aggregate 내부 Entity, application_id FK).
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `application_id` | uuid | 소유 신청서 FK |
+| `doc_type` | enum | `LICENSE` / `REGISTRATION` (enum `DocumentType`) |
+| `status` | enum | `PENDING` / `APPROVED` / `RESUBMIT_REQUIRED` (enum `DocumentStatus`, 반려 시 재제출 요구) |
+
+### REPORT_CASE_SEQUENCES (사건번호 시퀀스 — V14)
+> `case_no`(yyyyMMdd-NNN)의 당일 시퀀스 카운터(`day` PK, `seq`). 동시 생성 경합을 막으려 DB 원자 카운터(ON CONFLICT)로만 증가시킨다.
 
 ---
 
@@ -404,7 +509,7 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 |------|---------|---------|---------|
 | 회원가입 | 소셜 인증 완료, 미가입 상태 | social_accounts 연결 + 닉네임 등록 + JWT 발급 | 이미 연동된 소셜 계정 → 로그인 처리로 전환; 닉네임 중복 → 거부 |
 | 소셜 로그인 | provider 동의 완료, 인가코드 수신 | 인가코드 → 소셜 토큰 교환 → 기존 회원: JWT 발급, 신규: 가입 플로우 연결; 로그인 시 device token 등록 | 미지원 provider; 인가코드 만료/무효 |
-| 로그아웃 | 로그인 상태 (유효 토큰 보유) | Redis Refresh Token 폐기; 이미 로그아웃 상태여도 멱등 처리 | Access Token은 stateless — 15분 만료 전까지 유효 |
+| 로그아웃 | 로그인 상태 (유효 토큰 보유) | Redis Refresh Token 폐기; 이미 로그아웃 상태여도 멱등 처리 | Access Token은 stateless — 30분 만료 전까지 유효 |
 | 회원탈퇴 | 로그인 + 본인 확인 | 계정 익명화 + Refresh Token 삭제 + S3 접근 차단 | 진행 중 매칭/상담 처리 정책 미결 `[미결]`; 서명 완료 리포트는 3년 보존 |
 
 ### user
@@ -424,10 +529,15 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 
 > ⚠️ **미결:** 채택(adopt) 동작을 `PATCH /reports/{reportID}`로 처리하는지, 별도 엔드포인트가 필요한지 확인 필요.
 
-### matching
-| 기능 | 선행조건 | 핵심 동작                   | 주요 예외 |
-|------|---------|-------------------------|---------|
-| 상담 신청 (즉시 매칭) | 검수본 1건 이상(AWAITING_ADOPTION); 로그인(USER) | 사정사 선택 즉시 매칭 확정 + 채팅방 개설 + 양측 알림 — 사정사 수락 단계 없음 | 이미 매칭 진행 중/완료 → 409; 본인 리포트 아님 → 403 |
+### matching(제안 선택)
+> 별도 match 도메인 없음 — report 제안(REPORT_REVIEWS) + chat 상담 결정으로 구현.
+
+| 기능 | 선행조건 | 핵심 동작 | 주요 예외 |
+|------|---------|---------|---------|
+| 제안 목록 조회 | 검수 제안 1건 이상(AWAITING_ADOPTION); 로그인(USER) | GET /reports/{id}/proposals — 본인 리포트의 검수 제안 비교 | 본인 리포트 아님 → 403 |
+| 상담 시작 | 제안 선택 | 리포트 AWAITING_ADOPTION → COUNSELING + 채팅방(WebSocket) 개설 | — |
+| 상담 수락(확정) | COUNSELING; 방 소유자(USER) | PATCH /chats/{id}/accept(또는 proposals/{pid} status=ACCEPTED) → 리포트 CLOSED, 내 제안 ACCEPTED, 형제 제안·방 정리 | COUNSELING 아님 → 409; 방 소유자 아님 → 403 |
+| 상담 거절 | COUNSELING; 방 소유자(USER) | PATCH /chats/{id}/reject → 리포트 AWAITING_ADOPTION 복귀 + 방 CLOSED(다른 제안 재선택 가능) | COUNSELING 아님 → 409; 방 소유자 아님 → 403 |
 
 ### chat
 | 기능 | 선행조건 | 핵심 동작 | 비고 |
@@ -447,7 +557,8 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 
 | 날짜 | 변경 내용                                                                                                                                              | 사유 |
 |------|----------------------------------------------------------------------------------------------------------------------------------------------------|------|
-| 2026-07-14 | 사정사 홈 대시보드(GET /adjusters/me/home)를 report → **adjuster 도메인**으로 분리(섹션 10 adjuster 추가). ADJUSTER_PROFILES를 `AdjusterProfile` 엔티티로 매핑(§14 필드 정정: `speciality varchar`→`specialties text[]`, 구 `subscription_plan` 컬럼 없음 명시, `registration_url`·`updated_at` V12 추가). ADJUSTER_APPLICATIONS status ERD 정합(`ACCEPTED`→`APPROVED` §9·§14, `introduce`→`introduction`). **지역 배열화**: USERS.region·ADJUSTER_PROFILES.activity_region을 `text[]`로 전환(V13, 복수 지역) — 검수대기 목록 지역 필터는 동등비교→`array_contains`. | #100 native→QueryDSL 리팩터 중 adjuster 도메인 분리 + 기존 엔티티 ERD 반영(지역 배열화 포함) |
+| 2026-07-20 | **코드 정합 감사 반영(드리프트 18건)**: §3·§14 status에 `NOT_SELECTED` 추가(스케줄러 스윕, 비종료). §3·§5·§10·§16 매칭을 "제안(REPORT_REVIEWS) 수락/거절" 모델로 재작성 — CLOSED=사용자 수락, COUNSELING→AWAITING_ADOPTION 거절 경로, PATCH /chats/{id}/accept·reject·PATCH /reports/{id}/proposals/{pid}; 유령 `/matches` 엔드포인트·match 도메인 폐기 명시. §7·§16 토큰 만료 15분/30일→30분/14일. §9·§14 ADJUSTER_APPLICATIONS `speciality`→`specialties text[]`+phone·affiliation·region·registration_image_url·문서심사(ADJUSTER_APPLICATION_DOCUMENTS/Document*·Affiliation) 반영. §13 REPORT_REVIEW_ISSUES→`report_issues_reviews`(V10)+impact_amount(V9), ADJUSTER_REVIEW→`adjuster_reviews`+report_id(V26), REPORT_HOLDS·NOTIFICATIONS·NOTIFICATION_SETTINGS·NotificationType 추가. §14 REPORTS title·case_no 추가·confidence_level enum→varchar, ADJUSTER_PROFILES 누락필드 보강, SUBSCRIPTIONS 타입 정정+"엔티티 미구현", PAYMENTS "미구현/계획(스키마 없음)", REPORT_CASE_SEQUENCES(V14). §11 error code 구코드 공존·도메인코드 반영. 마이그레이션 번호 V12/V13→V22/V23 정정. | chore/harness-audit B_glossary 드리프트 감사(18건) 동기화 |
+| 2026-07-14 | 사정사 홈 대시보드(GET /adjusters/me/home)를 report → **adjuster 도메인**으로 분리(섹션 10 adjuster 추가). ADJUSTER_PROFILES를 `AdjusterProfile` 엔티티로 매핑(§14 필드 정정: `speciality varchar`→`specialties text[]`, 구 `subscription_plan` 컬럼 없음 명시, `registration_url`·`updated_at` V22 추가 — 마이그레이션 재번호로 V12→V22). ADJUSTER_APPLICATIONS status ERD 정합(`ACCEPTED`→`APPROVED` §9·§14, `introduce`→`introduction`). **지역 배열화**: USERS.region·ADJUSTER_PROFILES.activity_region을 `text[]`로 전환(V23 — 재번호로 V13→V23, 복수 지역) — 검수대기 목록 지역 필터는 동등비교→`array_contains`. | #100 native→QueryDSL 리팩터 중 adjuster 도메인 분리 + 기존 엔티티 ERD 반영(지역 배열화 포함) |
 | 2026-06-20 | OCR 처리 경계 반영: 사고 입력 수신·진단서 S3 업로드·OCR 트리거 Kafka producer를 Spring 범위로 명시(섹션 1·16). FastAPI는 consumer 측 OCR/AI 파이프라인 담당. | 사고 입력~OCR 트리거 구간 Spring 담당 결정 |
 | 2026-06-14 | 매칭 플로우 수정: 사정사 수락 단계 제거. 사용자가 사정사 선택 시 즉시 COUNSELING 전이. `/matches/{reportID}/accept` API 삭제. 섹션 5·10·16 반영. | 실제 기획 확인 — 수락/거절 없는 즉시 연결 구조 |
 | 2026-06-14 | 기능리스트 20개 페이지 동기화. device token, 로그아웃 멱등, 매칭 24h 만료, 거절 API 미결, 채택 API 미결, 구독 취소 미구현, USER_CLAIMS 선행조건, 기능별 비즈니스 규칙 표(섹션 16) 추가.                   | 기능리스트 기반 비즈니스 규칙 보완 |

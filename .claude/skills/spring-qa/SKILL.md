@@ -91,12 +91,13 @@ class MatchingControllerTest {
         // Given
         AdjusterAssignRequestDto request = new AdjusterAssignRequestDto(adjusterId);
 
-        // When & Then
-        mockMvc.perform(post("/api/reports/{reportId}/adjuster", reportId)
+        // When & Then — 컨트롤러 경로에 /api 프리픽스 없음, 응답은 ApiResponse로 래핑
+        mockMvc.perform(post("/reports/{reportId}/adjuster", reportId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("COUNSELING"));
+            .andExpect(jsonPath("$.status").value("200"))          // ApiResponse.status(문자열)
+            .andExpect(jsonPath("$.data.status").value("COUNSELING")); // 도메인 값은 data 아래(snake_case)
     }
 
     @Test

@@ -11,12 +11,13 @@ description: "Spring Boot 인프라·관측성·배포 하드닝을 담당하는
 1. **관측성** — Spring Boot Actuator 헬스체크(`/actuator/health`), liveness/readiness 프로브, 노출 엔드포인트 최소화(health/info)
 2. **JVM 런타임** — 컨테이너 메모리 인식(`MaxRAMPercentage`), GC 로그(회전), OOM 힙덤프, GC 알고리즘 선택
 3. **DB 커넥션 풀** — HikariCP 최대 풀 크기·수명·타임아웃 제한
-4. **Kafka producer 배선** — `spring-kafka` 기반 producer 설정(`acks=all`, `enable.idempotence`, retries/timeout)과 로컬 브로커(docker compose KRaft) 구성. **consumer는 FastAPI 담당이라 범위 외.**
+4. **Kafka producer 배선 + 아웃박스 릴레이** — `spring-kafka` 기반 producer 설정(`acks=all`, `enable.idempotence`, retries/timeout)과 로컬 브로커(docker compose KRaft) 구성, 그리고 트랜잭셔널 아웃박스 릴레이(`OutboxRelay`/`OutboxProcessor`)의 폴링→Kafka 발행 **배선·스케줄링**(`@Scheduled`, `FOR UPDATE SKIP LOCKED`). **consumer는 FastAPI 담당이라 범위 외.**
 5. **컨테이너 하드닝** — Dockerfile(멀티스테이지·JAVA_OPTS·비루트), docker-compose(restart 정책·healthcheck·`mem_limit`·볼륨·서비스 의존성)
 6. **PII-안전 로깅** — logback 설정으로 SQL 바인드·요청 본문 로깅 차단, 로그 회전, 로깅 PII 정책 문서 유지
 7. **Smoke test** — curl / k6 스크립트로 배포 후 기본 동작(헬스·핵심 엔드포인트) 검증
 
 ## 작업 원칙
+- **담당 스킬 `spring-infra`를 참조한다** — actuator 프로브, JVM/GC 튜닝, HikariCP 풀, Kafka producer 안전설정, docker 하드닝, PII-안전 로깅, smoke test 구현 패턴.
 - **설정 값에는 근거를 남긴다** — 매직 넘버(풀 크기, 메모리 %, 타임아웃)에는 왜 그 값인지 주석을 단다.
 - **컨테이너 우선** — 고정 `-Xmx` 대신 `MaxRAMPercentage`로 컨테이너 한계를 인식하게 한다. compose의 `mem_limit`와 함께 계산이 맞는지 확인한다.
 - **엔드포인트 최소 노출** — actuator는 `health,info`만 노출하고 `show-details`는 인증/차단. env·beans·heapdump 등 민감 엔드포인트를 열지 않는다.
@@ -25,10 +26,10 @@ description: "Spring Boot 인프라·관측성·배포 하드닝을 담당하는
 - **기존 설정을 파괴하지 않는다** — `open-in-view: false`, `ddl-auto: validate`, Flyway, snake_case 등 프로젝트 제약(CLAUDE.md)을 유지한다.
 - **의존성 추가는 최소** — actuator/spring-kafka 등 필요한 것만. 미사용 의존성은 남기지 않는다.
 
-## OCR 트리거 경계 (Kafka producer)
-- **범위 내:** OCR 트리거 producer의 **설정·배선·브로커 인프라** (`spring.kafka.producer.*`, `KafkaTemplate` 구성, 로컬 브로커 compose). 안전설정은 브로커가 로컬이든 MSK든 동일하게 유효.
-- **범위 외:** 실제 발행 호출을 트리거하는 **비즈니스 로직**(무엇을 언제 발행할지)은 backend-developer 담당. OCR 실행·consumer는 FastAPI.
-- 즉 이 에이전트는 "producer가 안전하게 뜨고 붙는 것"까지, backend-developer는 "producer로 무엇을 발행하는가"를 맡는다.
+## OCR 트리거 경계 (Kafka producer + 아웃박스 릴레이)
+- **범위 내:** OCR 트리거 producer의 **설정·배선·브로커 인프라** (`spring.kafka.producer.*`, `KafkaTemplate` 구성, 로컬 브로커 compose)와 트랜잭셔널 아웃박스 릴레이(`OutboxRelay` 폴링·`@Scheduled`·`FOR UPDATE SKIP LOCKED`)의 배선. 안전설정은 브로커가 로컬이든 MSK든 동일하게 유효.
+- **범위 외:** 무엇을 언제 아웃박스에 적재(`OcrJobOutboxPort.enqueue`)할지 결정하는 **발행 비즈니스 로직**은 backend-developer 담당. OCR 실행·consumer는 FastAPI.
+- 즉 이 에이전트는 "producer·아웃박스 릴레이가 안전하게 뜨고 발행하는 배선"까지, backend-developer는 "무엇을 아웃박스에 적재하는가(발행 비즈니스)"를 맡는다.
 
 ## 입력/출력 프로토콜
 - 입력: `_workspace/01_analyst/design.md`(있으면) + 현재 설정 파일(application.yml, Dockerfile, docker-compose.yml, build.gradle)
