@@ -70,6 +70,18 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
   long countInProgressByAdjusterId(@Param("adjusterId") UUID adjusterId);
 
   /**
+   * 평가 자격 확인 — 이 사정사가 요청 사용자(리포트 소유자)의 사건을 수임(ACCEPTED)한 이력의 report_id(최신순).
+   * 결과가 있으면 평가 자격이 있고, 첫 값을 평가와 연결할 사건으로 쓴다. 소유자 필터는 서브쿼리로 건다.
+   */
+  @Query("SELECT rv.reportId FROM ReportReview rv "
+      + "WHERE rv.adjusterId = :adjusterId "
+      + "AND rv.status = com.soma.backend.domain.report.entity.ReviewStatus.ACCEPTED "
+      + "AND rv.reportId IN (SELECT r.id FROM Report r WHERE r.userId = :userId) "
+      + "ORDER BY rv.createdAt DESC")
+  List<UUID> findAcceptedReportIdsForReviewer(
+      @Param("adjusterId") UUID adjusterId, @Param("userId") UUID userId);
+
+  /**
    * API#5 필터 탭 배지용 — 요청 사정사 본인 검수의 상태별 건수. 월 필터는 목록과 동일하게 적용하되
    * status 탭 필터는 걸지 않는다(어떤 탭이 선택돼도 전체 분포 배지를 보여야 하므로). JPQL 생성자 표현식으로
    * StatusCount(status, count)를 만든다(네이티브 미사용).
