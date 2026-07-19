@@ -129,11 +129,13 @@ public class User extends BaseEntity {
   }
 
   /**
-   * 손해사정사 자격 신청 접수에 따른 역할 전이. USER만 UNCERTIFICATED_ADJUSTER로 전이할 수 있고,
-   * 이미 사정사(미인증/인증)거나 관리자면 중복 신청으로 보아 {@code DUPLICATE_RESOURCE}를 던진다.
+   * 손해사정사 자격 신청 접수에 따른 역할 전이. USER는 UNCERTIFICATED_ADJUSTER로 전이하고,
+   * 이미 UNCERTIFICATED_ADJUSTER(반려·심사 중 신청 이력)면 재신청으로 보아 그대로 둔다(멱등).
+   * 이미 인증 사정사(CERTIFICATED_ADJUSTER)거나 관리자(ADMIN)면 신청 대상이 아니므로
+   * {@code DUPLICATE_RESOURCE}를 던진다.
    */
   public void applyForAdjuster() {
-    if (this.role != Role.USER) {
+    if (this.role == Role.CERTIFICATED_ADJUSTER || this.role == Role.ADMIN) {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
     this.role = Role.UNCERTIFICATED_ADJUSTER;

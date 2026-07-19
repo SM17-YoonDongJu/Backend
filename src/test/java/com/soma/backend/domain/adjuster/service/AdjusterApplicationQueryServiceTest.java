@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,7 +37,7 @@ class AdjusterApplicationQueryServiceTest {
   @DisplayName("신청이 있으면 상태·문서 2종을 담아 반환한다")
   void getMyApplication_success() {
     AdjusterApplication application = AdjusterApplication.create(
-        userId, "홍길동", "신체", "제2024-0001호", null, 5, "소개",
+        userId, "홍길동", "010-1234-5678", List.of("신체"), "제2024-0001호", null, 5, "소개",
         Affiliation.INDEPENDENT, "서울 송파", "https://x/reg.pdf");
     given(adjusterApplicationRepository.findTopByUserIdOrderByCreatedAtDesc(userId))
         .willReturn(Optional.of(application));
