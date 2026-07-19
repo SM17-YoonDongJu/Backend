@@ -141,8 +141,8 @@ public class Report extends BaseEntity {
 
   /**
    * 사용자가 제안(REPORT_REVIEWS)을 채택해 담당 사정사를 확정한다(design.md §6 decide).
-   * COUNSELING 상태에서만 허용 — 이미 CLOSED면 REPORT_ALREADY_CLOSED, 그 외 상태면
-   * INVALID_STATE_TRANSITION(예: 아직 상담 전).
+   * COUNSELING 상태에서만 허용 — 이미 CLOSED면 409 REPORT_ALREADY_CLOSED, 그 외 상태면
+   * 409 INVALID_STATE_TRANSITION(예: 아직 상담 전). 둘 다 상태 충돌이라 클라이언트가 code로 구분한다.
    */
   public void accept(UUID adjusterId) {
     if (this.status == ReportStatus.CLOSED) {

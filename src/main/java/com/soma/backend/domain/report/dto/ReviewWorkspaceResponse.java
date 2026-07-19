@@ -29,7 +29,7 @@ public record ReviewWorkspaceResponse(
     String caseNo,
     String title,
     String accidentType,
-    String region,
+    List<String> region,
     String status,
     String confidenceLevel,
     boolean isMasked,
@@ -49,8 +49,8 @@ public record ReviewWorkspaceResponse(
     Progress progress) {
 
   public static ReviewWorkspaceResponse from(
-      Report report, ReviewContextRow context, ClaimDetails claimDetails, List<ReportIssue> aiIssues,
-      ReportReview review, List<ReportAttachment> attachments) {
+      Report report, ReviewContextRow context, List<String> region, ClaimDetails claimDetails,
+      List<ReportIssue> aiIssues, ReportReview review, List<ReportAttachment> attachments) {
     boolean started = review != null;
     List<IssueItem> issues = mergeIssues(aiIssues, review);
     List<AttachmentItem> attachmentItems = attachments.stream().map(AttachmentItem::from).toList();
@@ -65,12 +65,12 @@ public record ReviewWorkspaceResponse(
         report.getCaseNo(),
         report.getTitle(),
         report.getAccidentType() == null ? null : report.getAccidentType().getValue(),
-        context == null ? null : context.getRegion(),
+        region,
         report.getStatus() == null ? null : report.getStatus().name(),
         report.getConfidenceLevel(),
         Boolean.TRUE.equals(report.getIsMasked()),
         report.getOfferedAmount(),
-        Client.from(context),
+        Client.from(context, region),
         ClaimContext.from(context, claimDetails),
         attachmentItems,
         aiEstimate,
@@ -126,15 +126,15 @@ public record ReviewWorkspaceResponse(
 
   /** ① 의뢰인 정보(users). */
   public record Client(
-      String nickname, String gender, LocalDate birthDate, String region, LocalDateTime joinedAt) {
+      String nickname, String gender, LocalDate birthDate, List<String> region, LocalDateTime joinedAt) {
 
-    public static Client from(ReviewContextRow context) {
+    public static Client from(ReviewContextRow context, List<String> region) {
       if (context == null) {
         return null;
       }
       return new Client(
           context.getNickname(), context.getGender(), context.getBirthDate(),
-          context.getRegion(), context.getJoinedAt());
+          region, context.getJoinedAt());
     }
   }
 

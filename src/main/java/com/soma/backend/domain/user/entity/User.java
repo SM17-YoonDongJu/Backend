@@ -1,8 +1,11 @@
 package com.soma.backend.domain.user.entity;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.Nullable;
 
 import jakarta.persistence.Column;
@@ -17,6 +20,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import com.soma.backend.domain.common.entity.BaseEntity;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 
 /**
  * USERS Aggregate Root. 회원 계정 정보를 관리한다.
@@ -58,8 +63,9 @@ public class User extends BaseEntity {
   @Column(name = "gender", nullable = false, length = 10)
   private String gender;
 
-  @Column(name = "region")
-  private String region;
+  @JdbcTypeCode(SqlTypes.ARRAY)
+  @Column(name = "region", columnDefinition = "text[]")
+  private List<String> region;
 
   @Column(name = "birth_date", nullable = false)
   private LocalDate birthDate;
@@ -87,7 +93,8 @@ public class User extends BaseEntity {
    * 프로필(전화번호·지역·프로필사진)을 부분 수정한다. {@code null} 인자는 변경하지 않는다(부분 수정).
    * 번호 유일성 검사는 저장소를 아는 서비스가 호출 전에 수행한다.
    */
-  public void updateProfile(@Nullable String phoneNumber, @Nullable String region, @Nullable String avatarUrl) {
+  public void updateProfile(
+      @Nullable String phoneNumber, @Nullable List<String> region, @Nullable String avatarUrl) {
     if (phoneNumber != null) {
       this.phoneNumber = phoneNumber;
     }
@@ -119,5 +126,16 @@ public class User extends BaseEntity {
    */
   public boolean isWithdrawn() {
     return this.status == UserStatus.WITHDRAWN;
+  }
+
+  /**
+   * 손해사정사 자격 신청 접수에 따른 역할 전이. USER만 UNCERTIFICATED_ADJUSTER로 전이할 수 있고,
+   * 이미 사정사(미인증/인증)거나 관리자면 중복 신청으로 보아 {@code DUPLICATE_RESOURCE}를 던진다.
+   */
+  public void applyForAdjuster() {
+    if (this.role != Role.USER) {
+      throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
+    }
+    this.role = Role.UNCERTIFICATED_ADJUSTER;
   }
 }

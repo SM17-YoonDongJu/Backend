@@ -27,9 +27,8 @@ public class GlobalExceptionHandler {
         .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
         .findFirst()
         .orElse(ErrorCode.BAD_REQUEST.getMessage());
-    ErrorCode code = ErrorCode.BAD_REQUEST;
-    return ResponseEntity.status(code.getStatus())
-        .body(ErrorResponse.of(code.getStatus(), code.name(), message));
+    return ResponseEntity.badRequest()
+        .body(ErrorResponse.of(ErrorCode.BAD_REQUEST, message));
   }
 
   /**

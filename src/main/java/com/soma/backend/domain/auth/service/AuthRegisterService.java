@@ -17,7 +17,6 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
-import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
 
 /**
  * 소셜 회원가입 유스케이스. 가입 티켓을 검증하고 users + social_accounts를 한 트랜잭션으로 생성한 뒤
@@ -31,7 +30,6 @@ public class AuthRegisterService {
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
   private final AuthTokenService authTokenService;
-  private final WithdrawalLedgerRepository withdrawalLedgerRepository;
 
   @Transactional
   public RegisterResponse register(HttpServletResponse response, RegisterRequest request) {
@@ -57,9 +55,6 @@ public class AuthRegisterService {
     SocialAccount account = SocialAccount.create(
         user.getId(), ticket.provider(), ticket.providerUserId());
     socialAccountRepository.save(account);
-
-    // 재가입이 완료됐으므로 탈퇴 원장에서 이 소셜 신원을 제거한다(더는 재가입 대상이 아님).
-    withdrawalLedgerRepository.clear(ticket.provider(), ticket.providerUserId());
 
     authTokenService.issueTokens(response, user.getId(), role.name());
     return new RegisterResponse(user.getId(), user.getNickname(), role.name());

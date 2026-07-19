@@ -1,0 +1,21 @@
+# 로컬 개발 전용 프로파일. 배포 대상(dev=스테이징, prod=운영)과 분리해 로컬 편의 설정과
+# dev 전용 로그인을 여기에만 둔다. 실행: SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+# datasource/redis 등은 application.yml 기본값(localhost)을 상속한다.
+spring:
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  cookie:
+    secure: false     # 로컬 http 개발
+  docs:
+    public: true      # Scalar API 문서를 인증 없이 개방
+  dev-login:
+    enabled: true     # dev 전용 로그인 엔드포인트 활성 (local은 배포 대상이 아니라 노출 위험 없음)
+
+logging:
+  level:
+    org.springframework.security: DEBUG

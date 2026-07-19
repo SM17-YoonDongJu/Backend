@@ -44,11 +44,12 @@ public class ReviewWorkspaceQueryService {
     Report report = reportRepository.findById(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
     ReviewContextRow context = reportRepository.findReviewContext(reportId);
+    List<String> region = reportRepository.findRegionByReportId(reportId);
     ClaimDetails claimDetails = report.getClaimId() == null ? null
         : userClaimRepository.findById(report.getClaimId()).map(UserClaim::getDetails).orElse(null);
     List<ReportIssue> aiIssues = reportIssueRepository.findAllByReportId(reportId);
     ReportReview review = reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId).orElse(null);
     List<ReportAttachment> attachments = reportAttachmentRepository.findAllByReportId(reportId);
-    return ReviewWorkspaceResponse.from(report, context, claimDetails, aiIssues, review, attachments);
+    return ReviewWorkspaceResponse.from(report, context, region, claimDetails, aiIssues, review, attachments);
   }
 }

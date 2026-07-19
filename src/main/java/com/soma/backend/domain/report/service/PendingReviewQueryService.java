@@ -42,7 +42,7 @@ public class PendingReviewQueryService {
   private static final long SLA_DAYS = 7L;
 
   /** 마감 임박으로 간주하는 SLA 잔여 여유 기간. SLA_DAYS 이내 이 값만큼 남았으면 due_soon. */
-  private static final long DUE_SOON_WINDOW_DAYS = 2L;
+  private static final long DUE_SOON_WINDOW_DAYS = 1L;
 
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;
@@ -58,10 +58,10 @@ public class PendingReviewQueryService {
 
   public PendingReviewListResponse getPendingReviewList(
       String status, String accidentType, String region, UUID adjusterId, Pageable pageable) {
-    validateStatus(status);
-    validateAccidentType(accidentType);
+    ReportStatus statusFilter = parseStatus(status);
+    AccidentType accidentTypeFilter = parseAccidentType(accidentType);
     Page<PendingReviewRow> rows =
-        reportRepository.findPendingReviewRows(status, accidentType, region, adjusterId, pageable);
+        reportRepository.findPendingReviewRows(statusFilter, accidentTypeFilter, region, adjusterId, pageable);
     Map<UUID, String> reviewStatusByReportId = loadOwnReviewStatuses(adjusterId, rows);
     return PendingReviewListResponse.from(rows, reviewStatusByReportId);
   }
@@ -71,7 +71,7 @@ public class PendingReviewQueryService {
    * 한 번에 조회한다. 본인 검수가 없는 리포트는 맵에 없어 응답에서 null이 된다.
    */
   private Map<UUID, String> loadOwnReviewStatuses(UUID adjusterId, Page<PendingReviewRow> rows) {
-    List<UUID> reportIds = rows.getContent().stream().map(PendingReviewRow::getReportId).toList();
+    List<UUID> reportIds = rows.getContent().stream().map(PendingReviewRow::reportId).toList();
     if (reportIds.isEmpty()) {
       return Map.of();
     }
@@ -91,31 +91,31 @@ public class PendingReviewQueryService {
         && report.getStatus() != ReportStatus.AWAITING_ADOPTION) {
       throw new BusinessException(ErrorCode.REPORT_NOT_FOUND);
     }
-    String region = reportRepository.findRegionByReportId(reportId);
+    List<String> region = reportRepository.findRegionByReportId(reportId);
     boolean held = reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId);
     List<ReportIssue> issues = reportIssueRepository.findAllByReportId(reportId);
     return ReportDetailResponse.from(report, region, held, issues);
   }
 
-  /** 잘못된 status 필터 값은 조용한 빈 결과 대신 400으로 거른다. */
-  private void validateStatus(String status) {
+  /** 잘못된 status 필터 값은 조용한 빈 결과 대신 400으로 거른다. 빈 값이면 필터 없음(null). */
+  private ReportStatus parseStatus(String status) {
     if (!StringUtils.hasText(status)) {
-      return;
+      return null;
     }
     try {
-      ReportStatus.valueOf(status);
+      return ReportStatus.valueOf(status);
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }
   }
 
-  /** 잘못된 accidentType 필터 값은 400으로 거른다(DB는 소문자 값). */
-  private void validateAccidentType(String accidentType) {
+  /** 잘못된 accidentType 필터 값은 400으로 거른다(DB는 소문자 값). 빈 값이면 필터 없음(null). */
+  private AccidentType parseAccidentType(String accidentType) {
     if (!StringUtils.hasText(accidentType)) {
-      return;
+      return null;
     }
     try {
-      AccidentType.from(accidentType);
+      return AccidentType.from(accidentType);
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }

@@ -16,7 +16,7 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
   public static PendingReviewListResponse from(
       Page<PendingReviewRow> page, Map<UUID, String> reportReviewStatusByReportId) {
     List<Item> items = page.getContent().stream()
-        .map(row -> Item.from(row, reportReviewStatusByReportId.get(row.getReportId())))
+        .map(row -> Item.from(row, reportReviewStatusByReportId.get(row.reportId())))
         .toList();
     return new PendingReviewListResponse(
         items, page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
@@ -31,7 +31,7 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
       String caseNo,
       String title,
       String accidentType,
-      String region,
+      List<String> region,
       String status,
       String reportReviewStatus,
       Long claimedMinAmount,
@@ -44,24 +44,24 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
 
     public static Item from(PendingReviewRow row, String reportReviewStatus) {
       long offerHeadroom = new AmountRange(
-          row.getClaimedMinAmount(), row.getClaimedMaxAmount(), row.getOfferedAmount()).offerHeadroom();
-      long issueCount = row.getIssueCount() == null ? 0L : row.getIssueCount();
-      boolean held = Boolean.TRUE.equals(row.getHeld());
+          row.claimedMinAmount(), row.claimedMaxAmount(), row.offeredAmount()).offerHeadroom();
+      long issueCount = row.issueCount() == null ? 0L : row.issueCount();
+      boolean held = Boolean.TRUE.equals(row.held());
       return new Item(
-          row.getReportId(),
-          row.getCaseNo(),
-          row.getTitle(),
-          row.getAccidentType(),
-          row.getRegion(),
-          row.getStatus(),
+          row.reportId(),
+          row.caseNo(),
+          row.title(),
+          row.accidentType() == null ? null : row.accidentType().getValue(),
+          row.region(),
+          row.status() == null ? null : row.status().name(),
           reportReviewStatus,
-          row.getClaimedMinAmount(),
-          row.getClaimedMaxAmount(),
-          row.getOfferedAmount(),
+          row.claimedMinAmount(),
+          row.claimedMaxAmount(),
+          row.offeredAmount(),
           offerHeadroom,
           issueCount,
           held,
-          row.getCreatedAt());
+          row.createdAt());
     }
   }
 }

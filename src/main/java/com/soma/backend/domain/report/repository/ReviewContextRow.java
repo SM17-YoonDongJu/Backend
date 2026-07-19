@@ -12,8 +12,6 @@ public interface ReviewContextRow {
 
   LocalDate getBirthDate();
 
-  String getRegion();
-
   LocalDateTime getJoinedAt();
 
   String getClaimAccidentType();
