@@ -76,6 +76,15 @@ public enum ErrorCode {
   CHAT_DIRECT_JOIN_FORBIDDEN(HttpStatus.FORBIDDEN, "1:1 채팅방에는 입장할 수 없습니다."),
   CHAT_INVALID_MEMBER_COUNT(HttpStatus.BAD_REQUEST, "채팅방 멤버 구성이 올바르지 않습니다."),
   CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "메시지 내용이 비어 있습니다."),
+  CHAT_ROOM_CLOSED(HttpStatus.CONFLICT, "종료된 채팅방에는 메시지를 보낼 수 없습니다."),
+  CHAT_NOT_ROOM_OWNER(HttpStatus.FORBIDDEN, "채팅방 소유자만 상담을 결정할 수 있습니다."),
+  CHAT_CONSULTATION_UNAVAILABLE(HttpStatus.CONFLICT, "상담 결정을 진행할 수 없는 채팅방입니다."),
+  CHAT_ATTACHMENT_EMPTY(HttpStatus.BAD_REQUEST, "첨부 파일이 비어 있습니다."),
+  CHAT_ATTACHMENT_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "허용되지 않는 첨부 형식입니다."),
+  CHAT_ATTACHMENT_TOO_LARGE(HttpStatus.BAD_REQUEST, "첨부 용량이 허용 범위를 초과했습니다."),
+  CHAT_ATTACHMENT_KEY_MISMATCH(HttpStatus.BAD_REQUEST, "첨부 키가 채팅방과 일치하지 않습니다."),
+  CHAT_ATTACHMENT_TOO_MANY(HttpStatus.BAD_REQUEST, "첨부 개수가 허용 범위를 초과했습니다."),
+  CHAT_ATTACHMENT_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "첨부 파일 업로드에 실패했습니다."),
   CHAT_WS_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "WebSocket 인증에 실패했습니다."),
 
   // Notification (도메인 특화)

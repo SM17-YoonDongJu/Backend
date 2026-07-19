@@ -33,10 +33,13 @@ import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
 import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
+import com.soma.backend.domain.report.repository.ReportReviewRepository;
+import com.soma.backend.domain.report.repository.ReportReviewStatusRow;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
@@ -50,6 +53,8 @@ class PendingReviewQueryServiceTest {
   private ReportHoldRepository reportHoldRepository;
   @Mock
   private ReportIssueRepository reportIssueRepository;
+  @Mock
+  private ReportReviewRepository reportReviewRepository;
 
   @InjectMocks
   private PendingReviewQueryService service;
@@ -81,6 +86,8 @@ class PendingReviewQueryServiceTest {
     Page<PendingReviewRow> page = new PageImpl<>(List.of(row), pageable, 1);
     given(reportRepository.findPendingReviewRows(null, null, null, reportId, pageable))
         .willReturn(page);
+    given(reportReviewRepository.findAdjusterReviewStatuses(any(), any()))
+        .willReturn(List.of(new ReportReviewStatusRow(reportId, ReviewStatus.SENT)));
 
     PendingReviewListResponse result =
         service.getPendingReviewList(null, null, null, reportId, pageable);
@@ -89,6 +96,7 @@ class PendingReviewQueryServiceTest {
     assertThat(item.offerHeadroom()).isEqualTo(-3000L);
     assertThat(item.issueCount()).isEqualTo(2L);
     assertThat(item.held()).isTrue();
+    assertThat(item.reportReviewStatus()).isEqualTo("SENT");
     assertThat(item.createdAt()).isEqualTo(LocalDateTime.of(2026, 5, 31, 9, 0));
     assertThat(result.totalElements()).isEqualTo(1L);
   }
@@ -101,6 +109,7 @@ class PendingReviewQueryServiceTest {
     Pageable pageable = PageRequest.of(0, 20);
     given(reportRepository.findPendingReviewRows(null, null, null, adjusterId, pageable))
         .willReturn(new PageImpl<>(List.of(row), pageable, 1));
+    given(reportReviewRepository.findAdjusterReviewStatuses(any(), any())).willReturn(List.of());
 
     PendingReviewListResponse.Item item =
         service.getPendingReviewList(null, null, null, adjusterId, pageable).items().get(0);
@@ -108,6 +117,7 @@ class PendingReviewQueryServiceTest {
     assertThat(item.offerHeadroom()).isZero();
     assertThat(item.issueCount()).isZero();
     assertThat(item.held()).isFalse();
+    assertThat(item.reportReviewStatus()).isNull();
   }
 
   @Test

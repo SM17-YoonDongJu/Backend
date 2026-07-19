@@ -208,7 +208,7 @@ class ReportReviewCommandServiceTest {
   }
 
   @Test
-  @DisplayName("CLOSED(종료) report는 검수 대상이 아니므로 INVALID_STATUS_TRANSITION(400)")
+  @DisplayName("CLOSED(종료) report는 검수 대상이 아니므로 INVALID_STATE_TRANSITION(400)")
   void invalidTransitionOnClosed() {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
@@ -217,11 +217,11 @@ class ReportReviewCommandServiceTest {
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of())))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
-  @DisplayName("COUNSELING(상담) report도 검수 대상이 아니므로 INVALID_STATUS_TRANSITION(400)")
+  @DisplayName("COUNSELING(상담) report도 검수 대상이 아니므로 INVALID_STATE_TRANSITION(400)")
   void invalidTransitionOnCounseling() {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportWithStatus(ReportStatus.COUNSELING)));
@@ -230,7 +230,7 @@ class ReportReviewCommandServiceTest {
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of())))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test

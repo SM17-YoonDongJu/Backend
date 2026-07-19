@@ -56,7 +56,8 @@ public class SecurityConfig {
         .sessionManagement(session ->
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> {
-          auth.requestMatchers("/auth/**", "/ws/**", "/actuator/health", "/actuator/health/**").permitAll();
+          auth.requestMatchers("/auth/**", "/ws/**", "/ws-chat/**", "/actuator/health", "/actuator/health/**")
+              .permitAll();
           if (docsPublic) {
             // dev 전용: Scalar API 문서 경로를 인증 없이 개방(app.docs.public=true, 운영은 기본 false).
             auth.requestMatchers("/docs", "/scalar.html", "/v3/api-docs", "/v3/api-docs/**").permitAll();

@@ -2,7 +2,9 @@ package com.soma.backend.domain.report.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +25,8 @@ import com.soma.backend.domain.report.repository.PendingReviewRow;
 import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
+import com.soma.backend.domain.report.repository.ReportReviewRepository;
+import com.soma.backend.domain.report.repository.ReportReviewStatusRow;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
@@ -43,6 +47,7 @@ public class PendingReviewQueryService {
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;
   private final ReportIssueRepository reportIssueRepository;
+  private final ReportReviewRepository reportReviewRepository;
 
   public PendingReviewSummaryResponse getSummary() {
     long pendingCount = reportRepository.countPending();
@@ -57,7 +62,21 @@ public class PendingReviewQueryService {
     AccidentType accidentTypeFilter = parseAccidentType(accidentType);
     Page<PendingReviewRow> rows =
         reportRepository.findPendingReviewRows(statusFilter, accidentTypeFilter, region, adjusterId, pageable);
-    return PendingReviewListResponse.from(rows);
+    Map<UUID, String> reviewStatusByReportId = loadOwnReviewStatuses(adjusterId, rows);
+    return PendingReviewListResponse.from(rows, reviewStatusByReportId);
+  }
+
+  /**
+   * 목록 페이지의 리포트들에 대해 요청 사정사 본인의 검수 상태(REPORT_REVIEWS.status)를 report_id→status로
+   * 한 번에 조회한다. 본인 검수가 없는 리포트는 맵에 없어 응답에서 null이 된다.
+   */
+  private Map<UUID, String> loadOwnReviewStatuses(UUID adjusterId, Page<PendingReviewRow> rows) {
+    List<UUID> reportIds = rows.getContent().stream().map(PendingReviewRow::reportId).toList();
+    if (reportIds.isEmpty()) {
+      return Map.of();
+    }
+    return reportReviewRepository.findAdjusterReviewStatuses(adjusterId, reportIds).stream()
+        .collect(Collectors.toMap(ReportReviewStatusRow::reportId, row -> row.status().name()));
   }
 
   /**

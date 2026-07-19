@@ -73,7 +73,7 @@ app:
 aws:
   region: ${AWS_REGION:ap-northeast-2}
   s3:
-    bucket: ${S3_BUCKET:}
+    bucket: ${S3_BUCKET}
   # credentials 제거: EC2 IAM Role 자동 인증 사용
   # 로컬 개발 시엔 ~/.aws/credentials 사용
 

@@ -29,11 +29,9 @@ import com.soma.backend.domain.adjuster.dto.AdjusterApplicationResponse;
 import com.soma.backend.domain.adjuster.dto.CreateAdjusterApplicationResponse;
 import com.soma.backend.domain.adjuster.service.AdjusterApplicationCommandService;
 import com.soma.backend.domain.adjuster.service.AdjusterApplicationQueryService;
-import com.soma.backend.global.config.WebMvcConfig;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.CookieProvider;
-import com.soma.backend.global.security.CurrentUserIdArgumentResolver;
 import com.soma.backend.global.security.CustomUserDetails;
 import com.soma.backend.global.security.JwtFilter;
 import com.soma.backend.global.security.JwtProvider;
@@ -46,8 +44,6 @@ import com.soma.backend.infra.redis.TokenBlacklistRepository;
 @ActiveProfiles("test")
 @Import({
     SecurityConfig.class,
-    WebMvcConfig.class,
-    CurrentUserIdArgumentResolver.class,
     JwtFilter.class,
     JwtProvider.class,
     CookieProvider.class,

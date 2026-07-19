@@ -93,9 +93,14 @@ public class ReportReview extends BaseEntity {
     this.status = ReviewStatus.REJECTED;
   }
 
-  /** 종료 상태(ACCEPTED/REJECTED)에서의 재결정을 차단 — 이미 결정된 제안 재결정은 409 상태 충돌(design.md §6). */
+  /** 아직 결정 전(SENT·COUNSELING)이라 채택/거절 가능한지 — 종료 상태(ACCEPTED/REJECTED)면 false. */
+  public boolean isDecidable() {
+    return this.status != ReviewStatus.ACCEPTED && this.status != ReviewStatus.REJECTED;
+  }
+
+  /** 종료 상태(ACCEPTED/REJECTED)에서의 재결정을 차단 — CLOSED 리포트와 제안 상태 불일치를 막는다. */
   private void ensureDecidable() {
-    if (this.status == ReviewStatus.ACCEPTED || this.status == ReviewStatus.REJECTED) {
+    if (!isDecidable()) {
       throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
     }
   }
