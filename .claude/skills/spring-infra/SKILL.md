@@ -18,33 +18,29 @@ infra-developer 에이전트가 참조하는 운영 준비(production readiness)
 | 서비스 오케스트레이션 | `docker-compose.yml` |
 | 의존성 | `build.gradle` |
 | 환경 문서 | `.env.example` |
-| 정책 문서 | `docs/logging-pii-policy.md` |
+| 정책 문서 | `docs/logging-pii-policy.md` *(생성 예정 — 아직 부재)* |
 | 검증 | `scripts/smoke-test.sh`, `scripts/smoke-test.k6.js` |
 
 ## 1. Actuator 헬스체크 / 프로브
 
 의존성: `implementation 'org.springframework.boot:spring-boot-starter-actuator'`
 
+**현재 `application.yml` 상태(하드닝 미완):**
 ```yaml
 management:
   endpoints:
     web:
       exposure:
-        include: health,info   # 최소 노출 — env·beans·heapdump 등 민감 엔드포인트 차단
+        include: health,info,metrics,prometheus   # metrics·prometheus까지 노출 — 하드닝 TODO
   endpoint:
     health:
-      show-details: never      # 상세는 외부 미노출 (PII·인프라 정보 보호). 내부망만이면 when-authorized
+      show-details: always    # 상세 무조건 노출 — 하드닝 TODO(PII·인프라 정보). 권장: when-authorized 또는 never
       probes:
         enabled: true          # liveness/readiness 프로브 → /actuator/health/{liveness,readiness}
-  health:
-    livenessstate:
-      enabled: true
-    readinessstate:
-      enabled: true
 ```
 
-- **왜 health/info만?** actuator 기본 노출을 넓히면 `env`(환경변수=시크릿), `configprops`, `heapdump`가 열려 정보 유출. 최소 노출이 안전 기본값.
-- **SecurityConfig 확인:** `/actuator/**`가 인가 정책에 막히지 않는지 본다. 현재 프로젝트는 `anyRequest().permitAll()`이라 통과. 인가를 조이게 되면 `/actuator/health/**`만 permitAll 하고 나머지는 ADMIN으로 — security-developer와 협의.
+- **⚠ 하드닝 TODO(민감 노출):** 현재는 `metrics,prometheus`가 열려 있고 `show-details: always`다. `metrics`/`prometheus`는 인증 뒤로 두거나(아래 SecurityConfig 참고) 스크레이프 전용 경로로 좁히고, `show-details`는 외부 노출 환경에선 `never`/`when-authorized`로 조인다. `env`·`configprops`·`heapdump`는 `include`에 없어 여전히 차단됨(넓히지 말 것).
+- **SecurityConfig 확인:** 실제 `SecurityConfig`는 `.anyRequest().authenticated()`이고 permitAll은 `/actuator/health`·`/actuator/health/**`만이다(`/auth/**`·`/ws/**`·`/ws-chat/**` 포함). 즉 **`/actuator/info,metrics,prometheus`는 인증이 필요**하다 — 대시보드·Prometheus 스크레이퍼에서 붙이려면 별도 인가(예: 내부망 IP·ADMIN 롤·전용 자격증명)를 security-developer와 배선한다.
 - **readiness 그룹:** 기본은 `readinessState`만 포함 → DB 다운이 readiness를 죽이지 않는다. DB 장애 시 트래픽 차단(무중단 배포)을 원하면 `management.endpoint.health.group.readiness.include: readinessState,db` 추가.
 
 ## 2. JVM 메모리 제한 / GC 로그 (Dockerfile)
@@ -68,25 +64,38 @@ ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
 
 ## 3. HikariCP 커넥션 풀 제한 (application.yml)
 
+**현재 `application.yml` 상태(적용된 것만):**
 ```yaml
 spring:
   datasource:
     hikari:
-      pool-name: soma-hikari
-      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
-      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      maximum-pool-size: 10
+      minimum-idle: 5
       connection-timeout: 30000   # 커넥션 대기 30초 초과 시 예외
+```
+
+**하드닝 TODO(아직 미적용 — 권장 추가값):**
+```yaml
+      pool-name: ${DB_POOL_NAME:soma-hikari}          # 로그·모니터링 식별
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}       # env 오버라이드
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
       idle-timeout: 600000        # 유휴 10분 후 회수
       max-lifetime: 1740000       # 최대 수명 29분 — DB/LB 타임아웃보다 짧게
       keepalive-time: 300000
 ```
 
-- **풀 크기 근거:** 무한정 늘리면 DB가 죽는다. `maximum-pool-size`는 DB `max_connections`와 인스턴스 수를 역산해서 정한다(기본 10은 단일 인스턴스 보수값). env로 환경별 오버라이드.
-- **`max-lifetime`은 DB/LB 유휴 종료 시간보다 짧게** — 그래야 죽은 커넥션을 쥐고 있다가 터지는 걸 막는다.
+- **풀 크기 근거:** 무한정 늘리면 DB가 죽는다. `maximum-pool-size`는 DB `max_connections`와 인스턴스 수를 역산해서 정한다(기본 10은 단일 인스턴스 보수값). 하드닝 시 env로 환경별 오버라이드를 배선한다.
+- **`max-lifetime`은 DB/LB 유휴 종료 시간보다 짧게** — 그래야 죽은 커넥션을 쥐고 있다가 터지는 걸 막는다. 현재는 미설정(Hikari 기본 30분)이라 명시 설정을 권장한다.
 
 ## 4. Kafka producer 안전설정 + 로컬 브로커
 
 의존성: `implementation 'org.springframework.kafka:spring-kafka'`. **consumer는 FastAPI 담당이라 producer만 설정.**
+
+> **실제 배선:** 이 프로젝트는 producer 안전설정을 yaml이 아니라 **Java `@Configuration KafkaProducerConfig`
+> (`infra/kafka/KafkaProducerConfig.java`)** 로 구현한다 — `ocrProducerFactory`(ProducerFactory) + `KafkaTemplate`
+> 빈을 노출하고, `OutboxRelay`가 이 템플릿으로 OCR 트리거를 발행한다. `bootstrap-servers`/`security.protocol`만
+> `application.yml`의 `spring.kafka.*`에서 읽는다(로컬 KRaft ↔ 운영 MSK 전환 시 이 클래스는 불변, 환경변수만 교체).
+> 아래 값은 그 빈이 `ProducerConfig`로 설정하는 값과 동일하다(등가 yaml 참고용).
 
 ```yaml
 spring:
@@ -94,7 +103,7 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     security:
       protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
-    producer:
+    producer:                     # 참고: 실제로는 KafkaProducerConfig(ProducerConfig)로 동일 값 배선
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all                   # 모든 ISR 확인 후 성공 — 유실 방지
@@ -111,7 +120,7 @@ spring:
 
 ```yaml
   kafka:
-    image: apache/kafka:3.9.0
+    image: apache/kafka:4.3.1
     ports:
       - "${KAFKA_PORT:-9092}:9092"      # EXTERNAL → 호스트 bootRun
     environment:
@@ -119,7 +128,8 @@ spring:
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENERS: CONTROLLER://0.0.0.0:9093,INTERNAL://0.0.0.0:9094,EXTERNAL://0.0.0.0:9092
+      # 호스트 생략(://:포트) 표기 필수 — 리터럴 0.0.0.0은 컨트롤러 광고 주소 폴백 검증에 걸려 기동 실패(#93)
+      KAFKA_LISTENERS: CONTROLLER://:9093,INTERNAL://:9094,EXTERNAL://:9092
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9094,EXTERNAL://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
@@ -152,7 +162,7 @@ logging:
     org.springframework.web.filter.CommonsRequestLoggingFilter: warn
 ```
 
-`logback-spring.xml`은 body/header를 포함하지 않는 표준 패턴 + 회전 파일 appender로 구성한다. 손해사정 도메인은 주민번호·진단서·결제정보를 다루므로 정책 문서(`docs/logging-pii-policy.md`)를 함께 유지한다: 금지 항목(토큰·주민번호·의료·금융·요청 본문), 마스킹 규칙, DTO 통째 로깅 금지.
+`logback-spring.xml`은 body/header를 포함하지 않는 표준 패턴 + 회전 파일 appender로 구성한다. 손해사정 도메인은 주민번호·진단서·결제정보를 다루므로 정책 문서(`docs/logging-pii-policy.md`, **아직 미생성 — 생성 예정**)를 함께 유지한다: 금지 항목(토큰·주민번호·의료·금융·요청 본문), 마스킹 규칙, DTO 통째 로깅 금지.
 
 ## 6. Docker restart / healthcheck (docker-compose app)
 

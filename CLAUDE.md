@@ -34,15 +34,18 @@ Spring Boot 4.0.x(현재 4.0.6) / Java 21 기반 REST API 서버. **전술적 DD
 
 ```
 com.soma.backend
-├── domain/<context>/          # Bounded Context (auth, user, adjuster, report, match, chat, payment, subscription)
+├── domain/<context>/          # Bounded Context (auth, user, adjuster, report, chat, notification)
 │   ├── controller/            # REST 컨트롤러 — ResponseEntity<ApiResponse<T>>, 얇게 유지
 │   ├── dto/                   # Request / Response (API 계약, snake_case)
 │   ├── entity/                # JPA 엔티티(Aggregate Root/Entity) + Value Object(record) — 비즈니스 규칙은 여기
 │   ├── repository/            # Spring Data JPA Repository
 │   └── service/               # 비즈니스 유스케이스 + @Transactional 경계
-├── global/                    # 전 컨텍스트 공통 (config, exception, security)
-└── infra/                     # 전역 공유 인프라 (redis, s3, fcm, kafka)
+├── domain/common/             # 공유 기반 (BaseEntity, JpaConfig) — 컨텍스트 아님
+├── global/                    # 전 컨텍스트 공통 (config, exception, response, security)
+└── infra/                     # 전역 공유 인프라 (redis, s3, fcm, kafka, outbox)
 ```
+
+> **도메인 현황(문서-코드 정합):** 실제 구현된 컨텍스트는 `auth·user·adjuster·report·chat·notification` + 공유 기반 `common`이다. `match`는 빈 placeholder이며 **매칭(제안 요청·수락) 로직은 현재 `report` 도메인(proposal)에 있다**. `payment`·`subscription`은 **계획된 컨텍스트로 아직 미구현**(예약 에러코드 `PAYMENT_FAILED`·`SUBSCRIPTION_NOT_FOUND`만 존재).
 
 **레이어 의존 규칙 (핵심):**
 - `controller` → `service`, `dto`(+ 조회용 `entity`). HTTP ↔ 유스케이스 변환만, 얇게.
@@ -57,17 +60,19 @@ com.soma.backend
 
 > **Spring Boot 4 주의 (Boot 3와 다름):** JSON 매퍼 기본값은 **Jackson 3(`tools.jackson`)** 다 — 구 `com.fasterxml.jackson...ObjectMapper` 빈은 자동구성되지 않으므로 주입하지 말 것(`tools.jackson.databind.json.JsonMapper` 사용). Nullness 애노테이션은 **JSpecify(`org.jspecify.annotations`)**, 구 `org.springframework.lang.NonNull`은 deprecated. HTTP 422는 `HttpStatus.UNPROCESSABLE_CONTENT`(구 `UNPROCESSABLE_ENTITY` deprecated). 기반은 Spring Framework 7.
 
-**global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다. 인증 전송은 **HttpOnly 쿠키 기반**이다 — `JwtFilter`는 `Authorization` 헤더가 아니라 `access_token` 쿠키에서 토큰을 읽고, `CookieProvider`가 `access_token`/`refresh_token` 쿠키를 생성·만료·조회하며(`access_token`은 Path `/`, `refresh_token`은 `/auth`로 좁혀 재발급·로그아웃 요청에만 전송) `AuthTokenService`가 발급을 오케스트레이션한다. `/auth/**`는 access 검증을 건너뛴다(`shouldNotFilter`, 재발급·로그아웃은 refresh 쿠키로 동작). 인증 실패(401)는 `RestAuthenticationEntryPoint`, 인가 거부(403)는 `RestAccessDeniedHandler`가 `ErrorResponse`로 응답한다. 쿠키 인증이라 CORS는 `allowCredentials(true)` + `app.cors.allowed-origin-patterns`(와일드카드 `*` 불가, 패턴 목록)로 구성한다.
+**global/security** — `JwtProvider`로 토큰 생성·검증, `JwtFilter`(OncePerRequestFilter)로 요청마다 인증 처리, `CustomUserDetails`에 `userId`와 `role`을 담아 `SecurityContext`에 저장한다. 인증 전송은 **HttpOnly 쿠키 기반**이다 — `JwtFilter.resolveToken()`은 `Authorization: Bearer` 헤더를 우선 확인하고 없으면 `access_token` 쿠키로 폴백한다(운영은 쿠키 경로, 헤더는 호환용). `CookieProvider`가 `access_token`/`refresh_token` 쿠키를 생성·만료·조회하며(`access_token`은 Path `/`, `refresh_token`은 `/auth`로 좁혀 재발급·로그아웃 요청에만 전송) `AuthTokenService`가 발급을 오케스트레이션한다. `JwtFilter`는 블랙리스트(`TokenBlacklistRepository`)에 오른 토큰을 거부한다(로그아웃 시 무효화). `/auth/**`는 access 검증을 건너뛴다(`shouldNotFilter`, 재발급·로그아웃은 refresh 쿠키로 동작). 인증 실패(401)는 `RestAuthenticationEntryPoint`, 인가 거부(403)는 `RestAccessDeniedHandler`가 `ErrorResponse`로 응답한다. 쿠키 인증이라 CORS는 `allowCredentials(true)` + `app.cors.allowed-origin-patterns`(와일드카드 `*` 불가, 패턴 목록)로 구성한다.
 
 **global/exception** — 모든 예외는 `BusinessException(ErrorCode)`으로 던지고 `GlobalExceptionHandler`가 `ErrorResponse` (`{ "status": "400", "code": "ERROR_CODE", "message": "..." }`) 형태로 응답한다.
 
 **infra/redis** — `RefreshTokenRepository`가 `RedisTemplate<String, String>`으로 Refresh Token을 `refresh:{userId}` 키로 관리한다 (TTL은 `jwt.refresh-token-expiry` 재사용, 기본 14일). RTR 재발급은 `rotate(userId, oldToken, newToken)`가 **Lua 스크립트로 `GET`→비교→`SET`(PX)/`DEL`을 원자적 CAS**로 수행한다 — 저장값이 제시한 old 토큰과 일치할 때만 교체(`RotateResult.ROTATED`)하므로 동시 재발급 경쟁 창(race window)이 없다. 불일치(`MISMATCH`, 이미 회전됨·탈취 의심)면 키를 삭제해 토큰을 무효화하고, 저장값 없음은 `NOT_FOUND`(만료·미존재)다. 최초·소셜 로그인은 `save`로 덮어쓴다.
 
-**infra/s3** — `S3Client` Bean은 `infra/s3/S3Config`에서 `aws.*` 프로퍼티로 직접 구성한다 (Spring Cloud AWS 미사용).
+**infra/s3** — `S3Client`·`S3Presigner` Bean은 `infra/s3/S3Config`에서 구성한다 — 리전만 `aws.region` 프로퍼티로 주입하고 자격증명은 `DefaultCredentialsProvider`(IAM Role·`~/.aws`)로 위임한다 (Spring Cloud AWS 미사용). presigned URL은 채팅 첨부 다운로드에 사용한다.
+
+**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 `outbox`/`kafka_outbox` 테이블에 적재하고, `OutboxProcessor`가 `FOR UPDATE SKIP LOCKED`로 폴링해 Kafka로 릴레이한다 (OCR 트리거 등 발행의 원자성·재시도 보장).
 
 ## Key Configuration
 
-환경변수는 `.env.example` 참고. 필수값: `DB_PASSWORD`, `JWT_SECRET`, `AWS_*`, `KAKAO_*`, `NAVER_*`.
+환경변수는 `.env.example` 참고. 필수값: `DB_PASSWORD`, `JWT_SECRET`, `S3_BUCKET`, `KAKAO_*`, `NAVER_*`. AWS 자격증명(access/secret key)은 IAM Role 자동 탐색(`DefaultCredentialsProvider`)에 위임하므로 env 필수값이 아니며, `AWS_REGION`은 기본값이 있다.
 
 쿠키 인증·CORS는 프로퍼티로 분리한다(기본값 있어 필수 아님): `COOKIE_SECURE`(기본 `true`, 로컬 http는 `false`), `COOKIE_SAME_SITE`(기본 `Lax`, cross-site 운영은 `None`+https), `CORS_ALLOWED_ORIGIN_PATTERNS`(기본 `http://localhost:3000`, 쉼표 구분 패턴 목록 — 예 `https://앱도메인,https://*.vercel.app`).
 
@@ -153,10 +158,10 @@ FastAPI가 담당하는 영역 (Spring Boot 범위 외):
 Spring Boot가 담당하는 영역:
 - 인증·회원 (JWT, OAuth2, RBAC)
 - 사고 상황 입력 수신 + 진단서 S3 업로드 + OCR 트리거 Kafka producer 발행 (리포트 생성 요청의 진입점)
-- 손해사정사 매칭 플로우 (요청·수락)
+- 손해사정사 매칭·상담 플로우 (제안 요청·수락·거절 — 현재 report/chat 도메인의 proposal로 구현, 별도 match 도메인 아님)
 - 검수 리포트 등록(서명 포함 PATCH), review_feedback 수집
-- 구독·결제 (PG사 연동)
-- FCM Push (검수 완료 시)
+- 구독·결제 (PG사 연동) — **계획, 아직 미구현** (예약 에러코드만 존재)
+- FCM Push + 인앱 알림 (notification 도메인, 검수 완료 등)
 - WebSocket(STOMP) 채팅 (ChatRoom, ChatMessage, 오프라인 FCM 푸시)
 
 > **OCR 처리 경계:** Spring Boot가 사고 정보·진단서를 받아 S3에 저장하고 Kafka로 OCR 트리거 메시지를 **발행(producer)**한다. FastAPI가 이 메시지를 **소비(consumer)**하여 OCR·AI 리포트 생성을 수행한다. OCR 알고리즘 자체는 Spring 범위 외.
@@ -182,3 +187,4 @@ Spring Boot가 담당하는 영역:
 | 2026-07-10 | spring-security-impl 스킬을 **HttpOnly 쿠키 인증 + 수동 REST OAuth** 현행 구조로 동기화 — 헤더(Bearer)·바디 토큰·`oauth2Login`·리다이렉트-쿼리토큰 서술 제거, `access_token`/`refresh_token` 쿠키·`JwtFilter`(쿠키 우선, `/auth/**` shouldNotFilter)·`CookieProvider`·`AuthTokenService`·`OAuthLoginService`+`SignupTicket`+`AuthRegisterService`·`allowedOriginPatterns` CORS·Boot 4로 갱신 | skills/spring-security-impl(SKILL.md·references/jwt-impl.md·references/oauth2-providers.md) | 스킬이 헤더/바디·Spring oauth2Login 가정으로 stale → 실제 쿠키 기반 구현과 정합 |
 | 2026-07-10 | 쿠키 Path 스코핑 반영 — `refresh_token` 쿠키를 Path `/auth`로 좁혀(재발급·로그아웃에만 전송) 노출 표면 축소, `access_token`은 Path `/` 유지. "쿠키는 Path `/`로 발급" 단언(stale) 정정 | CLAUDE.md global/security, skills/spring-security-impl(SKILL.md·references/jwt-impl.md) | 코드 선반영(CookieProvider Path 분리) → 하네스 동기화 |
 | 2026-07-14 | 사정사 홈 대시보드 API(GET /adjusters/me/home)를 report → **adjuster 도메인**으로 분리. `adjuster_profiles`를 `AdjusterProfile` 엔티티로 매핑하고 남은 native `findAdjusterIdentity`를 QueryDSL로 전환(문서화된 예외 1건 제거), 홈 크로스-애그리거트 조회를 `AdjusterHomeRepository`로 자립화. ERD 정합: `adjuster_profiles.registration_url·updated_at` 추가(V12), glossary ADJUSTER_PROFILES/APPLICATIONS 필드·상태 정정(`speciality`→`specialties[]`, `ACCEPTED`→`APPROVED`). **지역 배열화**: `users.region`·`adjuster_profiles.activity_region`을 `text[]`로 전환(V13) — 복수 지역 지원, 검수대기 지역 필터를 `array_contains`로 변경 | domain/adjuster/*, V12·V13 마이그레이션, user·report 도메인 region 필드, references/domain-glossary.md | #100 native→QueryDSL 리팩터 중 adjuster 도메인 분리 + 기존 엔티티 ERD 반영(지역 배열화) 요청 |
+| 2026-07-20 | **하네스 전반 코드 정합 감사·동기화** (5스트림 병렬 감사 → 3스트림 병렬 수정, 총 드리프트 62건 반영, src 무변경). CLAUDE.md: 도메인 목록에서 유령 컨텍스트 payment·subscription 제거(계획/미구현 표기)·빈 match(→report proposal)·누락 common/notification 반영, infra/outbox 신설, global/response 반영, JwtFilter를 "Bearer 헤더 우선·access_token 쿠키 폴백"으로 정정, S3(DefaultCredentialsProvider)·env(S3_BUCKET)·담당범위 정밀화. glossary(18건): ReportStatus NOT_SELECTED 추가, 매칭을 제안 수락/거절 모델로 재작성, report_issues_reviews·specialties[]·토큰 30분/14일·마이그레이션 V22/V23 정정, notification·report_holds·adjuster_reviews(report_id) 보강, PAYMENTS 미구현 표기. agents(14건): security-developer 유령 클래스(JwtAuthenticationFilter·OAuth2SuccessHandler) 정정·수동 REST OAuth 반영, backend-developer/qa 구독·결제 미구현 표기, ChatService.createRoom 유령 참조 제거, notification·outbox 담당 귀속. skills(20건): websocket-impl 전면 재작성(쿼리토큰→쿠키 핸드셰이크, @MessageMapping→REST+Redis, /ws→/ws-chat, 읽음커서·jsonb첨부), spring-security frontmatter 롤 정정·헤더우선, spring-infra actuator 인가 사실정정·Kafka 4.3.1. harness.md: infra-developer 역할표·workspace·Kafka 반영. settings.json: skills glob `*`→`**` 버그 수정 + references/harness/CLAUDE 편집 권한. springboot-dev: 전 에이전트 호출 `model`을 opus로 통일(메타원칙 "전 에이전트 opus" 정합, 기존 sonnet 6곳 정정). | CLAUDE.md, .claude/harness.md·settings.json·references/domain-glossary.md, agents/6개, skills/{springboot-dev,websocket-impl,spring-security-impl,spring-infra,spring-qa} | develop 기준 하네스 점검 요청 — 문서·에이전트·스킬이 병합된 코드(V1~V26, 쿠키인증·아웃박스·채팅·notification)와 drift → 코드 진실 기준 동기화 + model opus 통일 |

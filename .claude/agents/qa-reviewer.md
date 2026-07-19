@@ -18,15 +18,15 @@ description: "Spring Boot 코드 리뷰, 테스트 작성(JUnit5·Mockito·@Spri
 - spring-qa 스킬을 참조하여 테스트를 작성한다
 - coderabbit-review 스킬을 사용하여 PR 리뷰 결과를 반영한다
 - 테스트는 Given-When-Then 패턴으로 작성한다
-- 핵심 비즈니스 로직(매칭 플로우, 결제 웹훅, RTR)은 경계 케이스를 반드시 포함한다
-- 보안 리뷰에서 Authorization 헤더 누락, 권한 상승, 민감정보 노출을 중점 확인한다
+- 핵심 비즈니스 로직(매칭 플로우 = report proposal decide, RTR)은 경계 케이스를 반드시 포함한다. 결제 웹훅은 구독·결제 도메인이 **미구현**이라 구현 시점에 추가한다
+- 보안 리뷰에서 인증 쿠키(`access_token`) 누락·검증, 권한 상승, 민감정보 노출을 중점 확인한다
 - 조회 로직의 native query(`nativeQuery = true`) 사용을 점검한다 — 동적 조회는 QueryDSL, 단순 조회는 Spring Data 파생 쿼리·JPQL이 원칙이며, 사유 주석이 달린 '문서화된 예외'(미매핑 테이블 조인 등) 외의 native는 WARNING으로 지적한다
 
 ## 테스트 우선순위
 | 우선순위 | 대상 | 이유 |
 |---------|------|------|
-| 필수 | 매칭 플로우 상태 전이 | 핵심 비즈니스, 버그 비용 높음 |
-| 필수 | 결제 웹훅 멱등성 | 중복 결제 방어 |
+| 필수 | 매칭 플로우 상태 전이 (report proposal decide, ACCEPTED/REJECTED) | 핵심 비즈니스, 버그 비용 높음 |
+| 보류(미구현) | 결제 웹훅 멱등성 | 중복 결제 방어 — payment/subscription 도메인 구현 시 |
 | 필수 | JWT 발급·검증·RTR | 보안 핵심 |
 | 필수 | RBAC 권한 거부 케이스 | 403이 올바르게 반환되는지 |
 | 권장 | FCM 발송 실패 무시 | 비즈니스 플로우 중단 없는지 확인 |
@@ -46,9 +46,9 @@ description: "Spring Boot 코드 리뷰, 테스트 작성(JUnit5·Mockito·@Spri
 
 4. **도메인 Enum 일관성** — 코드의 Enum 값이 ERD 및 `domain-glossary.md`와 일치하는지 확인:
    - `USERS.role`: `USER`, `CERTIFICATED_ADJUSTER`, `UNCERTIFICATED_ADJUSTER`, `ADMIN`
-   - `REPORTS.status`: `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`
+   - `REPORTS.status`: `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED`
    - `REPORTS.accident_type`: `medical_indemnity`, `traffic`, `disability`, `cancer_diagnosis`, `fire`, `liability`, `other` (영문 소문자, DB 저장값)
-   - `SUBSCRIPTIONS.plan`: `none`, `basic`, `premium` / `status`: `ACTIVE`, `EXPIRED`, `CANCELED`
+   - `SUBSCRIPTIONS.plan`: `none`, `basic`, `premium` / `status`: `ACTIVE`, `EXPIRED`, `CANCELED` — **계획, 미구현** (현재 subscriptions 테이블·엔티티 없음. 구독·결제 도메인 구현 시 검증)
 
 ### 판단 기준
 - `domain-glossary.md`가 없거나 Notion 출처가 불명확한 항목은 구현 보류를 리더에게 건의한다

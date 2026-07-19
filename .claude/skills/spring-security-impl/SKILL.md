@@ -1,6 +1,6 @@
 ---
 name: spring-security-impl
-description: "Spring Security 6 기반 JWT(RTR)·HttpOnly 쿠키 인증, OAuth2 소셜 로그인(카카오·네이버, 수동 REST 코드교환), RBAC(USER/ADJUSTER/ADMIN) 구현 가이드. 인증·인가·보안 설정 작업 시 반드시 이 스킬을 참조."
+description: "Spring Security 6 기반 JWT(RTR)·HttpOnly 쿠키 인증, OAuth2 소셜 로그인(카카오·네이버, 수동 REST 코드교환), RBAC(USER/CERTIFICATED_ADJUSTER/UNCERTIFICATED_ADJUSTER/ADMIN) 구현 가이드. 인증·인가·보안 설정 작업 시 반드시 이 스킬을 참조."
 ---
 
 # Spring Security Implementation Guide
@@ -33,7 +33,7 @@ String getRole(String token)                           // "role" 클레임
 
 ### JwtFilter (`global/security/JwtFilter.java`)
 - `OncePerRequestFilter` 확장, `@Component`
-- 토큰 조회: **`access_token` 쿠키 우선**, `Authorization: Bearer` 헤더는 폴백으로만 허용
+- 토큰 조회: **`Authorization: Bearer` 헤더 우선**, 없으면 `access_token` 쿠키로 폴백(`resolveToken`)
 - `shouldNotFilter`: `/auth/**`는 access 검증을 건너뛴다 — 재발급·로그아웃에 만료된 access 쿠키가 딸려와도 막히면 안 되기 때문(해당 경로는 refresh 쿠키로 동작)
 - 유효 토큰 → `CustomUserDetails(userId, role)` 생성 → `SecurityContextHolder` 저장
 - `BusinessException` 발생 시 필터 내에서 `ErrorResponse` JSON 직접 응답 후 체인 중단
@@ -106,9 +106,11 @@ public class SecurityConfig {
         return http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(AbstractHttpConfigurer::disable)   // 쿠키 인증이지만 SameSite + CORS 오리진 화이트리스트로 CSRF 완화
+            .anonymous(AbstractHttpConfigurer::disable)  // 미인증은 인증 null → @PreAuthorize 진입 시 401(익명 토큰이면 403으로 새 401/403 구분 붕괴)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**", "/ws/**", "/actuator/health", "/actuator/health/**").permitAll()
+                // 실제: /ws-chat/**(WebSocket 핸드셰이크)도 permitAll, dev에선 app.docs.public=true 시 /docs·/scalar.html·/v3/api-docs 개방
+                .requestMatchers("/auth/**", "/ws/**", "/ws-chat/**", "/actuator/health", "/actuator/health/**").permitAll()
                 .anyRequest().authenticated())
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(restAuthenticationEntryPoint)  // 401 LOGIN_REQUIRED

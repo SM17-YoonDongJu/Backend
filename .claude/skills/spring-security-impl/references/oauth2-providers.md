@@ -18,18 +18,17 @@ spring:
     oauth2:
       client:
         registration:
+          # id(providerUserId)만 사용하므로 scope 키를 두지 않는다 — id는 동의 없이도 user-info에 포함된다.
           kakao:
             client-id: ${KAKAO_CLIENT_ID}
             client-secret: ${KAKAO_CLIENT_SECRET}
-            redirect-uri: "{baseUrl}/auth/oauth2/kakao/callback"
+            redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
             authorization-grant-type: authorization_code
             client-authentication-method: client_secret_post
-            scope:
-              - account_email        # 최소 scope. 프로필 동의는 받지 않는다(id만 사용)
           naver:
             client-id: ${NAVER_CLIENT_ID}
             client-secret: ${NAVER_CLIENT_SECRET}
-            redirect-uri: "{baseUrl}/auth/oauth2/naver/callback"
+            redirect-uri: "{baseUrl}/login/oauth2/code/naver"
             authorization-grant-type: authorization_code
         provider:
           kakao:
@@ -135,7 +134,7 @@ NAVER_CLIENT_SECRET=
 |------|-----------|------|
 | 미지원 provider | `UNSUPPORTED_PROVIDER` | 400 |
 | 잘못된 인가코드(토큰 교환 4xx) | `INVALID_REQUEST` | 400 |
-| 제공자 응답 오류·타임아웃·id 누락 | `EXTERNAL_API_ERROR` | 502 |
+| 제공자 응답 오류·타임아웃·id 누락 | `EXTERNAL_API_ERROR` | 500 |
 | 가입 티켓 위조·만료·purpose 불일치·provider 불일치 | `INVALID_TOKEN` | 401 |
 | 소셜계정·전화번호 중복 | `DUPLICATE_RESOURCE` | 409 |
 | 소셜계정은 있으나 user 없음 | `USER_NOT_FOUND` | 404 |

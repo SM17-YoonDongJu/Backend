@@ -49,7 +49,7 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
    ```
    Agent(
      subagent_type: "backend-analyst",
-     model: "sonnet",
+     model: "opus",
      prompt: "request.md를 읽고 design.md를 작성하라. 경로: _workspace/01_analyst/design.md"
    )
    ```
@@ -68,21 +68,21 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 1. 필요한 에이전트만 선택 후 병렬 실행:
    ```
    // 인증 변경 포함 시 — backend-developer + security-developer 병렬
-   Agent(subagent_type: "backend-developer", model: "sonnet",
+   Agent(subagent_type: "backend-developer", model: "opus",
      prompt: "_workspace/01_analyst/design.md를 읽고 비즈니스 로직을 구현하라. 완료 후 _workspace/02_backend/summary.md에 변경 파일 목록을 기록하라.")
    Agent(subagent_type: "security-developer", model: "opus",
      prompt: "_workspace/01_analyst/design.md의 권한 섹션을 읽고 인증·인가·Redis RT를 구현하라. 완료 후 _workspace/02_security/summary.md에 변경 파일 목록을 기록하라.")
 
    // WebSocket 포함 시 — realtime-developer 추가
-   Agent(subagent_type: "realtime-developer", model: "sonnet",
+   Agent(subagent_type: "realtime-developer", model: "opus",
      prompt: "_workspace/01_analyst/design.md를 읽고 WebSocket 채팅 기능을 구현하라. 완료 후 _workspace/02_realtime/summary.md에 변경 파일 목록을 기록하라.")
 
    // 인프라/관측성/배포 하드닝 포함 시 — infra-developer 추가 (spring-infra 스킬 참조)
-   Agent(subagent_type: "infra-developer", model: "sonnet",
+   Agent(subagent_type: "infra-developer", model: "opus",
      prompt: "spring-infra 스킬을 참조해 관측성·JVM·DB풀·Kafka producer 배선·docker 하드닝을 구현하라. 완료 후 _workspace/02_infra/summary.md에 변경 파일 목록과 설정 값 근거를 기록하라.")
 
    // 비즈니스 로직만 — backend-developer 단독
-   Agent(subagent_type: "backend-developer", model: "sonnet",
+   Agent(subagent_type: "backend-developer", model: "opus",
      prompt: "_workspace/01_analyst/design.md를 읽고 비즈니스 로직을 구현하라. 완료 후 _workspace/02_backend/summary.md에 변경 파일 목록을 기록하라.")
    ```
 
@@ -96,7 +96,7 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
    ```
    Agent(
      subagent_type: "qa-reviewer",
-     model: "sonnet",
+     model: "opus",
      prompt: "_workspace/02_*/summary.md를 읽고 코드 리뷰·테스트 작성·CodeRabbit 리뷰를 수행하라. 결과: _workspace/03_qa/review-report.md"
    )
    ```
