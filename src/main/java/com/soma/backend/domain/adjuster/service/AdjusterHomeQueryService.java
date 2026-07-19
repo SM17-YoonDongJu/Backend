@@ -1,25 +1,23 @@
-package com.soma.backend.domain.report.service;
+package com.soma.backend.domain.adjuster.service;
 
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 
-import com.soma.backend.domain.report.dto.AdjusterHomeResponse;
-import com.soma.backend.domain.report.dto.AdjusterHomeResponse.Adjuster;
-import com.soma.backend.domain.report.dto.AdjusterHomeResponse.InProgressCases;
-import com.soma.backend.domain.report.dto.AdjusterHomeResponse.Rating;
-import com.soma.backend.domain.report.dto.AdjusterHomeResponse.Summary;
-import com.soma.backend.domain.report.repository.AdjusterIdentityRow;
-import com.soma.backend.domain.report.repository.InProgressCaseRow;
-import com.soma.backend.domain.report.repository.ReportRepository;
-import com.soma.backend.domain.report.repository.ReportReviewRepository;
+import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse;
+import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.Adjuster;
+import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.InProgressCases;
+import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.Rating;
+import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.Summary;
+import com.soma.backend.domain.adjuster.repository.AdjusterHomeRepository;
+import com.soma.backend.domain.adjuster.repository.AdjusterIdentityRow;
+import com.soma.backend.domain.adjuster.repository.InProgressCaseRow;
 
 /**
  * 사정사 홈 대시보드 집계 유스케이스(CQRS, 조회 전용). 검수 대기 풀 카운트(global)와 요청 사정사의
@@ -38,22 +36,21 @@ public class AdjusterHomeQueryService {
   /** 검수 대기 '신규' 판정 잠정 규칙 — 접수 후 이 시간 이내면 신규로 본다(리더 확정 시 조정). */
   private static final long NEW_WINDOW_HOURS = 24L;
 
-  private final ReportRepository reportRepository;
-  private final ReportReviewRepository reportReviewRepository;
+  private final AdjusterHomeRepository adjusterHomeRepository;
 
   public AdjusterHomeResponse getHome(UUID adjusterId, int inProgressLimit) {
     int limit = clampLimit(inProgressLimit);
 
-    AdjusterIdentityRow identity = reportRepository.findAdjusterIdentity(adjusterId);
+    AdjusterIdentityRow identity = adjusterHomeRepository.findAdjusterIdentity(adjusterId);
     Adjuster adjuster = toAdjuster(adjusterId, identity);
 
-    long pendingCount = reportRepository.countPendingPool();
+    long pendingCount = adjusterHomeRepository.countPendingPool();
     long pendingNewCount =
-        reportRepository.countPendingPoolNew(LocalDateTime.now().minusHours(NEW_WINDOW_HOURS));
+        adjusterHomeRepository.countPendingPoolNew(LocalDateTime.now().minusHours(NEW_WINDOW_HOURS));
 
     // 이번 달 완료만 월별 컬럼이 없어 실시간 집계(this month), 누적·상담은 adjuster_profiles 비정규화.
     long monthlyCompletedCount = countMonthlyCompleted(adjusterId);
-    long inProgressCount = reportReviewRepository.countInProgressByAdjusterId(adjusterId);
+    long inProgressCount = adjusterHomeRepository.countInProgress(adjusterId);
     InProgressCases inProgressCases = resolveInProgressCases(adjusterId, inProgressCount, limit);
 
     Summary summary = new Summary(
@@ -61,8 +58,8 @@ public class AdjusterHomeQueryService {
         pendingNewCount,
         inProgressCount,
         monthlyCompletedCount,
-        nullSafe(identity == null ? null : identity.getCasesReviewed()),
-        nullSafe(identity == null ? null : identity.getCompletedConsultCount()),
+        nullSafe(identity == null ? null : identity.casesReviewed()),
+        nullSafe(identity == null ? null : identity.completedConsultCount()),
         toRating(identity));
 
     return new AdjusterHomeResponse(adjuster, summary, inProgressCases);
@@ -73,7 +70,7 @@ public class AdjusterHomeQueryService {
     YearMonth thisMonth = YearMonth.now();
     LocalDateTime monthFrom = thisMonth.atDay(1).atStartOfDay();
     LocalDateTime monthTo = thisMonth.plusMonths(1).atDay(1).atStartOfDay();
-    return reportReviewRepository.countByAdjusterIdAndCreatedAtBetween(adjusterId, monthFrom, monthTo);
+    return adjusterHomeRepository.countCompletedBetween(adjusterId, monthFrom, monthTo);
   }
 
   private long nullSafe(Integer value) {
@@ -81,8 +78,8 @@ public class AdjusterHomeQueryService {
   }
 
   private Adjuster toAdjuster(UUID adjusterId, AdjusterIdentityRow identity) {
-    String name = identity == null ? null : identity.getName();
-    String avatarUrl = identity == null ? null : identity.getAvatarUrl();
+    String name = identity == null ? null : identity.name();
+    String avatarUrl = identity == null ? null : identity.avatarUrl();
     return new Adjuster(adjusterId, name, avatarUrl);
   }
 
@@ -94,27 +91,28 @@ public class AdjusterHomeQueryService {
     if (identity == null) {
       return new Rating(null, 0L);
     }
-    Double average = identity.getRatingMean() == null ? null : identity.getRatingMean().doubleValue();
-    return new Rating(average, nullSafe(identity.getReviewCount()));
+    Double average = identity.ratingMean() == null ? null : identity.ratingMean().doubleValue();
+    return new Rating(average, nullSafe(identity.reviewCount()));
   }
 
   private InProgressCases resolveInProgressCases(UUID adjusterId, long total, int limit) {
-    List<InProgressCaseRow> rows =
-        reportReviewRepository.findInProgressCases(adjusterId, PageRequest.of(0, limit));
+    List<InProgressCaseRow> rows = adjusterHomeRepository.findInProgressCases(adjusterId, limit);
     List<InProgressCases.Item> items = rows.stream().map(this::toInProgressItem).toList();
     return new InProgressCases(total, items);
   }
 
   private InProgressCases.Item toInProgressItem(InProgressCaseRow row) {
+    String reportStatus = row.reportStatus().name();
+    String reviewStatus = row.reviewStatus().name();
     return new InProgressCases.Item(
-        row.getReportId(),
-        row.getCaseNo(),
-        row.getAccidentType(),
-        row.getTitle(),
-        row.getReportStatus(),
-        row.getReviewStatus(),
-        stageLabel(row.getReportStatus(), row.getReviewStatus()),
-        progressPercent(row.getReviewStatus()));
+        row.reportId(),
+        row.caseNo(),
+        row.accidentType() == null ? null : row.accidentType().getValue(),
+        row.title(),
+        reportStatus,
+        reviewStatus,
+        stageLabel(reportStatus, reviewStatus),
+        progressPercent(reviewStatus));
   }
 
   /**

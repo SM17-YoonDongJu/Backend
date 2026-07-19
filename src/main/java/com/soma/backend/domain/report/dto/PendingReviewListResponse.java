@@ -24,7 +24,7 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
       String caseNo,
       String title,
       String accidentType,
-      String region,
+      List<String> region,
       String status,
       Long claimedMinAmount,
       Long claimedMaxAmount,
@@ -36,23 +36,23 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
 
     public static Item from(PendingReviewRow row) {
       long offerHeadroom = new AmountRange(
-          row.getClaimedMinAmount(), row.getClaimedMaxAmount(), row.getOfferedAmount()).offerHeadroom();
-      long issueCount = row.getIssueCount() == null ? 0L : row.getIssueCount();
-      boolean held = Boolean.TRUE.equals(row.getHeld());
+          row.claimedMinAmount(), row.claimedMaxAmount(), row.offeredAmount()).offerHeadroom();
+      long issueCount = row.issueCount() == null ? 0L : row.issueCount();
+      boolean held = Boolean.TRUE.equals(row.held());
       return new Item(
-          row.getReportId(),
-          row.getCaseNo(),
-          row.getTitle(),
-          row.getAccidentType(),
-          row.getRegion(),
-          row.getStatus(),
-          row.getClaimedMinAmount(),
-          row.getClaimedMaxAmount(),
-          row.getOfferedAmount(),
+          row.reportId(),
+          row.caseNo(),
+          row.title(),
+          row.accidentType() == null ? null : row.accidentType().getValue(),
+          row.region(),
+          row.status() == null ? null : row.status().name(),
+          row.claimedMinAmount(),
+          row.claimedMaxAmount(),
+          row.offeredAmount(),
           offerHeadroom,
           issueCount,
           held,
-          row.getCreatedAt());
+          row.createdAt());
     }
   }
 }

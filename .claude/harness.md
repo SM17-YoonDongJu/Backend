@@ -208,5 +208,6 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 - 비즈니스 예외는 `BusinessException(ErrorCode)` 패턴을 따른다.
 - 응답 필드는 Jackson 설정을 이용해 snake_case로 직렬화한다.
 - 보안이 필요한 엔드포인트는 SecurityConfig 또는 `@PreAuthorize`로 명시한다.
+- 조회 쿼리는 native query(`nativeQuery = true`)를 쓰지 않는다. 동적 조회는 QueryDSL, 단순 조회·카운트는 Spring Data 파생 쿼리·JPQL로 작성한다. 엔티티로 매핑되지 않은 테이블을 조인하는 읽기 전용 projection 등 불가피한 경우만 사유 주석을 단 문서화된 예외로 허용한다.
 
 ---

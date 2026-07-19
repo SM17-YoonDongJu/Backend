@@ -1,4 +1,4 @@
-package com.soma.backend.domain.report.dto;
+package com.soma.backend.domain.adjuster.dto;
 
 import java.util.List;
 import java.util.UUID;

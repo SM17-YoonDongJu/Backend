@@ -55,14 +55,14 @@ class PendingReviewQueryServiceTest {
   private PendingReviewQueryService service;
 
   @Test
-  @DisplayName("summary는 pending/due-soon 카운트를 반환하고 due-soon 기준은 now - 5일(SLA 7 - 여유 2)")
+  @DisplayName("summary는 pending/due-soon 카운트를 반환하고 due-soon 기준은 now - 6일(SLA 7 - 여유 1)")
   void summaryUsesSlaThreshold() {
     given(reportRepository.countPending()).willReturn(9L);
     given(reportRepository.countDueSoon(any(LocalDateTime.class))).willReturn(3L);
 
-    LocalDateTime before = LocalDateTime.now().minusDays(5);
+    LocalDateTime before = LocalDateTime.now().minusDays(6);
     PendingReviewSummaryResponse summary = service.getSummary();
-    LocalDateTime after = LocalDateTime.now().minusDays(5);
+    LocalDateTime after = LocalDateTime.now().minusDays(6);
 
     assertThat(summary.pendingCount()).isEqualTo(9L);
     assertThat(summary.dueSoonCount()).isEqualTo(3L);
@@ -155,7 +155,7 @@ class PendingReviewQueryServiceTest {
     ReflectionTestUtils.setField(issue, "tags", List.of("약관 제12조", "진단서"));
 
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
-    given(reportRepository.findRegionByReportId(reportId)).willReturn("서울 강남");
+    given(reportRepository.findRegionByReportId(reportId)).willReturn(List.of("서울 강남"));
     given(reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(true);
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(issue));
 
@@ -163,7 +163,7 @@ class PendingReviewQueryServiceTest {
 
     assertThat(result.reportId()).isEqualTo(reportId);
     assertThat(result.accidentType()).isEqualTo("disability");
-    assertThat(result.region()).isEqualTo("서울 강남");
+    assertThat(result.region()).containsExactly("서울 강남");
     assertThat(result.isMasked()).isTrue();
     assertThat(result.offerHeadroom()).isEqualTo(9_500_000L);
     assertThat(result.issues()).hasSize(1);
@@ -189,66 +189,8 @@ class PendingReviewQueryServiceTest {
 
   private static PendingReviewRow row(
       UUID reportId, Long claimedMin, Long claimedMax, Long offered, Long issueCount, Boolean held) {
-    return new PendingReviewRow() {
-      @Override
-      public UUID getReportId() {
-        return reportId;
-      }
-
-      @Override
-      public String getCaseNo() {
-        return "CASE-1";
-      }
-
-      @Override
-      public String getTitle() {
-        return "제목";
-      }
-
-      @Override
-      public String getAccidentType() {
-        return "질병";
-      }
-
-      @Override
-      public String getRegion() {
-        return "서울";
-      }
-
-      @Override
-      public String getStatus() {
-        return "AWAITING_INSPECTION";
-      }
-
-      @Override
-      public Long getClaimedMinAmount() {
-        return claimedMin;
-      }
-
-      @Override
-      public Long getClaimedMaxAmount() {
-        return claimedMax;
-      }
-
-      @Override
-      public Long getOfferedAmount() {
-        return offered;
-      }
-
-      @Override
-      public Long getIssueCount() {
-        return issueCount;
-      }
-
-      @Override
-      public Boolean getHeld() {
-        return held;
-      }
-
-      @Override
-      public LocalDateTime getCreatedAt() {
-        return LocalDateTime.of(2026, 5, 31, 9, 0);
-      }
-    };
+    return new PendingReviewRow(
+        reportId, "CASE-1", "제목", AccidentType.DISABILITY, List.of("서울"), ReportStatus.AWAITING_INSPECTION,
+        claimedMin, claimedMax, offered, issueCount, held, LocalDateTime.of(2026, 5, 31, 9, 0));
   }
 }

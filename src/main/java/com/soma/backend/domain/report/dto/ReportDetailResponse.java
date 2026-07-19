@@ -20,7 +20,7 @@ public record ReportDetailResponse(
     UUID reportId,
     String caseNo,
     String accidentType,
-    String region,
+    List<String> region,
     boolean isMasked,
     Long claimedMinAmount,
     Long claimedMaxAmount,
@@ -38,7 +38,7 @@ public record ReportDetailResponse(
     boolean held) {
 
   public static ReportDetailResponse from(
-      Report report, String region, boolean held, List<ReportIssue> issues) {
+      Report report, List<String> region, boolean held, List<ReportIssue> issues) {
     List<IssueItem> issueItems = issues.stream().map(IssueItem::from).toList();
     List<DocumentItem> documentItems = toDocumentItems(report.getDocuments());
     return new ReportDetailResponse(

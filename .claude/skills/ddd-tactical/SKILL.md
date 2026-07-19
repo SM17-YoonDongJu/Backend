@@ -126,6 +126,7 @@ public interface MatchRequestRepository extends JpaRepository<MatchRequest, UUID
 
 - Repository는 **Aggregate Root 단위로만** 저장/조회한다. 내부 Entity를 따로 조회하지 않는다.
 - 복잡한 조회(목록·검색·통계)는 조회 전용 메서드로 분리하고, 필요하면 `dto`의 Response(또는 projection)를 직접 반환하는 QueryService/조회 메서드로 뺀다. 쓰기 경로만 Aggregate/Repository를 거친다.
+- **조회 쿼리는 native query 금지.** 동적 조회(필터·정렬·페이지네이션·서브쿼리)는 QueryDSL로 작성한다 — `*RepositoryCustom` 인터페이스 + `*RepositoryImpl`(생성자 주입 `JPAQueryFactory`) 프래그먼트를 두고 `JpaRepository`와 함께 확장한다. 매핑되지 않은 연관은 엔티티 조인(`.join(q).on(...)`)으로, projection은 인터페이스 대신 record + `Projections.constructor`로 받는다. 단순 조회·카운트는 Spring Data 파생 쿼리나 JPQL(`@Query`)로 충분하다. 아직 엔티티로 매핑되지 않은 테이블을 조인하는 읽기 전용 projection처럼 QueryDSL/JPQL로 표현할 수 없는 경우에 한해, 리포지토리에 사유를 주석으로 남긴 **문서화된 예외**로만 native(`nativeQuery = true`)를 허용한다.
 
 ## 5. Service (트랜잭션 경계)
 

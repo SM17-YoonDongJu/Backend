@@ -32,7 +32,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import com.soma.backend.domain.report.service.AdjusterHomeQueryService;
 import com.soma.backend.domain.report.service.PendingReviewQueryService;
 import com.soma.backend.domain.report.service.ReportHoldCommandService;
 import com.soma.backend.domain.report.service.ReportReviewCommandService;
@@ -52,9 +51,7 @@ import com.soma.backend.global.security.JwtFilter;
  * AuthorizationDeniedException → 403이 된다.
  */
 @WebMvcTest(
-    controllers = {
-        PendingReviewController.class, ReviewedReportController.class, AdjusterHomeController.class
-    },
+    controllers = {PendingReviewController.class, ReviewedReportController.class},
     excludeFilters =
         @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtFilter.class))
 @Import({PendingReviewControllerAuthTest.SecurityTestConfig.class, GlobalExceptionHandler.class})
@@ -77,9 +74,6 @@ class PendingReviewControllerAuthTest {
 
   @MockitoBean
   private ReviewWorkspaceQueryService reviewWorkspaceQueryService;
-
-  @MockitoBean
-  private AdjusterHomeQueryService adjusterHomeQueryService;
 
   private static RequestPostProcessor as(String role) {
     CustomUserDetails principal = new CustomUserDetails(UUID.randomUUID(), role);
@@ -243,41 +237,6 @@ class PendingReviewControllerAuthTest {
               .with(as("CERTIFICATED_ADJUSTER"))
               .contentType(MediaType.APPLICATION_JSON)
               .content("{}"))
-          .andExpect(status().isOk());
-    }
-  }
-
-  @Nested
-  @DisplayName("사정사 홈 대시보드(GET /adjusters/me/home)")
-  class AdjusterHomeEndpoint {
-
-    @Test
-    @DisplayName("비로그인이면 401 LOGIN_REQUIRED")
-    void unauthenticatedReturns401() throws Exception {
-      mockMvc.perform(get("/adjusters/me/home"))
-          .andExpect(status().isUnauthorized())
-          .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
-    }
-
-    @Test
-    @DisplayName("USER면 403 FORBIDDEN")
-    void userReturns403() throws Exception {
-      mockMvc.perform(get("/adjusters/me/home").with(as("USER")))
-          .andExpect(status().isForbidden())
-          .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-    }
-
-    @Test
-    @DisplayName("UNCERTIFICATED_ADJUSTER면 200")
-    void uncertificatedAdjuster200() throws Exception {
-      mockMvc.perform(get("/adjusters/me/home").with(as("UNCERTIFICATED_ADJUSTER")))
-          .andExpect(status().isOk());
-    }
-
-    @Test
-    @DisplayName("CERTIFICATED_ADJUSTER면 200")
-    void certificatedAdjuster200() throws Exception {
-      mockMvc.perform(get("/adjusters/me/home").with(as("CERTIFICATED_ADJUSTER")))
           .andExpect(status().isOk());
     }
   }

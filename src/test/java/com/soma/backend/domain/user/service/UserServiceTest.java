@@ -129,13 +129,13 @@ class UserServiceTest {
     // Given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
-    UserUpdateRequest request = new UserUpdateRequest(null, "서울", "https://img/new.png");
+    UserUpdateRequest request = new UserUpdateRequest(null, List.of("서울"), "https://img/new.png");
 
     // When
     UserMeResponse result = userService.updateMe(userId, request);
 
     // Then
-    assertThat(result.region()).isEqualTo("서울");
+    assertThat(result.region()).containsExactly("서울");
     assertThat(result.avatarUrl()).isEqualTo("https://img/new.png");
     assertThat(result.phoneNumber()).isEqualTo("010-1234-5678");
     then(userRepository).should(never()).existsByPhoneNumber("010-1234-5678");

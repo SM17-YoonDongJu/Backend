@@ -22,7 +22,7 @@ public record AdjusterMyProfileResponse(
     int reviewCount,
     int casesReviewed,
     int completedConsultCount,
-    @Nullable String activityRegion,
+    List<String> activityRegion,
     List<String> consultMethods,
     @Nullable String introduction,
     long pendingReviewCount) {
@@ -38,7 +38,7 @@ public record AdjusterMyProfileResponse(
         profile.getReviewCount() == null ? 0 : profile.getReviewCount(),
         profile.getCasesReviewed() == null ? 0 : profile.getCasesReviewed(),
         profile.getCompletedConsultCount() == null ? 0 : profile.getCompletedConsultCount(),
-        profile.getActivityRegion(),
+        profile.getActivityRegion() == null ? List.of() : profile.getActivityRegion(),
         profile.getConsultMethods() == null ? List.of() : profile.getConsultMethods(),
         profile.getIntroduction(),
         pendingReviewCount);

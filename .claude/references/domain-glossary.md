@@ -2,7 +2,7 @@
 
 > **출처:** Notion — API 명세서(개별 페이지 20개) + 기능리스트(개별 페이지 20개)  
 > **규칙:** 이 파일의 모든 항목은 위 Notion 페이지 출처로만 작성한다. 임의 해석·추측 금지.  
-> **최종 동기화:** 2026-06-14
+> **최종 동기화:** 2026-07-14
 
 ---
 
@@ -42,7 +42,7 @@ AWAITING_ADOPTION    ← 사용자 선택 대기. 복수 검수 리포트 비교
         ↓  (사용자가 사정사 선택 → ChatRoom 즉시 생성)
 COUNSELING           ← 채팅 중. WebSocket 채널 개설됨. 거절 없음.
         ↓  (사정사가 최종 리포트를 REPORTS 테이블에 등록)
-MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사정사 리포트를
+CLOSED               ← 상담 종료. 사정사 최종 리포트 확정. AI 리포트와 사정사 리포트를
                        같은 REPORTS 테이블에서 구분하는 enum 값.
 ```
 
@@ -54,7 +54,7 @@ MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사�
 | `AWAITING_INSPECTION` | `채택 대기중` | ✅ | ❌ (AI 초안 직접 접근 차단) | ❌ |
 | `AWAITING_ADOPTION` | `채택 대기중` | ✅ (계속 채택 가능) | ✅ (검수된 리포트만) | ✅ |
 | `COUNSELING` | `상담 중` | — | ✅ | ❌ |
-| `MATCHED` | `완료` | — | ✅ | ❌ |
+| `CLOSED` | `완료` | — | ✅ | ❌ |
 
 > 리포트 `status` 필터·응답 값 표기: `생성 중` / `채택 대기중` / `상담 중` / `완료`
 
@@ -142,8 +142,10 @@ MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사�
 | 값 | 설명 |
 |----|------|
 | `PENDING` | 심사 대기 중 |
-| `ACCEPTED` | 승인 완료 (ADMIN 처리) → `CERTIFICATED_ADJUSTER`로 활성화 |
+| `APPROVED` | 승인 완료 (ADMIN 처리, 액션 엔드포인트 `/accept`) → `CERTIFICATED_ADJUSTER`로 활성화 |
 | `REJECTED` | 반려 (reason 필드 포함 가능) |
+
+> ERD status 종료상태는 `APPROVED`(승인)다. 관리자 승인 액션 엔드포인트 명칭이 `/accept`라 예전엔 상태도 `ACCEPTED`로 적었으나, ERD·상태값 정본은 `APPROVED`로 통일한다(코드 엔티티 미생성 — 추후 매핑 시 `APPROVED` 사용).
 
 ### 관리자 처리
 - 승인: `POST /admins/adjuster-applications/{applicationID}/accept`
@@ -182,6 +184,14 @@ MATCHED              ← 사정사 최종 리포트 확정. AI 리포트와 사�
 | 리포트 목록 조회 | GET | `/reports?status={status}&page={page}` |
 | 리포트 상세 조회 | GET | `/reports/{reportID}` |
 | 리포트 검수·수정 | PATCH | `/reports/{reportID}` |
+
+### adjuster 도메인
+| 기능 | Method | Path |
+|------|--------|------|
+| 사정사 홈 대시보드 집계 | GET | `/adjusters/me/home` |
+
+> 홈 대시보드는 요약 카드(검수 대기 풀·진행 중·이번 달 완료·누적·상담 전환·평점) + 진행 중 사건 미리보기를 1회 호출로 내리는 조회 전용 BFF다. 누적 검수·상담·평점은 `adjuster_profiles` 비정규화 컬럼에서, '이번 달 완료'만 `report_reviews` 실시간 집계로 낸다. 검수 대기 목록은 미포함(프론트가 검수 대기 목록 API로 조회). `CERTIFICATED_ADJUSTER`·`UNCERTIFICATED_ADJUSTER`만 접근(그 외 403). 조회는 `AdjusterHomeRepository`(QueryDSL 크로스-애그리거트 읽기 모델)가 담당한다.
+> `/adjusters/me/reviewed-reports`(내 검수 내역, API#5)는 아직 report 도메인 코드에 있다 — 경로만 adjuster-facing.
 
 ### matching 도메인
 | 기능 | Method | Path |
@@ -279,16 +289,11 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 - **관계**: REPORT_REVIEWS 1:N REPORT_REVIEW_ISSUES, REPORT_ISSUES 1:N REPORT_REVIEW_ISSUES(nullable)
 
 ### ADJUSTER_REVIEW (사용자 평가 테이블)
-- **목적**: 매칭 완료(MATCHED) 후 사용자가 담당 사정사를 평가한 기록
+- **목적**: 매칭 완료(CLOSED) 후 사용자가 담당 사정사를 평가한 기록
 - **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시
 - **필드**: `score`(정수), `review`(텍스트)
 - **제약**: 사용자 1인 + 사정사 1인 조합으로 중복 평가 방지
 
-### ADJUSTER_REVIEW (사용자 평가 테이블)
-- **목적**: 매칭 완료(MATCHED) 후 사용자가 담당 사정사를 평가한 기록
-- **생성 시점**: 사용자가 매칭 종료 후 평가 제출 시
-- **필드**: `score`(정수), `review`(텍스트)
-- **제약**: 사용자 1인 + 사정사 1인 조합으로 중복 평가 방지
 
 ---
 
@@ -319,11 +324,23 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 > REPORT_ATTACHMENTS(상세 첨부, 검수 화면 소스): `name`·`mime_type`·`url`(s3)·`report_type`·`page_count`·`issued_by`·`issued_at`·`ai_summary`·`ocr_result_id`.
 
 ### ADJUSTER_PROFILES
+> `domain/adjuster/entity/AdjusterProfile`로 매핑(1:1 USERS, user_id UK). 누적 검수·상담·평점은 비정규화 컬럼이며 갱신 책임은 검수 완료·상담·후기 write 로직에 있다(현재 미구현이라 null 가능).
+
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | `license_no` | varchar | 금융위원회 등록번호 (UK) |
-| `speciality` | varchar | `신체`, `교통` |
-| `subscription_plan` | enum | `none`, `basic`, `premium` |
+| `specialties` | text[] | 전문분야 복수(후유장애·교통사고·장해등급 재산정 등) |
+| `career` | int | 연차(수동 입력) |
+| `cases_reviewed` | int | 누적 검수 수(비정규화) |
+| `completed_consult_count` | int | 상담 완료 수(비정규화) |
+| `rating_mean` | numeric | 평균 평점(비정규화, 후기 등록 시 갱신) |
+| `review_count` | int | 후기 수(비정규화) |
+| `careers` | jsonb | 주요 경력 `[{period, company}]` |
+| `activity_region` | text[] | 활동 지역(복수 — V13에서 배열 전환) |
+| `registration_url` | text | 등록증 URL (V12 추가) |
+| `updated_at` | timestamp | 수정 시각 (V12 추가) |
+
+> ⚠️ 구독 플랜은 ADJUSTER_PROFILES가 아니라 **SUBSCRIPTIONS.plan**이 단일 진실(`none`/`basic`/`premium`)이다 — ERD·스키마에 `adjuster_profiles.subscription_plan` 컬럼은 없다(구 표기 정정). `speciality varchar`(단수) 표기도 실제는 `specialties text[]`(복수 배열)로 정정.
 
 ### SUBSCRIPTIONS
 | 필드 | 타입 | 설명 |
@@ -349,8 +366,8 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 | `license_no` | varchar | 자격증 번호 (nullable) |
 | `license_image_url` | varchar | 자격증 PDF S3 URL (nullable) |
 | `career` | int | 연차 (nullable) |
-| `introduce` | text | 자기소개 (nullable) |
-| `status` | enum | `PENDING`, `ACCEPTED`, `REJECTED` |
+| `introduction` | text | 자기소개 (nullable) — 컬럼명은 `introduction`(구 `introduce` 오타 정정) |
+| `status` | enum | `PENDING`, `APPROVED`, `REJECTED` (ERD 정합 — 구 `ACCEPTED` 표기 정정) |
 
 ---
 
@@ -429,6 +446,7 @@ SERVICE_UNAVAILABLE      // 점검·배포·과부하 (보통 Retry-After 헤더
 
 | 날짜 | 변경 내용                                                                                                                                              | 사유 |
 |------|----------------------------------------------------------------------------------------------------------------------------------------------------|------|
+| 2026-07-14 | 사정사 홈 대시보드(GET /adjusters/me/home)를 report → **adjuster 도메인**으로 분리(섹션 10 adjuster 추가). ADJUSTER_PROFILES를 `AdjusterProfile` 엔티티로 매핑(§14 필드 정정: `speciality varchar`→`specialties text[]`, 구 `subscription_plan` 컬럼 없음 명시, `registration_url`·`updated_at` V12 추가). ADJUSTER_APPLICATIONS status ERD 정합(`ACCEPTED`→`APPROVED` §9·§14, `introduce`→`introduction`). **지역 배열화**: USERS.region·ADJUSTER_PROFILES.activity_region을 `text[]`로 전환(V13, 복수 지역) — 검수대기 목록 지역 필터는 동등비교→`array_contains`. | #100 native→QueryDSL 리팩터 중 adjuster 도메인 분리 + 기존 엔티티 ERD 반영(지역 배열화 포함) |
 | 2026-06-20 | OCR 처리 경계 반영: 사고 입력 수신·진단서 S3 업로드·OCR 트리거 Kafka producer를 Spring 범위로 명시(섹션 1·16). FastAPI는 consumer 측 OCR/AI 파이프라인 담당. | 사고 입력~OCR 트리거 구간 Spring 담당 결정 |
 | 2026-06-14 | 매칭 플로우 수정: 사정사 수락 단계 제거. 사용자가 사정사 선택 시 즉시 COUNSELING 전이. `/matches/{reportID}/accept` API 삭제. 섹션 5·10·16 반영. | 실제 기획 확인 — 수락/거절 없는 즉시 연결 구조 |
 | 2026-06-14 | 기능리스트 20개 페이지 동기화. device token, 로그아웃 멱등, 매칭 24h 만료, 거절 API 미결, 채택 API 미결, 구독 취소 미구현, USER_CLAIMS 선행조건, 기능별 비즈니스 규칙 표(섹션 16) 추가.                   | 기능리스트 기반 비즈니스 규칙 보완 |
