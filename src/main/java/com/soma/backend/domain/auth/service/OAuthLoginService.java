@@ -15,7 +15,6 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
-import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
 
 /**
  * OAuth 콜백 유스케이스. 인가코드를 프로필로 교환한 뒤 소셜 계정 존재 여부로 로그인/가입을 분기한다.
@@ -34,7 +33,6 @@ public class OAuthLoginService {
   private final UserRepository userRepository;
   private final SignupTicketProvider signupTicketProvider;
   private final AuthTokenService authTokenService;
-  private final WithdrawalLedgerRepository withdrawalLedgerRepository;
 
   public OAuthCallbackResponse handleCallback(
       HttpServletResponse response, String provider, String code, String state) {
@@ -57,8 +55,6 @@ public class OAuthLoginService {
 
   private OAuthCallbackResponse issueSignupTicket(OAuthProfile profile) {
     String ticket = signupTicketProvider.issue(profile.provider(), profile.providerUserId());
-    boolean previouslyWithdrawn =
-        withdrawalLedgerRepository.wasWithdrawn(profile.provider(), profile.providerUserId());
-    return OAuthCallbackResponse.newUser(ticket, previouslyWithdrawn);
+    return OAuthCallbackResponse.newUser(ticket);
   }
 }

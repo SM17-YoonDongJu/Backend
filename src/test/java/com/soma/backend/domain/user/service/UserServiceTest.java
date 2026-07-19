@@ -2,8 +2,6 @@ package com.soma.backend.domain.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -161,13 +159,13 @@ class UserServiceTest {
     // Given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
-    UserUpdateRequest request = new UserUpdateRequest(null, "서울", "https://img/new.png");
+    UserUpdateRequest request = new UserUpdateRequest(null, List.of("서울"), "https://img/new.png");
 
     // When
     UserMeResponse result = userService.updateMe(userId, request);
 
     // Then
-    assertThat(result.region()).isEqualTo("서울");
+    assertThat(result.region()).containsExactly("서울");
     assertThat(result.avatarUrl()).isEqualTo("https://img/new.png");
     assertThat(result.phoneNumber()).isEqualTo("010-1234-5678");
     then(userRepository).should(never()).existsByPhoneNumber("010-1234-5678");
@@ -195,11 +193,7 @@ class UserServiceTest {
     // Given
     UUID userId = UUID.randomUUID();
     User user = activeUser();
-    SocialAccount social = mock(SocialAccount.class);
-    given(social.getProvider()).willReturn("kakao");
-    given(social.getProviderUserId()).willReturn("kakao-1");
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
-    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(social));
 
     // When
     userService.withdraw(userId, response);
@@ -208,7 +202,7 @@ class UserServiceTest {
     assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     assertThat(user.getPhoneNumber()).isNull();
     then(socialAccountRepository).should().deleteByUserId(userId);
-    then(outboxEventPublisher).should().publishAuthCleanup(eq(userId), anyList());
+    then(outboxEventPublisher).should().publishAuthCleanup(userId);
     then(authTokenService).should().expireCookies(response);
   }
 }

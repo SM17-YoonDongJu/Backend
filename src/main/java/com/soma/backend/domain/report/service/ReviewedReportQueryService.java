@@ -59,7 +59,7 @@ public class ReviewedReportQueryService {
       UUID adjusterId, String status, String month, Pageable pageable) {
     ReviewedReportListResponse.Stats stats = getStats(adjusterId, month);
 
-    String outcome = parseStatusFilter(status);
+    ReviewStatus outcome = parseStatusFilter(status);
     LocalDateTime monthFrom = null;
     LocalDateTime monthTo = null;
     if (StringUtils.hasText(month)) {
@@ -93,12 +93,12 @@ public class ReviewedReportQueryService {
     return counts;
   }
 
-  private String parseStatusFilter(String status) {
+  private ReviewStatus parseStatusFilter(String status) {
     if (!StringUtils.hasText(status) || "ALL".equalsIgnoreCase(status)) {
       return null;
     }
     try {
-      return ReviewStatus.valueOf(status).name();
+      return ReviewStatus.valueOf(status);
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }

@@ -1,6 +1,7 @@
 package com.soma.backend.domain.user.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
@@ -20,7 +21,7 @@ public record UserMeResponse(
     @Nullable String phoneNumber,
     String role,
     @Nullable String gender,
-    @Nullable String region,
+    @Nullable List<String> region,
     @Nullable String avatarUrl,
     @Nullable String socialProvider,
     LocalDateTime createdAt) {

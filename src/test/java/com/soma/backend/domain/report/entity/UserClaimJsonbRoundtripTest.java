@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.EntityManager;
@@ -28,6 +29,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * 서브타입까지 보존되는지 확인한다. 로컬/CI PostgreSQL 필요. @Transactional로 종료 시 롤백된다.
  */
 @SpringBootTest
+@ActiveProfiles("test")
 @Transactional
 class UserClaimJsonbRoundtripTest {
 

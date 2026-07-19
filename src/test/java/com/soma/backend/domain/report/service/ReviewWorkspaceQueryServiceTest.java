@@ -77,6 +77,7 @@ class ReviewWorkspaceQueryServiceTest {
     ReportIssue aiIssue = issue("장해등급 과소 산정 가능");
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportRepository.findReviewContext(reportId)).willReturn(context());
+    given(reportRepository.findRegionByReportId(reportId)).willReturn(List.of("서울 강남"));
     given(userClaimRepository.findById(claimId)).willReturn(Optional.of(claim()));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(aiIssue));
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(Optional.empty());
@@ -112,6 +113,7 @@ class ReviewWorkspaceQueryServiceTest {
 
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportRepository.findReviewContext(reportId)).willReturn(context());
+    given(reportRepository.findRegionByReportId(reportId)).willReturn(List.of("서울 강남"));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of(aiIssue));
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(Optional.of(review));
     given(reportAttachmentRepository.findAllByReportId(reportId)).willReturn(List.of());
@@ -197,11 +199,6 @@ class ReviewWorkspaceQueryServiceTest {
       @Override
       public LocalDate getBirthDate() {
         return LocalDate.of(1990, 3, 1);
-      }
-
-      @Override
-      public String getRegion() {
-        return "서울 강남";
       }
 
       @Override

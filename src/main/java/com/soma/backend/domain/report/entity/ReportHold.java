@@ -46,4 +46,10 @@ public class ReportHold extends CreatedAtEntity {
     this.reason = reason;
     this.reasonDetail = reasonDetail;
   }
+
+  /** 재보류 시 최신 사유로 갱신한다(created_at은 최초 보류 시각을 유지). */
+  public void updateReason(HoldReason reason, String reasonDetail) {
+    this.reason = reason;
+    this.reasonDetail = reasonDetail;
+  }
 }

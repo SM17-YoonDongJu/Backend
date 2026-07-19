@@ -49,6 +49,8 @@ class ReportReviewCommandServiceTest {
   private ReportReviewRepository reportReviewRepository;
   @Mock
   private ReportIssueRepository reportIssueRepository;
+  @Mock
+  private ReportReviewSkeletonInitializer reportReviewSkeletonInitializer;
 
   @InjectMocks
   private ReportReviewCommandService service;
@@ -202,38 +204,34 @@ class ReportReviewCommandServiceTest {
     assertThat(review.getIssues()).hasSize(1);
     assertThat(review.getIssues().get(0).getTitle()).isEqualTo("신규 쟁점 제목");
     assertThat(review.getIssues().get(0).getImpactAmount()).isEqualTo(1_500_000L);
-    verify(reportReviewRepository).insertIfAbsent(reportId, adjusterId);
+    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
   }
 
   @Test
-  @DisplayName("CLOSED(종료) report는 검수 대상이 아니므로 INVALID_STATUS_TRANSITION(400)")
+  @DisplayName("CLOSED(종료) report는 검수 대상이 아니므로 INVALID_STATE_TRANSITION(400)")
   void invalidTransitionOnClosed() {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.of(persistedReview()));
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of())))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
-  @DisplayName("COUNSELING(상담) report도 검수 대상이 아니므로 INVALID_STATUS_TRANSITION(400)")
+  @DisplayName("COUNSELING(상담) report도 검수 대상이 아니므로 INVALID_STATE_TRANSITION(400)")
   void invalidTransitionOnCounseling() {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportWithStatus(ReportStatus.COUNSELING)));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.of(persistedReview()));
 
     assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of())))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -256,7 +254,7 @@ class ReportReviewCommandServiceTest {
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
     assertThat(review.getIssues()).hasSize(1);
-    verify(reportReviewRepository).insertIfAbsent(reportId, adjusterId);
+    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
     verify(reportRepository).save(report);
   }

@@ -46,7 +46,7 @@ public record ReviewedReportListResponse(
    * 고객의 사건별 평점(미작성 시 null)이다(FE #59).
    */
   public record Item(
-      UUID reportId, String caseNo, String title, String accidentType, String region, String status,
+      UUID reportId, String caseNo, String title, String accidentType, List<String> region, String status,
       LocalDateTime reviewedAt, Long confirmedMinAmount, Long confirmedMaxAmount, Integer rating) {
 
     public static Item from(ReviewedReportRow row) {

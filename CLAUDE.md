@@ -47,7 +47,7 @@ com.soma.backend
 **레이어 의존 규칙 (핵심):**
 - `controller` → `service`, `dto`(+ 조회용 `entity`). HTTP ↔ 유스케이스 변환만, 얇게.
 - `service` → `entity`, `repository`, `dto`. 유스케이스 단위로 `@Transactional` 경계를 갖는다.
-- `repository` → `entity`. Spring Data JPA 인터페이스, Aggregate 단위 저장/조회.
+- `repository` → `entity`. Spring Data JPA 인터페이스, Aggregate 단위 저장/조회. **조회는 native query 금지 — 동적 조회는 QueryDSL, 그 외는 Spring Data 파생 쿼리·JPQL. 불가피한 경우만 사유 주석을 단 문서화된 예외.**
 - `entity` → 아무것도 의존 안 함 (실용적 예외: JPA 애노테이션). Spring Web/Service/Controller 참조 금지.
 - **의존 방향은 항상 안쪽(entity)으로.** 바깥이 안을 알고, 안은 바깥을 모른다.
 
@@ -141,6 +141,7 @@ Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반
 - 에러는 `BusinessException` + `ErrorCode` enum, `GlobalExceptionHandler`가 `ErrorResponse`로 처리
 - JWT secret은 최소 32자 이상
 - `open-in-view: false` — 서비스 레이어 안에서 트랜잭션 완료 후 응답
+- **쿼리 작성 규칙:** 조회에 native query(`nativeQuery = true`)를 쓰지 않는다. 동적 조회(필터·정렬·페이지네이션)는 QueryDSL(`JPAQueryFactory` + Q타입, `*RepositoryCustom`/`*RepositoryImpl` 프래그먼트, projection은 record + `Projections.constructor`), 단순 조회·카운트는 Spring Data 파생 쿼리나 JPQL(`@Query`)로 작성한다. 아직 엔티티로 매핑되지 않은 테이블을 조인하는 읽기 전용 projection처럼 QueryDSL/JPQL로 표현할 수 없는 경우에만, 리포지토리 코드에 사유를 주석으로 남긴 '문서화된 예외'로 native를 허용한다.
 
 ## Spring Boot 담당 범위
 
@@ -176,6 +177,8 @@ Spring Boot가 담당하는 영역:
 | 2026-07-02 | infra-developer 에이전트 + spring-infra 스킬 추가, 인프라·관측성·배포 하드닝 영역 편입 (actuator·JVM/GC·DB풀·Kafka producer 배선·docker·PII 로깅·smoke test) | agents/infra-developer.md, skills/spring-infra/SKILL.md, springboot-dev SKILL.md | 프로덕션 하드닝 + 로컬 Kafka(docker compose) 작업에 홈이 없어 전담 에이전트/스킬 신설 |
 | 2026-07-02 | 아키텍처를 레이어드 → 전술적 DDD로 전환 (규칙·하네스만, 코드는 점진 마이그레이션), ddd-tactical 스킬 신설 | CLAUDE.md Architecture, skills/ddd-tactical/SKILL.md, agents/backend-analyst.md, agents/backend-developer.md | DDD 기반 개발 체계 도입 결정 |
 | 2026-07-02 | 패키지 구조를 4계층(domain/application/presentation/infrastructure)에서 실용적 레이어드(`domain/<context>/{controller,dto,entity,repository,service}`)로 단순화. DDD 색깔(리치 모델·VO·불변식)은 `entity` 안에서 유지 | CLAUDE.md Architecture, skills/ddd-tactical/SKILL.md | 전술 DDD 이점은 유지하되 폴더 4계층 과함 → 실용적 5-패키지로 합의 |
+| 2026-07-13 | 조회 쿼리 규칙 신설(동적=QueryDSL, 단순=Spring Data 파생/JPQL, native는 문서화된 예외만) + 코드-하네스 동기화: qa-reviewer enum 정정(REPORTS.status `MATCHED`→`CLOSED`, accident_type 영문)·native 리뷰 항목 추가, spring-qa 리포지토리/QueryDSL 테스트를 @SpringBootTest/실제 test_db로 정정(@DataJpaTest·TestContainers 미사용), backend-developer에 쿼리·객체생성 원칙 추가, domain-glossary 상태머신 종료상태 `MATCHED`→`CLOSED` 동기화 | CLAUDE.md, agents/backend-developer·qa-reviewer, skills/ddd-tactical·spring-qa, references/domain-glossary, harness.md | native→QueryDSL 리팩터(#100) 후 drift 감사·동기화 |
 | 2026-07-10 | RefreshToken RTR을 `save` 덮어쓰기·비원자적 `getAndDelete`에서 **Lua 원자적 CAS `rotate`**(저장값==oldToken일 때만 교체, `RotateResult` ROTATED/NOT_FOUND/MISMATCH, 불일치 시 키 삭제=재사용·탈취 탐지)로 변경 반영. 재발급 서비스는 서명·만료 검증(1단계)과 Redis 원자 회전(2단계)으로 분리 | CLAUDE.md infra/redis, skills/spring-security-impl(SKILL.md·references/jwt-impl.md), agents/security-developer.md | 동시 재발급 경쟁 창 제거 + 토큰 재사용 탐지 강화 (코드 선반영 → 하네스 동기화) |
 | 2026-07-10 | spring-security-impl 스킬을 **HttpOnly 쿠키 인증 + 수동 REST OAuth** 현행 구조로 동기화 — 헤더(Bearer)·바디 토큰·`oauth2Login`·리다이렉트-쿼리토큰 서술 제거, `access_token`/`refresh_token` 쿠키·`JwtFilter`(쿠키 우선, `/auth/**` shouldNotFilter)·`CookieProvider`·`AuthTokenService`·`OAuthLoginService`+`SignupTicket`+`AuthRegisterService`·`allowedOriginPatterns` CORS·Boot 4로 갱신 | skills/spring-security-impl(SKILL.md·references/jwt-impl.md·references/oauth2-providers.md) | 스킬이 헤더/바디·Spring oauth2Login 가정으로 stale → 실제 쿠키 기반 구현과 정합 |
 | 2026-07-10 | 쿠키 Path 스코핑 반영 — `refresh_token` 쿠키를 Path `/auth`로 좁혀(재발급·로그아웃에만 전송) 노출 표면 축소, `access_token`은 Path `/` 유지. "쿠키는 Path `/`로 발급" 단언(stale) 정정 | CLAUDE.md global/security, skills/spring-security-impl(SKILL.md·references/jwt-impl.md) | 코드 선반영(CookieProvider Path 분리) → 하네스 동기화 |
+| 2026-07-14 | 사정사 홈 대시보드 API(GET /adjusters/me/home)를 report → **adjuster 도메인**으로 분리. `adjuster_profiles`를 `AdjusterProfile` 엔티티로 매핑하고 남은 native `findAdjusterIdentity`를 QueryDSL로 전환(문서화된 예외 1건 제거), 홈 크로스-애그리거트 조회를 `AdjusterHomeRepository`로 자립화. ERD 정합: `adjuster_profiles.registration_url·updated_at` 추가(V12), glossary ADJUSTER_PROFILES/APPLICATIONS 필드·상태 정정(`speciality`→`specialties[]`, `ACCEPTED`→`APPROVED`). **지역 배열화**: `users.region`·`adjuster_profiles.activity_region`을 `text[]`로 전환(V13) — 복수 지역 지원, 검수대기 지역 필터를 `array_contains`로 변경 | domain/adjuster/*, V12·V13 마이그레이션, user·report 도메인 region 필드, references/domain-glossary.md | #100 native→QueryDSL 리팩터 중 adjuster 도메인 분리 + 기존 엔티티 ERD 반영(지역 배열화) 요청 |

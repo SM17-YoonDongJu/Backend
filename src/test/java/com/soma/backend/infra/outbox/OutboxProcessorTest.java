@@ -23,7 +23,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 import com.soma.backend.infra.redis.RefreshTokenRepository;
 import com.soma.backend.infra.redis.TokenBlacklistRepository;
-import com.soma.backend.infra.redis.WithdrawalLedgerRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OutboxProcessor 단위 테스트")
@@ -40,20 +39,17 @@ class OutboxProcessorTest {
   @Mock
   private TokenBlacklistRepository tokenBlacklistRepository;
 
-  @Mock
-  private WithdrawalLedgerRepository withdrawalLedgerRepository;
-
   private final JsonMapper jsonMapper = JsonMapper.builder().build();
   private OutboxProcessor processor;
 
   @BeforeEach
   void setUp() {
     processor = new OutboxProcessor(outboxEventRepository, jsonMapper,
-        refreshTokenRepository, tokenBlacklistRepository, withdrawalLedgerRepository);
+        refreshTokenRepository, tokenBlacklistRepository);
   }
 
-  private OutboxEvent authCleanupEvent(UUID userId, List<SocialIdentity> socials) {
-    String payload = jsonMapper.writeValueAsString(new AuthCleanupPayload(userId, socials));
+  private OutboxEvent authCleanupEvent(UUID userId) {
+    String payload = jsonMapper.writeValueAsString(new AuthCleanupPayload(userId));
     return OutboxEvent.of("USER", userId, OutboxEventPublisher.EVENT_AUTH_CLEANUP, payload, NOW);
   }
 
@@ -62,7 +58,7 @@ class OutboxProcessorTest {
   void poll_authCleanup_runsSideEffectsAndMarksProcessed() {
     // Given
     UUID userId = UUID.randomUUID();
-    OutboxEvent event = authCleanupEvent(userId, List.of(new SocialIdentity("kakao", "kakao-1")));
+    OutboxEvent event = authCleanupEvent(userId);
     given(outboxEventRepository.lockPendingBatch(any(), anyInt())).willReturn(List.of(event));
 
     // When
@@ -71,7 +67,6 @@ class OutboxProcessorTest {
     // Then
     then(refreshTokenRepository).should().delete(userId);
     then(tokenBlacklistRepository).should().blacklist(userId);
-    then(withdrawalLedgerRepository).should().record("kakao", "kakao-1");
     assertThat(event.getStatus()).isEqualTo(OutboxStatus.PROCESSED);
   }
 
@@ -80,7 +75,7 @@ class OutboxProcessorTest {
   void poll_handlerFails_schedulesRetry() {
     // Given
     UUID userId = UUID.randomUUID();
-    OutboxEvent event = authCleanupEvent(userId, List.of());
+    OutboxEvent event = authCleanupEvent(userId);
     given(outboxEventRepository.lockPendingBatch(any(), anyInt())).willReturn(List.of(event));
     willThrow(new RedisConnectionFailureException("redis down"))
         .given(refreshTokenRepository).delete(userId);

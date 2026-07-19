@@ -22,6 +22,8 @@ description: "Spring Boot 비즈니스 로직을 구현하는 백엔드 개발 �
 - JPA는 PostgreSQL 특성을 고려한다 (인덱스 명시, N+1 방지를 위한 페치 전략). Aggregate 간 참조는 `@ManyToOne`이 아니라 ID(UUID)로 한다
 - **트랜잭션 경계는 service(유스케이스)에만** 둔다. 조회 메서드는 `@Transactional(readOnly=true)` 기본. `open-in-view: false`이므로 응답 매핑 전에 트랜잭션이 끝나야 한다
 - Repository는 `repository` 패키지의 Spring Data JPA 인터페이스로 두고(포트/어댑터 분리 안 함), JPA 엔티티를 dto의 Response로 노출하지 않는다
+- **조회 쿼리는 native query 금지** — 동적 조회(필터·정렬·페이지네이션·서브쿼리)는 QueryDSL(`JPAQueryFactory` + `*RepositoryCustom`/`*RepositoryImpl` 프래그먼트, projection은 record + `Projections.constructor`), 단순 조회·카운트는 Spring Data 파생 쿼리·JPQL로 작성한다. 미매핑 테이블 조인처럼 표현 불가능한 읽기 전용 projection만 사유 주석을 단 문서화된 예외로 native를 허용한다 (상세는 `ddd-tactical`)
+- 엔티티 생성(`new`)은 리포지토리가 아니라 service(application) 계층에서 한다. 멱등 upsert는 DB UNIQUE 제약 + `save()` + `DataIntegrityViolationException` 처리(동시성 필요 시 별도 트랜잭션 `REQUIRES_NEW`)로 구현하고, DB 전용 `INSERT ... ON CONFLICT` native에 의존하지 않는다
 - PG 웹훅은 멱등성을 보장한다 (중복 결제 방어)
 - 예외는 도메인 예외 클래스로 구체적으로 던지고 GlobalExceptionHandler에서 처리한다
 

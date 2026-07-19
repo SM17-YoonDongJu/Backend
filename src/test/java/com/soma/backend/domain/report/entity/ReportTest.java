@@ -3,6 +3,8 @@ package com.soma.backend.domain.report.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.BeanUtils;
@@ -63,14 +65,14 @@ class ReportTest {
   }
 
   @Test
-  @DisplayName("AWAITING_INSPECTION에서 COUNSELING으로 건너뛰면 INVALID_STATUS_TRANSITION")
+  @DisplayName("AWAITING_INSPECTION에서 COUNSELING으로 건너뛰면 INVALID_STATE_TRANSITION")
   void inspectionToCounselingRejected() {
     Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
 
     assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.COUNSELING))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -81,7 +83,7 @@ class ReportTest {
     assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.COUNSELING))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     report.applyReviewTransition(ReportStatus.CLOSED);
     assertThat(report.getStatus()).isEqualTo(ReportStatus.CLOSED);
@@ -95,7 +97,7 @@ class ReportTest {
     assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.CLOSED))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -119,18 +121,111 @@ class ReportTest {
   }
 
   @Test
-  @DisplayName("applyReviewStart: COUNSELING·CLOSED는 검수 대상이 아니므로 INVALID_STATUS_TRANSITION")
+  @DisplayName("applyReviewStart: COUNSELING·CLOSED는 검수 대상이 아니므로 INVALID_STATE_TRANSITION")
   void reviewStartRejectsNonReviewable() {
     Report counseling = reportWithStatus(ReportStatus.COUNSELING);
     assertThatThrownBy(counseling::applyReviewStart)
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     Report closed = reportWithStatus(ReportStatus.CLOSED);
     assertThatThrownBy(closed::applyReviewStart)
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.INVALID_STATUS_TRANSITION);
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("markNotSelected: AWAITING_INSPECTION·AWAITING_ADOPTION에서 NOT_SELECTED로 전이된다")
+  void markNotSelectedFromPendingStates() {
+    Report inspection = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+    inspection.markNotSelected();
+    assertThat(inspection.getStatus()).isEqualTo(ReportStatus.NOT_SELECTED);
+
+    Report adoption = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+    adoption.markNotSelected();
+    assertThat(adoption.getStatus()).isEqualTo(ReportStatus.NOT_SELECTED);
+  }
+
+  @Test
+  @DisplayName("markNotSelected: CLOSED·COUNSELING은 미채택 대상이 아니므로 INVALID_STATE_TRANSITION")
+  void markNotSelectedRejectsTerminalOrCounseling() {
+    Report closed = reportWithStatus(ReportStatus.CLOSED);
+    assertThatThrownBy(closed::markNotSelected)
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+
+    Report counseling = reportWithStatus(ReportStatus.COUNSELING);
+    assertThatThrownBy(counseling::markNotSelected)
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("NOT_SELECTED 리포트는 신규 검수 대상이 아니다(applyReviewStart → INVALID_STATE_TRANSITION)")
+  void notSelectedBlocksNewReview() {
+    Report report = reportWithStatus(ReportStatus.NOT_SELECTED);
+
+    assertThatThrownBy(report::applyReviewStart)
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("NOT_SELECTED는 이후 상담이 잡히면 COUNSELING으로 재개되나 CLOSED 직행·재검수(AWAITING_ADOPTION)는 불가")
+  void notSelectedResumesToCounselingOnly() {
+    Report resume = reportWithStatus(ReportStatus.NOT_SELECTED);
+    resume.applyReviewTransition(ReportStatus.COUNSELING);
+    assertThat(resume.getStatus()).isEqualTo(ReportStatus.COUNSELING);
+
+    Report toClosed = reportWithStatus(ReportStatus.NOT_SELECTED);
+    assertThatThrownBy(() -> toClosed.applyReviewTransition(ReportStatus.CLOSED))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+
+    Report toAdoption = reportWithStatus(ReportStatus.NOT_SELECTED);
+    assertThatThrownBy(() -> toAdoption.applyReviewTransition(ReportStatus.AWAITING_ADOPTION))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("accept: COUNSELING이면 담당 사정사를 확정하고 CLOSED로 종결한다")
+  void acceptFromCounseling() {
+    Report report = reportWithStatus(ReportStatus.COUNSELING);
+    UUID adjusterId = UUID.randomUUID();
+
+    report.accept(adjusterId);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.CLOSED);
+    assertThat(report.getAdjusterId()).isEqualTo(adjusterId);
+  }
+
+  @Test
+  @DisplayName("accept: 아직 상담 전(COUNSELING 아님)이면 409 INVALID_STATE_TRANSITION")
+  void acceptBeforeCounselingRejected() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+
+    assertThatThrownBy(() -> report.accept(UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("accept: 이미 CLOSED면 409 REPORT_ALREADY_CLOSED")
+  void acceptWhenClosedRejected() {
+    Report report = reportWithStatus(ReportStatus.CLOSED);
+
+    assertThatThrownBy(() -> report.accept(UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.REPORT_ALREADY_CLOSED);
   }
 }

@@ -1,6 +1,5 @@
 package com.soma.backend.domain.user.service;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
@@ -20,7 +19,6 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
-import com.soma.backend.infra.outbox.SocialIdentity;
 
 /**
  * 내 정보 조회·수정·탈퇴 유스케이스.
@@ -68,18 +66,15 @@ public class UserService {
 
   /**
    * 회원 탈퇴. 계정을 익명화(WITHDRAWN)하고 소셜 링크를 끊은 뒤, 세션 무효화 부수효과(Refresh 삭제·access
-   * blacklist·탈퇴 원장 기록)는 아웃박스에 적재해 커밋 이후 소비자가 멱등하게 처리·재시도하도록 위임한다
+   * blacklist)는 아웃박스에 적재해 커밋 이후 소비자가 멱등하게 처리·재시도하도록 위임한다
    * (dual-write 불일치 제거). 쿠키 만료는 HTTP 응답이라 요청 스레드에서 즉시 처리한다.
    */
   @Transactional
   public void withdraw(UUID userId, HttpServletResponse response) {
     User user = findActiveUser(userId);
-    List<SocialIdentity> socials = socialAccountRepository.findByUserId(userId).stream()
-        .map(social -> new SocialIdentity(social.getProvider(), social.getProviderUserId()))
-        .toList();
     user.withdraw();
     socialAccountRepository.deleteByUserId(userId);
-    outboxEventPublisher.publishAuthCleanup(userId, socials);
+    outboxEventPublisher.publishAuthCleanup(userId);
     authTokenService.expireCookies(response);
   }
 

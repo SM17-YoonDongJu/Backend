@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,11 +23,12 @@ import com.soma.backend.domain.report.dto.ProposalListResponse;
 import com.soma.backend.domain.report.service.ProposalQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
 import com.soma.backend.global.response.ApiResponse;
-import com.soma.backend.global.security.CurrentUserId;
+import com.soma.backend.global.security.CustomUserDetails;
 
 /**
- * 고객(user) 리포트 플로우 API(design.md §1, §6). 인가는 @CurrentUserId(로그인) +
- * 서비스 레이어 소유 검증(design.md §8)이 담당한다.
+ * 고객(user) 리포트 플로우 API(design.md §1, §6). 인가는 SecurityConfig(anyRequest().authenticated())의
+ * 로그인 필수 + 서비스 레이어 소유 검증(design.md §8)이 담당한다. userId는 {@code @AuthenticationPrincipal}로
+ * 주입하며, 인증 필수 경로이므로 principal은 non-null이다.
  * (목록 조회 GET /reports는 일반 사용자의 미검수 리포트 조회 차단 정책으로 제거 — #106.)
  * (상세 조회 GET /reports/{reportId}는 develop 검수 대기 상세와 경로가 충돌해 제거 — 추후 재개발.)
  */
@@ -42,8 +44,8 @@ public class ReportController {
    */
   @PostMapping("/reports")
   public ResponseEntity<ApiResponse<CreateReportResponse>> create(
-      @CurrentUserId UUID userId, @RequestBody CreateReportRequest request) {
-    CreateReportResponse data = reportCommandService.createReport(userId, request);
+      @AuthenticationPrincipal CustomUserDetails principal, @RequestBody CreateReportRequest request) {
+    CreateReportResponse data = reportCommandService.createReport(principal.getUserId(), request);
     return ResponseEntity.status(HttpStatus.ACCEPTED)
         .body(ApiResponse.accepted("리포트 생성을 시작했습니다.", data));
   }
@@ -53,12 +55,12 @@ public class ReportController {
    */
   @GetMapping("/reports/{reportId}/proposals")
   public ResponseEntity<ApiResponse<ProposalListResponse>> proposals(
-      @CurrentUserId UUID userId,
+      @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID reportId,
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "10") int size) {
     return ResponseEntity.ok(
-        ApiResponse.ok(proposalQueryService.getProposals(userId, reportId, page, size)));
+        ApiResponse.ok(proposalQueryService.getProposals(principal.getUserId(), reportId, page, size)));
   }
 
   /**
@@ -66,12 +68,12 @@ public class ReportController {
    */
   @PatchMapping("/reports/{reportId}/proposals/{proposalId}")
   public ResponseEntity<ApiResponse<ProposalDecisionResponse>> decide(
-      @CurrentUserId UUID userId,
+      @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID reportId,
       @PathVariable UUID proposalId,
       @RequestBody ProposalDecisionRequest request) {
     ProposalDecisionResponse data =
-        reportCommandService.decide(userId, reportId, proposalId, request.status());
+        reportCommandService.decide(principal.getUserId(), reportId, proposalId, request.status());
     return ResponseEntity.ok(ApiResponse.ok(data));
   }
 }

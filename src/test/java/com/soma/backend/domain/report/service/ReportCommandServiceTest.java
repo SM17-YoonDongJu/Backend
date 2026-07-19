@@ -164,6 +164,30 @@ class ReportCommandServiceTest {
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
   }
 
+  @Test
+  void decide_invalidStateTransition_whenReportNotCounseling() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION)));
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
+
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+  }
+
+  @Test
+  void decide_invalidStateTransition_whenProposalAlreadyDecided() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.COUNSELING)));
+    ReportReview decided = review();
+    ReflectionTestUtils.setField(decided, "status", ReviewStatus.ACCEPTED);
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(decided));
+
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "REJECTED"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+  }
+
   private Report reportOwnedBy(UUID ownerId, ReportStatus status) {
     Report report = Report.createPending(
         ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260709-001");
