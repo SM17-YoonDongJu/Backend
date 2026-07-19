@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 import java.time.LocalDate;
@@ -20,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import jakarta.servlet.http.HttpServletResponse;
 
+import com.soma.backend.domain.auth.entity.SocialAccount;
 import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
@@ -72,6 +74,38 @@ class UserServiceTest {
     assertThat(result.nickname()).isEqualTo("홍길동");
     assertThat(result.phoneNumber()).isEqualTo("010-1234-5678");
     assertThat(result.role()).isEqualTo("USER");
+  }
+
+  @Test
+  @DisplayName("getMe-연결된 소셜 계정이 있으면 socialProvider를 파생해 내려준다")
+  void getMe_withSocialAccount_returnsProvider() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    SocialAccount social = mock(SocialAccount.class);
+    given(social.getProvider()).willReturn("kakao");
+    given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
+    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(social));
+
+    // When
+    UserMeResponse result = userService.getMe(userId);
+
+    // Then
+    assertThat(result.socialProvider()).isEqualTo("kakao");
+  }
+
+  @Test
+  @DisplayName("getMe-연결된 소셜 계정이 없으면 socialProvider는 null이다")
+  void getMe_noSocialAccount_providerNull() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
+    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of());
+
+    // When
+    UserMeResponse result = userService.getMe(userId);
+
+    // Then
+    assertThat(result.socialProvider()).isNull();
   }
 
   @Test

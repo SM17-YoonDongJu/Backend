@@ -52,8 +52,9 @@ public class PendingReviewController {
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/reports/pending-review/summary")
-  public ResponseEntity<ApiResponse<PendingReviewSummaryResponse>> summary() {
-    return ResponseEntity.ok(ApiResponse.ok(pendingReviewQueryService.getSummary()));
+  public ResponseEntity<ApiResponse<PendingReviewSummaryResponse>> summary(
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    return ResponseEntity.ok(ApiResponse.ok(pendingReviewQueryService.getSummary(principal.getUserId())));
   }
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")

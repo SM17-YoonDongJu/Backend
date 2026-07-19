@@ -3,6 +3,9 @@ package com.soma.backend.domain.report.service;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -17,6 +20,7 @@ import com.soma.backend.domain.report.dto.ReviewedReportListResponse;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.ReviewedReportRow;
+import com.soma.backend.domain.report.repository.StatusCount;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
@@ -63,9 +67,30 @@ public class ReviewedReportQueryService {
       monthFrom = targetMonth.atDay(1).atStartOfDay();
       monthTo = targetMonth.plusMonths(1).atDay(1).atStartOfDay();
     }
+    Map<String, Long> statusCounts = buildStatusCounts(adjusterId, monthFrom, monthTo);
     Page<ReviewedReportRow> rows =
         reportReviewRepository.findReviewedReportRows(adjusterId, outcome, monthFrom, monthTo, pageable);
-    return ReviewedReportListResponse.from(stats, rows);
+    return ReviewedReportListResponse.from(stats, statusCounts, rows);
+  }
+
+  /**
+   * 필터 탭 배지용 상태별 건수 맵을 만든다. {@code total} 다음 모든 {@link ReviewStatus} 키를 0으로 초기화해
+   * 건수가 없는 탭도 항상 배지 값을 갖게 하고, DB 그룹 집계로 실제 값을 채운다. 삽입 순서(total → enum 순)를
+   * 유지하려고 {@link LinkedHashMap}을 쓴다.
+   */
+  private Map<String, Long> buildStatusCounts(UUID adjusterId, LocalDateTime monthFrom, LocalDateTime monthTo) {
+    List<StatusCount> grouped = reportReviewRepository.countByStatusGrouped(adjusterId, monthFrom, monthTo);
+    long total = grouped.stream().mapToLong(row -> row.count()).sum();
+
+    Map<String, Long> counts = new LinkedHashMap<>();
+    counts.put("total", total);
+    for (ReviewStatus reviewStatus : ReviewStatus.values()) {
+      counts.put(reviewStatus.name(), 0L);
+    }
+    for (StatusCount row : grouped) {
+      counts.put(row.status().name(), row.count());
+    }
+    return counts;
   }
 
   private ReviewStatus parseStatusFilter(String status) {

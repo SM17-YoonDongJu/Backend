@@ -39,6 +39,20 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId")
   long countByAdjusterId(@Param("adjusterId") UUID adjusterId);
 
+  /**
+   * 마이페이지 활동 집계 — 요청 사용자(리포트 소유자)가 받은 제안 총수. 거절(REJECTED) 포함(받은 제안 누적).
+   * ReportReview는 Report를 객체가 아니라 report_id로 참조하므로 소유자 필터는 서브쿼리로 건다.
+   */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv "
+      + "WHERE rv.reportId IN (SELECT r.id FROM Report r WHERE r.userId = :userId)")
+  long countProposalsByReportOwner(@Param("userId") UUID userId);
+
+  /** 마이페이지 활동 집계 — 요청 사용자의 리포트에 달린 제안 중 상담 전환(COUNSELING) 수. */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv "
+      + "WHERE rv.status = com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING "
+      + "AND rv.reportId IN (SELECT r.id FROM Report r WHERE r.userId = :userId)")
+  long countConsultsByReportOwner(@Param("userId") UUID userId);
+
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
       + "AND rv.createdAt >= :from AND rv.createdAt < :to")
   long countByAdjusterIdAndCreatedAtBetween(
@@ -47,6 +61,29 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
       + "AND rv.status = com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING")
   long countConsultationConvertedByAdjusterId(@Param("adjusterId") UUID adjusterId);
+
+  /** 검수 대기 요약의 "진행 중인 사건" 카운트 — 요청 사정사의 미완료 검수(SENT·COUNSELING). */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
+      + "AND rv.status IN ("
+      + "com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
+      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING)")
+  long countInProgressByAdjusterId(@Param("adjusterId") UUID adjusterId);
+
+  /**
+   * API#5 필터 탭 배지용 — 요청 사정사 본인 검수의 상태별 건수. 월 필터는 목록과 동일하게 적용하되
+   * status 탭 필터는 걸지 않는다(어떤 탭이 선택돼도 전체 분포 배지를 보여야 하므로). JPQL 생성자 표현식으로
+   * StatusCount(status, count)를 만든다(네이티브 미사용).
+   */
+  @Query("SELECT new com.soma.backend.domain.report.repository.StatusCount(rv.status, COUNT(rv)) "
+      + "FROM ReportReview rv "
+      + "WHERE rv.adjusterId = :adjusterId "
+      + "AND (:monthFrom IS NULL OR rv.createdAt >= :monthFrom) "
+      + "AND (:monthTo IS NULL OR rv.createdAt < :monthTo) "
+      + "GROUP BY rv.status")
+  List<StatusCount> countByStatusGrouped(
+      @Param("adjusterId") UUID adjusterId,
+      @Param("monthFrom") LocalDateTime monthFrom,
+      @Param("monthTo") LocalDateTime monthTo);
 
   /**
    * GET /reports/{reportId}/proposals 목록(design.md §6). REJECTED는 노출하지 않는다.

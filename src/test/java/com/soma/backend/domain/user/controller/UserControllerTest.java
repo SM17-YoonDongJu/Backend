@@ -66,7 +66,7 @@ class UserControllerTest {
 
   private UserMeResponse sampleResponse(UUID userId) {
     return new UserMeResponse(
-        userId, "홍길동", "010-1234-5678", "USER", null, List.of("서울"), null, LocalDateTime.now());
+        userId, "홍길동", "010-1234-5678", "USER", null, List.of("서울"), null, "kakao", LocalDateTime.now());
   }
 
   @Test
@@ -82,7 +82,8 @@ class UserControllerTest {
         .andExpect(jsonPath("$.status").value("200"))
         .andExpect(jsonPath("$.data.user_id").value(userId.toString()))
         .andExpect(jsonPath("$.data.phone_number").value("010-1234-5678"))
-        .andExpect(jsonPath("$.data.role").value("USER"));
+        .andExpect(jsonPath("$.data.role").value("USER"))
+        .andExpect(jsonPath("$.data.social_provider").value("kakao"));
   }
 
   @Test

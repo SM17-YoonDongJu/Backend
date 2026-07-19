@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -274,6 +275,24 @@ class ReportReviewCommandServiceTest {
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
     verify(reportRepository).save(report);
+  }
+
+  @Test
+  @DisplayName("응답 sent_at은 REPORT_REVIEWS.created_at(최초 제출 시각)을 그대로 내려준다")
+  void responseExposesCreatedAtAsSentAt() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+    ReportReview review = persistedReview();
+    LocalDateTime createdAt = LocalDateTime.of(2026, 7, 17, 14, 30, 0);
+    ReflectionTestUtils.setField(review, "createdAt", createdAt);
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
+        .willReturn(Optional.of(review));
+    given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
+
+    ReviewReportResponse result = service.review(adjusterId, reportId, request(List.of()));
+
+    assertThat(result.sentAt()).isEqualTo(createdAt);
   }
 
   @Test

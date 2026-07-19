@@ -60,17 +60,20 @@ class PendingReviewQueryServiceTest {
   private PendingReviewQueryService service;
 
   @Test
-  @DisplayName("summary는 pending/due-soon 카운트를 반환하고 due-soon 기준은 now - 6일(SLA 7 - 여유 1)")
+  @DisplayName("summary는 pending/due-soon/in-progress 카운트를 반환하고 due-soon 기준은 now - 6일(SLA 7 - 여유 1)")
   void summaryUsesSlaThreshold() {
+    UUID adjusterId = UUID.randomUUID();
     given(reportRepository.countPending()).willReturn(9L);
     given(reportRepository.countDueSoon(any(LocalDateTime.class))).willReturn(3L);
+    given(reportReviewRepository.countInProgressByAdjusterId(adjusterId)).willReturn(4L);
 
     LocalDateTime before = LocalDateTime.now().minusDays(6);
-    PendingReviewSummaryResponse summary = service.getSummary();
+    PendingReviewSummaryResponse summary = service.getSummary(adjusterId);
     LocalDateTime after = LocalDateTime.now().minusDays(6);
 
     assertThat(summary.pendingCount()).isEqualTo(9L);
     assertThat(summary.dueSoonCount()).isEqualTo(3L);
+    assertThat(summary.inProgressCount()).isEqualTo(4L);
 
     ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
     verify(reportRepository).countDueSoon(captor.capture());

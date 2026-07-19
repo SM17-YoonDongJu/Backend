@@ -87,7 +87,8 @@ public class ReportReviewCommandService {
     report = reportRepository.save(report);
 
     return new ReviewReportResponse(
-        report.getId(), report.getStatus().name(), reportReview.getId(), reportReview.getStatus().name());
+        report.getId(), report.getStatus().name(), reportReview.getId(), reportReview.getStatus().name(),
+        reportReview.getCreatedAt());
   }
 
   /**

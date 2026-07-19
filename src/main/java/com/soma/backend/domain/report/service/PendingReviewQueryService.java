@@ -49,11 +49,12 @@ public class PendingReviewQueryService {
   private final ReportIssueRepository reportIssueRepository;
   private final ReportReviewRepository reportReviewRepository;
 
-  public PendingReviewSummaryResponse getSummary() {
+  public PendingReviewSummaryResponse getSummary(UUID adjusterId) {
     long pendingCount = reportRepository.countPending();
     LocalDateTime dueSoonThreshold = LocalDateTime.now().minusDays(SLA_DAYS - DUE_SOON_WINDOW_DAYS);
     long dueSoonCount = reportRepository.countDueSoon(dueSoonThreshold);
-    return new PendingReviewSummaryResponse(pendingCount, dueSoonCount);
+    long inProgressCount = reportReviewRepository.countInProgressByAdjusterId(adjusterId);
+    return new PendingReviewSummaryResponse(pendingCount, dueSoonCount, inProgressCount);
   }
 
   public PendingReviewListResponse getPendingReviewList(
