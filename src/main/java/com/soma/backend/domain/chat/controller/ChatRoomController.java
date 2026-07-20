@@ -16,9 +16,11 @@ import com.soma.backend.domain.chat.dto.ChatRoomDetailResponse;
 import com.soma.backend.domain.chat.dto.ChatRoomListResponse;
 import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.dto.ReadResponse;
+import com.soma.backend.domain.chat.dto.SharedReportResponse;
 import com.soma.backend.domain.chat.service.ChatConsultationCommandService;
 import com.soma.backend.domain.chat.service.ChatReadService;
 import com.soma.backend.domain.chat.service.ChatRoomQueryService;
+import com.soma.backend.domain.chat.service.SharedReportQueryService;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.response.ApiResponse;
@@ -35,6 +37,7 @@ public class ChatRoomController {
   private final ChatRoomQueryService chatRoomQueryService;
   private final ChatConsultationCommandService chatConsultationCommandService;
   private final ChatReadService chatReadService;
+  private final SharedReportQueryService sharedReportQueryService;
 
   @GetMapping("/chats")
   public ResponseEntity<ApiResponse<ChatRoomListResponse>> listMyRooms(
@@ -48,6 +51,13 @@ public class ChatRoomController {
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
     UUID me = requireUserId(principal);
     return ResponseEntity.ok(ApiResponse.ok(chatRoomQueryService.getRoom(me, chatRoomId)));
+  }
+
+  @GetMapping("/chats/{chatRoomId}/shared-report")
+  public ResponseEntity<ApiResponse<SharedReportResponse>> getSharedReport(
+      @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
+    UUID me = requireUserId(principal);
+    return ResponseEntity.ok(ApiResponse.ok(sharedReportQueryService.getSharedReport(me, chatRoomId)));
   }
 
   @PatchMapping("/chats/{chatRoomId}/accept")
