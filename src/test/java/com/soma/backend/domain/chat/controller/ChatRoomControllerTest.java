@@ -31,6 +31,7 @@ import com.soma.backend.domain.chat.entity.ChatRoomStatus;
 import com.soma.backend.domain.chat.service.ChatConsultationCommandService;
 import com.soma.backend.domain.chat.service.ChatReadService;
 import com.soma.backend.domain.chat.service.ChatRoomQueryService;
+import com.soma.backend.domain.chat.service.SharedReportQueryService;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.global.exception.BusinessException;
@@ -49,6 +50,7 @@ class ChatRoomControllerTest {
   private ChatRoomQueryService chatRoomQueryService;
   private ChatConsultationCommandService chatConsultationCommandService;
   private ChatReadService chatReadService;
+  private SharedReportQueryService sharedReportQueryService;
 
   private final UUID roomId = UUID.randomUUID();
 
@@ -57,8 +59,9 @@ class ChatRoomControllerTest {
     chatRoomQueryService = Mockito.mock(ChatRoomQueryService.class);
     chatConsultationCommandService = Mockito.mock(ChatConsultationCommandService.class);
     chatReadService = Mockito.mock(ChatReadService.class);
-    ChatRoomController controller =
-        new ChatRoomController(chatRoomQueryService, chatConsultationCommandService, chatReadService);
+    sharedReportQueryService = Mockito.mock(SharedReportQueryService.class);
+    ChatRoomController controller = new ChatRoomController(
+        chatRoomQueryService, chatConsultationCommandService, chatReadService, sharedReportQueryService);
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
         .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
         .setControllerAdvice(new GlobalExceptionHandler())
