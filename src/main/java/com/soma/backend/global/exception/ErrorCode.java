@@ -32,8 +32,8 @@ public enum ErrorCode {
 
   // 409 Conflict — 리소스 상태 충돌
   DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "이미 존재하는 리소스입니다."),
-  // INVALID_STATE_TRANSITION: 현재 리소스 상태 때문에 요청이 충돌(예: 상담 중이 아닌 제안 채택). 내부 검수
-  //   생명주기 전이 위반(400 INVALID_STATUS_TRANSITION)과 달리, 클라이언트가 409로 구분·분기해야 하는 케이스.
+  // INVALID_STATE_TRANSITION: 현재 리소스 상태 때문에 요청이 충돌(예: 상담 중이 아닌 제안 채택). 검수 생명주기
+  //   전이 위반(Report.applyReviewTransition/applyReviewStart)도 이 code(409)로 통일한다.
   INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서 처리할 수 없는 요청입니다."),
   // CLOSED: 종료된 리소스(예: 비활성 상담방 메시지 전송)에 대한 요청. throw 배선은 채팅 구현 시 추가.
   CLOSED(HttpStatus.CONFLICT, "이미 종료되어 처리할 수 없습니다."),
@@ -59,6 +59,7 @@ public enum ErrorCode {
   // Report (도메인 특화)
   REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트를 찾을 수 없습니다."),
   REPORT_ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트 쟁점을 찾을 수 없습니다."),
+  // INVALID_STATUS_TRANSITION: 미사용 예약 code. 검수 생명주기 전이 위반은 INVALID_STATE_TRANSITION(409)로 응답한다.
   INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "허용되지 않는 상태 전이입니다."),
   PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "제안을 찾을 수 없습니다."),
   REPORT_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종결된 리포트입니다."),

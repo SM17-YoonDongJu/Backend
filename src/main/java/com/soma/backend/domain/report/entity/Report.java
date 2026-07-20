@@ -183,7 +183,15 @@ public class Report extends BaseEntity {
   }
 
   /**
-   * 검수 반영에 의한 상태 전이. 허용표(design.md §4)를 벗어나면 400 INVALID_STATE_TRANSITION.
+   * 사정사 검수 화면(상세 조회·검수 워크스페이스) 노출 대상 상태인지. 검수 대기(AWAITING_INSPECTION)·
+   * 채택 대기(AWAITING_ADOPTION)에서만 검수 화면을 연다 — 그 외(COUNSELING·CLOSED·NOT_SELECTED)는 노출하지 않는다.
+   */
+  public boolean isInReviewPhase() {
+    return this.status == ReportStatus.AWAITING_INSPECTION || this.status == ReportStatus.AWAITING_ADOPTION;
+  }
+
+  /**
+   * 검수 반영에 의한 상태 전이. 허용표(design.md §4)를 벗어나면 409 INVALID_STATE_TRANSITION.
    */
   public void applyReviewTransition(ReportStatus target) {
     Set<ReportStatus> allowed = ALLOWED_TRANSITIONS.getOrDefault(status, Set.of());
@@ -196,7 +204,7 @@ public class Report extends BaseEntity {
   /**
    * 사정사 검수 착수/반영에 의한 상태 파생 전이. 사정사는 target을 지정하지 않고 현재 status에서 파생한다.
    * AWAITING_INSPECTION → AWAITING_ADOPTION(착수), AWAITING_ADOPTION → 유지(재반영). 그 외(COUNSELING·CLOSED)는
-   * 검수 대상이 아니므로 400 INVALID_STATE_TRANSITION. 검수 내용은 REPORTS가 아니라 REPORT_REVIEWS에만 저장하며,
+   * 검수 대상이 아니므로 409 INVALID_STATE_TRANSITION. 검수 내용은 REPORTS가 아니라 REPORT_REVIEWS에만 저장하며,
    * REPORTS는 이 생명주기 status 전이만 반영한다(A8 격리).
    */
   public void applyReviewStart() {

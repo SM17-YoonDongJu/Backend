@@ -88,4 +88,13 @@ class ReportControllerAuthTest {
             .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isOk());
   }
+
+  @Test
+  @DisplayName("경로변수 reportId가 비-UUID면 400 INVALID_REQUEST(500 아님)")
+  void malformedUuidPathVariableReturns400() throws Exception {
+    mockMvc.perform(get("/reports/{id}/proposals", "not-a-uuid")
+            .with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+  }
 }

@@ -6,8 +6,10 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -63,6 +65,28 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex) {
     return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus())
         .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
+  }
+
+  /**
+   * 경로변수·쿼리 파라미터의 타입 변환이 실패하면(예: UUID 경로변수에 비-UUID 전달) 스프링 MVC가
+   * MethodArgumentTypeMismatchException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 INVALID_REQUEST로 매핑한다.
+   */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus())
+        .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
+  }
+
+  /**
+   * 필수 쿼리 파라미터({@code @RequestParam})가 누락되면(예: OAuth 콜백 code 누락) 스프링 MVC가
+   * MissingServletRequestParameterException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 MISSING_REQUIRED_FIELD로 매핑한다.
+   */
+  @ExceptionHandler(MissingServletRequestParameterException.class)
+  public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex) {
+    return ResponseEntity.status(ErrorCode.MISSING_REQUIRED_FIELD.getStatus())
+        .body(ErrorResponse.of(ErrorCode.MISSING_REQUIRED_FIELD));
   }
 
   /**
