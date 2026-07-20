@@ -26,8 +26,8 @@ import com.soma.backend.domain.notification.repository.DeviceTokenRepository;
 import com.soma.backend.infra.fcm.FcmService;
 
 /**
- * PushNotificationService(발송 오케스트레이터) 단위 테스트. 죽은 토큰 정리(deleteByUserIdAndTokenIn) 책임이
- * infra(FcmService)가 아니라 소유 도메인에 있음을 검증한다(strict layering, 리더 결정 A6).
+ * PushNotificationService(발송 오케스트레이터) 단위 테스트. 죽은 토큰 정리 책임이 infra(FcmService)가 아니라
+ * 소유 도메인(DeadDeviceTokenCleaner)에 있고, 발송 I/O가 트랜잭션 밖에서 이뤄짐을 검증한다(strict layering).
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("PushNotificationService 단위 테스트 (발송 오케스트레이터)")
@@ -42,8 +42,11 @@ class PushNotificationServiceTest {
   @Mock
   private FcmService fcmService;
 
+  @Mock
+  private DeadDeviceTokenCleaner deadDeviceTokenCleaner;
+
   @Test
-  @DisplayName("죽은 토큰이 있으면 추출한 토큰으로 발송하고 deleteByUserIdAndTokenIn으로 정리한다")
+  @DisplayName("죽은 토큰이 있으면 추출한 토큰으로 발송하고 DeadDeviceTokenCleaner로 정리한다")
   void sendToUser_whenDeadTokens_deletesThem() {
     // Given
     UUID userId = UUID.randomUUID();
@@ -60,7 +63,7 @@ class PushNotificationServiceTest {
     ArgumentCaptor<List<String>> tokensCaptor = ArgumentCaptor.forClass(List.class);
     then(fcmService).should().send(tokensCaptor.capture(), eq("제목"), eq("본문"), eq(data));
     assertThat(tokensCaptor.getValue()).containsExactly("token-1", "token-2");
-    then(deviceTokenRepository).should().deleteByUserIdAndTokenIn(userId, List.of("token-2"));
+    then(deadDeviceTokenCleaner).should().delete(userId, List.of("token-2"));
   }
 
   @Test
@@ -76,7 +79,7 @@ class PushNotificationServiceTest {
     pushNotificationService.sendToUser(userId, "제목", "본문", Map.of());
 
     // Then
-    then(deviceTokenRepository).should(never()).deleteByUserIdAndTokenIn(any(), any());
+    then(deadDeviceTokenCleaner).should(never()).delete(any(), any());
   }
 
   @Test
@@ -91,6 +94,6 @@ class PushNotificationServiceTest {
 
     // Then
     then(fcmService).shouldHaveNoInteractions();
-    then(deviceTokenRepository).should(never()).deleteByUserIdAndTokenIn(any(), any());
+    then(deadDeviceTokenCleaner).should(never()).delete(any(), any());
   }
 }
