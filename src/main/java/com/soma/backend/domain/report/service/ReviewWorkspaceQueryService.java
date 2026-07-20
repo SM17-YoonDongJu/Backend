@@ -43,6 +43,10 @@ public class ReviewWorkspaceQueryService {
   public ReviewWorkspaceResponse getReviewWorkspace(UUID reportId, UUID adjusterId) {
     Report report = reportRepository.findById(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+    // 상세 조회와 동일한 노출 정책: 검수 단계(검수 대기·채택 대기)가 아니면 존재를 숨겨 404로 응답한다.
+    if (!report.isInReviewPhase()) {
+      throw new BusinessException(ErrorCode.REPORT_NOT_FOUND);
+    }
     ReviewContextRow context = reportRepository.findReviewContext(reportId);
     List<String> region = reportRepository.findRegionByReportId(reportId);
     ClaimDetails claimDetails = report.getClaimId() == null ? null

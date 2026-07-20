@@ -2,7 +2,6 @@ package com.soma.backend.domain.report.controller;
 
 import java.util.UUID;
 
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +28,7 @@ import com.soma.backend.domain.report.service.PendingReviewQueryService;
 import com.soma.backend.domain.report.service.ReportHoldCommandService;
 import com.soma.backend.domain.report.service.ReportReviewCommandService;
 import com.soma.backend.domain.report.service.ReviewWorkspaceQueryService;
+import com.soma.backend.global.common.PageRequests;
 import com.soma.backend.global.response.ApiResponse;
 import com.soma.backend.global.security.CustomUserDetails;
 
@@ -64,9 +64,9 @@ public class PendingReviewController {
       @RequestParam(required = false) String status,
       @RequestParam(required = false) String accidentType,
       @RequestParam(required = false) String region,
-      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "20") int size) {
-    Pageable pageable = PageRequest.of(page, size);
+    Pageable pageable = PageRequests.ofOneBased(page, size);
     PendingReviewListResponse result =
         pendingReviewQueryService.getPendingReviewList(
             status, accidentType, region, principal.getUserId(), pageable);

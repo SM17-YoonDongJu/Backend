@@ -153,6 +153,19 @@ class ReviewWorkspaceQueryServiceTest {
         .extracting("errorCode").isEqualTo(ErrorCode.REPORT_NOT_FOUND);
   }
 
+  @Test
+  @DisplayName("검수 단계가 아닌 report(CLOSED)면 REPORT_NOT_FOUND — 상세 조회와 동일한 노출 정책")
+  void notInReviewPhaseReturnsNotFound() {
+    Report report = BeanUtils.instantiateClass(Report.class);
+    ReflectionTestUtils.setField(report, "id", reportId);
+    ReflectionTestUtils.setField(report, "status", ReportStatus.CLOSED);
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+
+    assertThatThrownBy(() -> service.getReviewWorkspace(reportId, adjusterId))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode").isEqualTo(ErrorCode.REPORT_NOT_FOUND);
+  }
+
   private Report report() {
     Report report = BeanUtils.instantiateClass(Report.class);
     ReflectionTestUtils.setField(report, "id", reportId);

@@ -10,7 +10,7 @@ import org.springframework.data.domain.Page;
 import com.soma.backend.domain.report.entity.AmountRange;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
 
-/** API#2 응답(item + page 메타). */
+/** API#2 응답(item + page 메타). page는 1-based(외부 API 정합). */
 public record PendingReviewListResponse(List<Item> items, int page, int size, long totalElements, int totalPages) {
 
   public static PendingReviewListResponse from(
@@ -19,7 +19,7 @@ public record PendingReviewListResponse(List<Item> items, int page, int size, lo
         .map(row -> Item.from(row, reportReviewStatusByReportId.get(row.reportId())))
         .toList();
     return new PendingReviewListResponse(
-        items, page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+        items, page.getNumber() + 1, page.getSize(), page.getTotalElements(), page.getTotalPages());
   }
 
   /**

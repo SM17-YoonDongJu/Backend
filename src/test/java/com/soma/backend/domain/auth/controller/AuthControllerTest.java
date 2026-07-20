@@ -123,6 +123,14 @@ class AuthControllerTest {
   }
 
   @Test
+  @DisplayName("콜백-필수 파라미터 code 누락이면 400 MISSING_REQUIRED_FIELD")
+  void callback_missingCode_returns400() throws Exception {
+    mockMvc.perform(get("/auth/oauth2/{provider}/callback", "kakao"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("MISSING_REQUIRED_FIELD"));
+  }
+
+  @Test
   @DisplayName("register 성공이면 201과 함께 status·message·snake_case 본문을 반환하고 쿠키를 발급한다")
   void register_success_returns201WithBodyAndCookie() throws Exception {
     // Given
