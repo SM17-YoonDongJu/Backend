@@ -30,6 +30,14 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      # OAuth redirect_uri {baseUrl} 치환값(프론트 인가요청·provider 콘솔 등록 redirect_uri와 일치해야 함)
+      OAUTH_BASE_URL: ${OAUTH_BASE_URL:-http://localhost:8080}
+      OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-http://localhost:8080,http://localhost:3000,https://brbosang.com}
+      # 쿠키 인증 CORS 허용 오리진(쉼표 구분 패턴). 프론트 오리진을 반드시 포함
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:3000}
+      # cross-site HTTPS면 COOKIE_SECURE=true·COOKIE_SAME_SITE=None (평문 http면 false·Lax 유지)
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
       AI_SERVICE_URL: ${AI_SERVICE_URL}
       TZ: Asia/Seoul
     healthcheck:
