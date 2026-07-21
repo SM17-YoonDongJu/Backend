@@ -35,10 +35,10 @@ public class OAuthLoginService {
   private final AuthTokenService authTokenService;
 
   public OAuthCallbackResponse handleCallback(
-      HttpServletResponse response, String provider, String code, String state) {
+      HttpServletResponse response, String provider, String code, String state, String redirectUri) {
 
     // 외부 OAuth 프로필 조회는 트랜잭션 밖에서 수행한다(HTTP 지연 시 DB 커넥션 점유·풀 고갈 방지).
-    OAuthProfile profile = oAuthClient.fetchProfile(provider, code, state);
+    OAuthProfile profile = oAuthClient.fetchProfile(provider, code, state, redirectUri);
 
     return socialAccountRepository
         .findByProviderAndProviderUserId(profile.provider(), profile.providerUserId())

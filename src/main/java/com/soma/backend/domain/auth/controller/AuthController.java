@@ -51,9 +51,11 @@ public class AuthController {
       @PathVariable String provider,
       @RequestParam String code,
       @RequestParam(required = false) @Nullable String state,
+      @RequestParam(name = "redirect_uri", required = false) @Nullable String redirectUri,
       HttpServletResponse response) {
 
-    OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, provider, code, state);
+    OAuthCallbackResponse result =
+        oAuthLoginService.handleCallback(response, provider, code, state, redirectUri);
     return ResponseEntity.ok(ApiResponse.ok(result));
   }
 

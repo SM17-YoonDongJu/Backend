@@ -67,7 +67,7 @@ class OAuthLoginServiceTest {
     OAuthProfile profile = new OAuthProfile("kakao", "kakao-1");
     SocialAccount account = mock(SocialAccount.class);
     User user = mock(User.class);
-    given(oAuthClient.fetchProfile("kakao", "code", "state")).willReturn(profile);
+    given(oAuthClient.fetchProfile("kakao", "code", "state", null)).willReturn(profile);
     given(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-1"))
         .willReturn(Optional.of(account));
     given(account.getUserId()).willReturn(userId);
@@ -76,7 +76,7 @@ class OAuthLoginServiceTest {
     given(user.getRole()).willReturn(Role.USER);
 
     // When
-    OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, "kakao", "code", "state");
+    OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, "kakao", "code", "state", null);
 
     // Then
     assertThat(result.isNewUser()).isFalse();
@@ -91,13 +91,13 @@ class OAuthLoginServiceTest {
   void handleCallback_newUser_returnsSignupTicket() {
     // Given
     OAuthProfile profile = new OAuthProfile("naver", "naver-9");
-    given(oAuthClient.fetchProfile("naver", "code", null)).willReturn(profile);
+    given(oAuthClient.fetchProfile("naver", "code", null, null)).willReturn(profile);
     given(socialAccountRepository.findByProviderAndProviderUserId("naver", "naver-9"))
         .willReturn(Optional.empty());
     given(signupTicketProvider.issue("naver", "naver-9")).willReturn("ticket-jwt");
 
     // When
-    OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, "naver", "code", null);
+    OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, "naver", "code", null, null);
 
     // Then
     assertThat(result.isNewUser()).isTrue();
@@ -113,14 +113,14 @@ class OAuthLoginServiceTest {
     UUID userId = UUID.randomUUID();
     OAuthProfile profile = new OAuthProfile("kakao", "kakao-2");
     SocialAccount account = mock(SocialAccount.class);
-    given(oAuthClient.fetchProfile("kakao", "code", "state")).willReturn(profile);
+    given(oAuthClient.fetchProfile("kakao", "code", "state", null)).willReturn(profile);
     given(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-2"))
         .willReturn(Optional.of(account));
     given(account.getUserId()).willReturn(userId);
     given(userRepository.findById(userId)).willReturn(Optional.empty());
 
     // When & Then
-    assertThatThrownBy(() -> oAuthLoginService.handleCallback(response, "kakao", "code", "state"))
+    assertThatThrownBy(() -> oAuthLoginService.handleCallback(response, "kakao", "code", "state", null))
         .isInstanceOf(BusinessException.class)
         .extracting(ex -> ((BusinessException) ex).getErrorCode())
         .isEqualTo(ErrorCode.USER_NOT_FOUND);

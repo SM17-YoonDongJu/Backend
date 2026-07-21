@@ -92,7 +92,8 @@ class AuthControllerTest {
     willAnswer(invocation -> {
       addAccessCookie(invocation.getArgument(0), Duration.ofMinutes(30));
       return OAuthCallbackResponse.existingUser(userId);
-    }).given(oAuthLoginService).handleCallback(any(HttpServletResponse.class), eq("kakao"), eq("code"), any());
+    }).given(oAuthLoginService)
+        .handleCallback(any(HttpServletResponse.class), eq("kakao"), eq("code"), any(), any());
 
     // When & Then
     mockMvc.perform(get("/auth/oauth2/{provider}/callback", "kakao")
@@ -110,7 +111,7 @@ class AuthControllerTest {
   @DisplayName("콜백-신규회원이면 200과 함께 쿠키 없이 signup_ticket을 반환하고 is_new_user=true")
   void callback_newUser_returnsTicketWithoutCookie() throws Exception {
     // Given
-    given(oAuthLoginService.handleCallback(any(HttpServletResponse.class), eq("naver"), eq("code"), any()))
+    given(oAuthLoginService.handleCallback(any(HttpServletResponse.class), eq("naver"), eq("code"), any(), any()))
         .willReturn(OAuthCallbackResponse.newUser("signup-ticket-jwt"));
 
     // When & Then
