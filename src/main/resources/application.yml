@@ -93,14 +93,37 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        # health·info = 공개(개발 단계), 그 외(loggers·logfile·metrics·prometheus)는 ADMIN 인가 뒤(SecurityConfig).
+        # env·configprops·heapdump·threaddump 등 민감 엔드포인트는 의도적으로 미노출(넓히지 말 것).
+        include: health,info,loggers,logfile,metrics,prometheus
   endpoint:
     health:
-      show-details: always
+      # 공개 프로브에는 UP/DOWN 요약만, 인증된 사용자에게만 상세(DB·Redis·디스크)를 노출 — 익명에 인프라 정보 유출 방지.
+      show-details: when-authorized
       probes:
-        enabled: true
+        enabled: true          # liveness/readiness 프로브 → /actuator/health/{liveness,readiness}
+  info:
+    env:
+      enabled: true            # 아래 info.* 커스텀 프로퍼티 노출
+    java:
+      enabled: true            # JVM 버전·벤더
+    os:
+      enabled: true            # OS 이름·버전·아키텍처
+    build:
+      enabled: true            # META-INF/build-info.properties (버전·빌드시각) — build.gradle buildInfo()
+
+# /actuator/info 커스텀 섹션 (management.info.env.enabled=true로 노출)
+info:
+  app:
+    name: ${spring.application.name}
+    description: 손해사정 매칭·검수 리포트 백엔드 API
+    environment: ${SPRING_PROFILES_ACTIVE:local}
 
 logging:
+  file:
+    # /actuator/logfile 엔드포인트가 읽는 경로. logback-spring.xml의 FILE appender(${LOG_DIR}/app.log)와 동일하게
+    # LOG_DIR로 맞춘다. 파일 로깅은 dev·prod 프로파일에서만 활성(local·test는 파일 미생성 → 엔드포인트 404).
+    name: ${LOG_DIR:/app/logs}/app.log
   level:
     root: ${LOG_LEVEL:INFO}
     com.soma.backend: DEBUG

@@ -56,12 +56,17 @@ public class SecurityConfig {
         .sessionManagement(session ->
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> {
-          auth.requestMatchers("/auth/**", "/ws/**", "/ws-chat/**", "/actuator/health", "/actuator/health/**")
+          auth.requestMatchers(
+              "/auth/**", "/ws/**", "/ws-chat/**",
+              "/actuator/health", "/actuator/health/**", "/actuator/info")
               .permitAll();
           if (docsPublic) {
             // dev 전용: Scalar API 문서 경로를 인증 없이 개방(app.docs.public=true, 운영은 기본 false).
             auth.requestMatchers("/docs", "/scalar.html", "/v3/api-docs", "/v3/api-docs/**").permitAll();
           }
+          // 나머지 관리 엔드포인트(loggers·logfile·metrics·prometheus)는 ADMIN 전용.
+          // health 프로브·info는 위에서 공개했고, loggers POST(런타임 로그레벨 변경)·logfile은 특히 민감해 운영자만 접근.
+          auth.requestMatchers("/actuator/**").hasRole("ADMIN");
           auth.anyRequest().authenticated();
         })
         .exceptionHandling(ex -> ex
