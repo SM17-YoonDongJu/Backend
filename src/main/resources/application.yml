@@ -98,7 +98,8 @@ management:
   endpoints:
     web:
       exposure:
-        # health·info = 공개(개발 단계), 그 외(loggers·logfile·metrics·prometheus)는 ADMIN 인가 뒤(SecurityConfig).
+        # health·info = 공개. 나머지(loggers·logfile·metrics·prometheus)는 dev/prod에서 관리 포트(9292)로
+        # 분리·격리(private subnet + 호스트 미게시 = 네트워크 보호), 메인 포트 폴백 시엔 인증 뒤에 둔다.
         # env·configprops·heapdump·threaddump 등 민감 엔드포인트는 의도적으로 미노출(넓히지 말 것).
         include: health,info,loggers,logfile,metrics,prometheus
   endpoint:
