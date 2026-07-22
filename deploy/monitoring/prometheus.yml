@@ -1,0 +1,51 @@
+# Prometheus 스크랩 설정 — t3 App 인스턴스 콜로케이트 (#88)
+# 같은 docker network(brbs-net)의 서비스는 컨테이너 이름으로, GPU(g6)는 private IP로 스크랩한다.
+# 이 파일은 grafana provisioning과 함께 deploy/monitoring/ 로 관리하며 서버에서 직접 편집하지 않는다.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: brbs-dev
+
+scrape_configs:
+  # Prometheus 자체
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Spring Boot 앱 메트릭 (HTTP·JVM·HikariCP)
+  # #89에서 management.server.port=9292(관리 포트 분리) 노출 전까진 DOWN 이 정상.
+  - job_name: brbs-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["backend:9292"]
+        labels:
+          instance: t3-app
+
+  # t3 시스템 메트릭 (CPU·메모리·디스크·네트워크)
+  - job_name: node-t3
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          instance: t3-app
+
+  # t3 컨테이너 메트릭
+  - job_name: cadvisor-t3
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels:
+          instance: t3-app
+
+  # ── GPU(g6.xlarge) 시스템·컨테이너 메트릭 — 종윤(jongyo0N) 담당 ──
+  # g6에 node_exporter(9100)·cAdvisor(8080) 배포 후, 그 private IP로 아래 주석을 해제한다.
+  # 보안그룹: t3 → g6 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).
+  # - job_name: node-gpu
+  #   static_configs:
+  #     - targets: ["<G6_PRIVATE_IP>:9100"]
+  #       labels:
+  #         instance: g6-gpu
+  # - job_name: cadvisor-gpu
+  #   static_configs:
+  #     - targets: ["<G6_PRIVATE_IP>:8080"]
+  #       labels:
+  #         instance: g6-gpu

@@ -41,6 +41,41 @@ curl -s localhost:8080/actuator/health          # 컴포넌트별(db/redis 등)
 curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/actuator/health/readiness
 ```
 
+## 관측성 스택 (Prometheus + Grafana, #88)
+
+별도 모니터링 인스턴스 없이 **t3 App 인스턴스에 콜로케이트**한다. 스택은 `docker-compose.dev.yml`에 포함되고
+설정은 `deploy/monitoring/`(prometheus·grafana provisioning)로 관리한다. 전부 `restart: unless-stopped`로 상주.
+
+| 구성요소 | 포트(바인딩) | 역할 |
+|----------|--------------|------|
+| Prometheus | `127.0.0.1:9090` | 스크랩·저장(로컬 TSDB, retention 15d) |
+| Grafana | `127.0.0.1:3000` | 대시보드(인증 필수, 외부 미노출) |
+| node-exporter | (미게시, 내부 `:9100`) | t3 시스템 메트릭 |
+| cAdvisor | (미게시, 내부 `:8080`) | t3 컨테이너 메트릭 |
+
+- **스크랩은 전부 내부망(brbs-net)** 에서 컨테이너 이름으로 수행 → exporter·앱 메트릭 포트는 **호스트에 미게시**.
+- **외부 노출 최소화**: Prometheus·Grafana는 `127.0.0.1` 바인딩 → 퍼블릭 접근 불가. 접근은 **SSM 포트포워드**로:
+  ```bash
+  aws ssm start-session --target <t3-instance-id> \
+    --document-name AWS-StartPortForwardingSession \
+    --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'   # → http://localhost:3000 (Grafana)
+  ```
+- **앱 메트릭(`backend:9292/actuator/prometheus`)은 #89 배포 전까지 DOWN** 이 정상 — #89에서 관리 포트(9292) 노출 시 UP.
+- **GPU(g6) exporter는 종윤 담당** — g6에 node_exporter·cAdvisor 배포 후 `monitoring/prometheus.yml`의 GPU job 주석 해제 + 보안그룹(t3→g6 9100·8080 private) 허용.
+
+### 기동
+```bash
+cd ~/backend
+# .env.dev 에 GRAFANA_ADMIN_PASSWORD 채운 뒤 (미설정 시 grafana 기동 실패)
+docker compose --env-file .env.dev up -d prometheus grafana node-exporter cadvisor
+# 타깃 상태(UP/DOWN) 확인
+curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'
+```
+
+> ⚠️ **CD 동기화 주의**: `deploy-dev.yml`은 현재 `docker-compose.dev.yml`만 EC2로 동기화한다.
+> `deploy/monitoring/` 설정 디렉터리도 함께 동기화되도록 워크플로를 확장하거나(권장), 최초 1회 수동 배치해야
+> 볼륨 바인드 마운트(`./monitoring/...`)가 동작한다.
+
 ## 주의
 - 자격증명: S3는 **EC2 IAM Role** 자동 사용(정적 키 불필요).
 - backend healthcheck는 alpine 이미지 기준 **`wget` + `/actuator/health/readiness`** (curl 미설치).
