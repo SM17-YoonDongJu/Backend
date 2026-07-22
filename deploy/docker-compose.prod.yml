@@ -1,19 +1,23 @@
-# dev EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
-# 사용: docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
-# CD는 backend만 bounce: ... up -d --no-deps backend
+# prod EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
+# 사용: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+# CD(main push)는 backend만 bounce: ... up -d --no-deps backend
 # 인프라(redis/kafka)는 최초 1회 full up 후 restart 정책으로 상주한다.
+# dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시 · kafka-ui 미포함.
 name: brbs
 
 services:
   backend:
-    image: ${ECR_REGISTRY}/soma/backend:${BACKEND_TAG:-dev}
+    image: ${ECR_REGISTRY}/soma/backend:${BACKEND_TAG:-prod}
     container_name: brbs-backend
     restart: unless-stopped
     ports:
       - "8080:8080"
+      # actuator 관리 포트(9292)를 ALB 헬스체크용으로 호스트 게시.
+      # ⚠️ 인스턴스 SG에서 ALB SG로부터의 9292 인바운드만 허용할 것(외부 직접 노출 금지).
+      - "9292:9292"
     environment:
-      SPRING_PROFILES_ACTIVE: dev
-      LOG_LEVEL: ${LOG_LEVEL}
+      SPRING_PROFILES_ACTIVE: prod
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
@@ -30,17 +34,17 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
-      # OAuth redirect_uri {baseUrl} 치환값(프론트 인가요청·provider 콘솔 등록 redirect_uri와 일치해야 함)
-      OAUTH_BASE_URL: ${OAUTH_BASE_URL:-http://localhost:8080}
-      OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-http://localhost:8080,http://localhost:3000,https://brbosang.com}
-      # 쿠키 인증 CORS 허용 오리진(쉼표 구분 패턴). 프론트 오리진을 반드시 포함
-      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:3000}
-      # cross-site HTTPS면 COOKIE_SECURE=true·COOKIE_SAME_SITE=None (평문 http면 false·Lax 유지)
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # OAuth redirect_uri {baseUrl} 치환값 = 백엔드 API 도메인
+      OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://api.brbosang.com}
+      # 프론트가 콜백에 넘긴 redirect_uri를 허용할 오리진 = 프론트 도메인(API 아님)
+      OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-https://brbosang.com,https://www.brbosang.com}
+      # 쿠키 인증 CORS 허용 오리진 = 프론트 도메인(쿠키 인증이라 * 불가)
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-https://brbosang.com,https://www.brbosang.com}
+      # prod는 HTTPS. 프론트(brbosang.com)·API(api.brbosang.com)는 same-site라 SameSite=Lax로 충분(None 불필요)
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
       AI_SERVICE_URL: ${AI_SERVICE_URL}
-      # actuator 관리 포트 분리: health·info·metrics·prometheus를 내부망 전용 포트(9292)로 격리(호스트 미게시).
-      # Prometheus는 brbs-net에서 backend:9292 스크랩, 헬스체크는 컨테이너 내부 localhost:9292로 접근.
+      # actuator 관리 포트 분리(9292). health·metrics·prometheus를 관리 포트로 격리
       MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
       TZ: Asia/Seoul
     healthcheck:
@@ -57,14 +61,15 @@ services:
     networks:
       - brbs-net
 
-  # Kafka 워커(report-job 소비 · LangGraph · RAG). HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  # Kafka 워커(report-job 소비 · LangGraph · RAG). AI 레포가 이미지 배포. HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  # ⚠️ AI_BASE_URL(GPU 인스턴스) 연결 전에는 기동 실패할 수 있음 — backend는 --no-deps라 독립.
   report:
-    image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-dev}
+    image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-prod}
     container_name: brbs-report
     restart: unless-stopped
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-dev}
-      LOG_LEVEL: ${LOG_LEVEL}
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SERVICE_NAME: report-worker
       INSTANCE_ID: ${INSTANCE_ID:-}
       DATABASE_URL: ${DATABASE_URL}
@@ -99,14 +104,14 @@ services:
 
   # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). Kafka·S3 없음, Redis 필수.
   chatbot:
-    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-dev}
+    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-prod}
     container_name: brbs-chatbot
     restart: unless-stopped
     ports:
       - "8001:8000"
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-dev}
-      LOG_LEVEL: ${LOG_LEVEL}
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SERVICE_NAME: chatbot
       INSTANCE_ID: ${INSTANCE_ID:-}
       DATABASE_URL: ${DATABASE_URL}
@@ -192,27 +197,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - brbs-net
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: brbs-kafka-ui
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8090:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: brbs-kafka
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      DYNAMIC_CONFIG_ENABLED: "true"
-    depends_on:
-      kafka:
-        condition: service_healthy
     logging:
       driver: json-file
       options:
