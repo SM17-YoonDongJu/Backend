@@ -46,6 +46,11 @@ server:
   port: 8080
   compression:
     enabled: true
+  tomcat:
+    # Tomcat 스레드풀·커넥터·요청 메트릭(tomcat_threads_*·tomcat_global_request_*)을 Micrometer가
+    # 수집하려면 MBean 레지스트리를 켜야 한다(기본 false). /actuator/prometheus로 노출된다.
+    mbeanregistry:
+      enabled: true
 
 jwt:
   secret: ${JWT_SECRET:localdevonlysecretkeyatleast32chars!!}
