@@ -1,0 +1,16 @@
+# 운영(prod) 프로파일. application.yml 기본값이 이미 운영 안전값(cookie.secure=true, docs 비공개,
+# management 9292 격리는 MANAGEMENT_SERVER_PORT로 주입)이라, 여기서는 "기본값과 달라야 하는 것"만 override 한다.
+# ⚠️ dev(application-dev.yml)의 개발 편의값(cookie.secure:false·docs.public:true·show-sql:true)을 절대 답습하지 않는다.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate      # 스키마 변경 금지 — 변경 주체는 Flyway뿐(update/create 금지 재확인)
+    show-sql: false           # 운영 SQL 로그 미출력
+  flyway:
+    validate-on-migrate: true # 적용된 마이그레이션 체크섬 검증
+    clean-disabled: true      # flyway clean(DROP 계열) 원천 차단 — 실사용자 데이터 보호
+    baseline-on-migrate: false
+
+logging:
+  level:
+    com.soma.backend: INFO    # application.yml의 DEBUG를 운영에선 INFO로(성능·PII·로그량 관리)
