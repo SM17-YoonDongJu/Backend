@@ -39,9 +39,12 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
       AI_SERVICE_URL: ${AI_SERVICE_URL}
+      # actuator 관리 포트 분리: health·info·metrics·prometheus를 내부망 전용 포트(9292)로 격리(호스트 미게시).
+      # Prometheus는 brbs-net에서 backend:9292 스크랩, 헬스체크는 컨테이너 내부 localhost:9292로 접근.
+      MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
       TZ: Asia/Seoul
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health/readiness | grep -q UP || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -37,6 +37,8 @@ dependencies {
 
 	// Observability (health check, metrics)
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// 메트릭을 Prometheus 포맷으로 노출 (/actuator/prometheus) — Micrometer Prometheus registry
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
 	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3'
