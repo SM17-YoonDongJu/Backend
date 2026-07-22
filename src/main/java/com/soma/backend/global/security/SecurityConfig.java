@@ -56,12 +56,17 @@ public class SecurityConfig {
         .sessionManagement(session ->
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> {
-          auth.requestMatchers("/auth/**", "/ws/**", "/ws-chat/**", "/actuator/health", "/actuator/health/**")
+          auth.requestMatchers(
+              "/auth/**", "/ws/**", "/ws-chat/**",
+              "/actuator/health", "/actuator/health/**", "/actuator/info")
               .permitAll();
           if (docsPublic) {
             // dev 전용: Scalar API 문서 경로를 인증 없이 개방(app.docs.public=true, 운영은 기본 false).
             auth.requestMatchers("/docs", "/scalar.html", "/v3/api-docs", "/v3/api-docs/**").permitAll();
           }
+          // actuator 관리 엔드포인트는 dev/prod에서 별도 관리 포트(9292)로 분리·격리한다
+          // (8080 = private subnet + 관리 포트 호스트 미게시 → 네트워크로 보호). health·info만 공개하고,
+          // 나머지(loggers·logfile·metrics·prometheus)는 메인 포트로 폴백돼도 인증(authenticated) 뒤에 둔다.
           auth.anyRequest().authenticated();
         })
         .exceptionHandling(ex -> ex

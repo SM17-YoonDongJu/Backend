@@ -15,6 +15,12 @@ java {
 	}
 }
 
+// build-info.properties(META-INF) 생성 → /actuator/info의 build 섹션(group·artifact·version·빌드시각)을 채운다.
+// 네이티브 Spring Boot 기능이라 별도 플러그인 불필요하고, .git 없이 도는 Docker 멀티스테이지 빌드에서도 동작한다.
+springBoot {
+	buildInfo()
+}
+
 repositories {
 	mavenCentral()
 }
@@ -31,6 +37,8 @@ dependencies {
 
 	// Observability (health check, metrics)
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// 메트릭을 Prometheus 포맷으로 노출 (/actuator/prometheus) — Micrometer Prometheus registry
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
 	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3'
