@@ -72,9 +72,10 @@ docker compose --env-file .env.dev up -d prometheus grafana node-exporter cadvis
 curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'
 ```
 
-> ⚠️ **CD 동기화 주의**: `deploy-dev.yml`은 현재 `docker-compose.dev.yml`만 EC2로 동기화한다.
-> `deploy/monitoring/` 설정 디렉터리도 함께 동기화되도록 워크플로를 확장하거나(권장), 최초 1회 수동 배치해야
-> 볼륨 바인드 마운트(`./monitoring/...`)가 동작한다.
+> **CD 동기화**: `deploy-dev.yml`이 `docker-compose.dev.yml`과 함께 **`deploy/monitoring/` 디렉터리도**
+> tar.gz+SSM으로 EC2에 동기화한다(드리프트 차단 — 서버에서 수동 편집 금지). 배포 시 prometheus엔 SIGHUP을
+> 보내 스크랩 설정을 자동 리로드하고, 대시보드 JSON은 grafana가 30초마다 재스캔한다.
+> 단 **grafana provisioning(datasource·alerting) 변경은 재시작 필요**: `docker compose restart grafana`.
 
 ## 주의
 - 자격증명: S3는 **EC2 IAM Role** 자동 사용(정적 키 불필요).
