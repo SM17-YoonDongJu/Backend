@@ -1,0 +1,306 @@
+# 알림 룰 6종 (#88 보너스) — 1분 평가, BRBS 폴더.
+# 설계 원칙:
+#  - NoData → OK: dev 무트래픽·GPU 미연결 시 침묵(오발화 방지)
+#  - Error → OK, 단 TargetDown만 Error → Alerting: Prometheus(데이터소스) 자체 장애를 대표 1건으로 감지
+#  - TargetDown은 job 무관 up 전체 커버 → GPU 타깃이 추가되는 순간 자동 커버(후속 룰 불필요)
+#  - 임계값은 보수적 초기값 — 운영하며 튜닝
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: brbs-alerts
+    folder: BRBS
+    interval: 1m
+    rules:
+      - uid: brbs-target-down
+        title: "TargetDown - 스크랩 타깃 다운"
+        condition: C
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "타깃 다운: {{ $labels.job }} / {{ $labels.instance }}"
+          description: "2분 이상 스크랩 실패(up==0). 컨테이너 상태(docker ps)·네트워크를 확인. 이 룰만 Error=Alerting이라 Prometheus 장애 시에도 발화한다."
+        noDataState: OK
+        execErrState: Alerting
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'up'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{job}}/{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-high-5xx
+        title: "High5xxRate - HTTP 5xx 에러율 5% 초과"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "backend 5xx 에러율이 5%를 초과"
+          description: "5분 지속. 최소 트래픽 가드(>0.1 req/s)가 있어 저트래픽 오발화는 걸러진다. 앱 로그·최근 배포를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count[5m]))) and (sum(rate(http_server_requests_seconds_count[5m])) > 0.1)'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "5xx ratio"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-high-cpu
+        title: "HighCpu - CPU 85% 초과"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 과부하: {{ $labels.instance }}"
+          description: "10분 지속 85% 초과. t3는 콜로케이트(앱+인프라+모니터링)라 원인 컨테이너를 cost-optimization 대시보드 Top10에서 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-high-memory
+        title: "HighMemory - 메모리 90% 초과"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "메모리 압박: {{ $labels.instance }}"
+          description: "10분 지속 90% 초과 — OOM 전조. 컨테이너별 소비는 cost-optimization 대시보드에서 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-disk-filling
+        title: "DiskFilling - 디스크 80% 초과"
+        condition: C
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "디스크 사용률 80% 초과: {{ $labels.instance }}"
+          description: "TSDB(retention 15d)·로그·kafka 데이터 축적 확인. 7일 예측은 cost-optimization 대시보드 참조."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"})) * 100'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [80]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-hikari-saturated
+        title: "HikariSaturated - DB 커넥션 풀 대기 발생"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HikariCP 대기 스레드 발생(풀 포화)"
+          description: "5분 지속 pending>0 — 커넥션을 못 받은 요청이 대기 중. 느린 쿼리·풀 크기(maximum-pool-size)·커넥션 누수를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'hikaricp_connections_pending'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{pool}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
