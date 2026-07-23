@@ -1,23 +1,32 @@
-# Grafana 대시보드 (provisioning 자동 로드)
+# Grafana 대시보드 (파일 프로비저닝 — 자동 로드)
 
-이 폴더의 `*.json` 은 Grafana 기동 시 **자동 등록**된다(`../provisioning/dashboards/dashboards.yml`).
-[grafana.com/dashboards](https://grafana.com/grafana/dashboards/) 에서 아래 ID의 JSON을 내려받아 이 폴더에 저장한다.
-(내려받을 때 데이터소스는 프로비저닝된 `Prometheus`(uid) 로 맞춘다.)
+이 폴더의 `*.json`은 Grafana 기동 시 **자동 등록**되고 30초마다 재스캔된다
+(`../provisioning/dashboards/dashboards.yml`). 리포가 진실원이며, UI에서 만진 건 export → 여기 커밋으로 환류한다.
 
-| 용도 | 대시보드 | ID | 커버 이슈 |
-|------|----------|----|-----------|
-| 시스템(t3·g6) CPU/메모리/디스크/네트워크 | Node Exporter Full | `1860` | #88 |
-| 컨테이너 메트릭 | cAdvisor / Docker | `14282` | #88 |
-| Spring Boot(JVM·HTTP·HikariCP) | Spring Boot 3.x / Micrometer | `12900` | #89 |
-| JVM 상세(GC·스레드) | JVM (Micrometer) | `4701` | #89 |
+## 커밋된 대시보드
+| 파일 | 대시보드 | 용도 | 데이터 조건 |
+|------|----------|------|-------------|
+| `1860.json` | Node Exporter Full | t3·g6 시스템(CPU·메모리·디스크·네트워크) | node_exporter UP |
+| `14282.json` | Cadvisor exporter | 컨테이너별 리소스 | cAdvisor UP |
+| `12900.json` | SpringBoot APM Dashboard | HTTP·HikariCP·로그·메모리풀 | ⚠️ **`application` 라벨 필요** |
+| `4701.json` | JVM (Micrometer) | JVM 힙·GC·스레드·버퍼풀 | ⚠️ **`application` 라벨 필요** |
 
-## 내려받기 예시
+> ⚠️ `application` 라벨은 앱의 `management.metrics.tags.application=${spring.application.name}`
+> (PR #132)이 채운다. 이 설정 없이는 12900·4701의 application 변수가 비어 패널이 No data가 된다.
+
+## 새 대시보드 추가 규칙
+grafana.com JSON은 `${DS_PROMETHEUS}` 같은 **`__inputs` 변수**를 쓰는데, 파일 프로비저닝은
+Import UI와 달리 이를 **해석하지 않는다** → 그대로 넣으면 "datasource not found"로 패널이 깨진다.
+받은 뒤 반드시 프로비저닝 데이터소스 uid(`prometheus`)로 치환해 커밋한다:
+
 ```bash
 cd deploy/monitoring/grafana/dashboards
-for id in 1860 14282 12900 4701; do
-  curl -sSL "https://grafana.com/api/dashboards/${id}/revisions/latest/download" -o "${id}.json"
-done
+id=<대시보드ID>
+curl -fsSL "https://grafana.com/api/dashboards/${id}/revisions/latest/download" -o "${id}.json"
+python - <<'EOF'
+import re, sys, glob
+for f in glob.glob('*.json'):
+    s = open(f, encoding='utf-8').read()
+    open(f, 'w', encoding='utf-8').write(re.sub(r'\$\{DS_[A-Z0-9_]+\}', 'prometheus', s))
+EOF
 ```
-
-> 대시보드 JSON은 용량이 커서 리포에 커밋할지 여부는 팀 합의로 정한다(커밋하면 재현성↑, diff 노이즈↑).
-> 우선은 위 스크립트로 서버/로컬에서 받아 채우고, 확정 대시보드만 선별 커밋하는 것을 권장.
