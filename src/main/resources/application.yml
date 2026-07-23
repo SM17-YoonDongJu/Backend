@@ -113,6 +113,11 @@ management:
       show-details: when-authorized
       probes:
         enabled: true          # liveness/readiness 프로브 → /actuator/health/{liveness,readiness}
+  metrics:
+    tags:
+      # 모든 메트릭에 붙는 공통 라벨. Grafana SpringBoot APM(12900)·JVM Micrometer(4701) 대시보드가
+      # application 라벨(label_values(application))로 대상을 선택한다 — 없으면 패널이 No data.
+      application: ${spring.application.name}
   info:
     env:
       enabled: true            # 아래 info.* 커스텀 프로퍼티 노출
