@@ -57,7 +57,7 @@ public class SecurityConfig {
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> {
           auth.requestMatchers(
-              "/auth/**", "/ws/**", "/ws-chat/**",
+              "/auth/**", "/api/v1/auth/oauth2/**", "/ws/**", "/ws-chat/**",
               "/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus")
               .permitAll();
           if (docsPublic) {
