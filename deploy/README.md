@@ -62,8 +62,9 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/actuator/health/readines
   ```
 - 앱 메트릭(`backend:9292/actuator/prometheus`)은 #131 배포로 관리 포트가 열려 있어 **스택 기동 시 바로 UP**.
 - g6에 node_exporter·cAdvisor 배포 후 `monitoring/prometheus.yml`의 GPU job 주석 해제 + 보안그룹(t3→g6 9100·8080 private) 허용.
-- **알림**: Grafana 통합 알림을 provisioning으로 관리(`monitoring/grafana/provisioning/alerting/`) → **Discord**
-  (`ALERT_WEBHOOK_URL`, 시크릿). 룰 6종 — 타깃다운·5xx에러율·CPU·메모리·디스크·Hikari 대기.
+- **알림**: Grafana 통합 알림을 provisioning으로 관리(`monitoring/grafana/provisioning/alerting/`) → **Discord 2채널
+  severity 라우팅** — `critical`(타깃다운·5xx)→`#alert-critical`(`ALERT_WEBHOOK_URL_CRITICAL`),
+  `warning`(CPU·메모리·디스크·Hikari)→`#alert-warning`(`ALERT_WEBHOOK_URL_WARNING`), 미분류는 critical(fail-safe).
   룰/정책 변경은 리포 수정 → CD 동기화 → `docker compose restart grafana`. GPU 타깃은 붙는 순간 타깃다운 룰이 자동 커버.
 
 ### 기동

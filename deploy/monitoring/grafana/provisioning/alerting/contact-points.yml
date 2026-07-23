@@ -1,13 +1,21 @@
-# Grafana 통합 알림 — Discord contact point (#88 보너스)
-# 웹훅 URL은 시크릿이라 .env.dev의 ALERT_WEBHOOK_URL 환경변수로 주입한다(compose가 grafana에 전달).
+# Grafana 통합 알림 — Discord contact point 2개 (severity 채널 라우팅, #88 보너스)
+# 웹훅 URL은 시크릿이라 .env.dev의 ALERT_WEBHOOK_URL_{CRITICAL,WARNING} 환경변수로 주입한다(compose가 grafana에 전달).
 apiVersion: 1
 contactPoints:
   - orgId: 1
-    name: discord-alerts
+    name: discord-critical
     receivers:
-      - uid: discord-alerts
+      - uid: discord-critical
         type: discord
         settings:
-          url: $ALERT_WEBHOOK_URL
+          url: $ALERT_WEBHOOK_URL_CRITICAL
         # false = 복구(resolved) 메시지도 전송
+        disableResolveMessage: false
+  - orgId: 1
+    name: discord-warning
+    receivers:
+      - uid: discord-warning
+        type: discord
+        settings:
+          url: $ALERT_WEBHOOK_URL_WARNING
         disableResolveMessage: false

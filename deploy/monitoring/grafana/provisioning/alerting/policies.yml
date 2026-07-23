@@ -1,9 +1,18 @@
-# 알림 라우팅 정책 — 전부 discord-alerts로 (severity 라벨은 추후 채널 분리 대비)
+# 알림 라우팅 정책 — severity 라벨로 채널 분리
+#   critical(타깃다운·5xx) → #alert-critical / warning(CPU·메모리·디스크·Hikari) → #alert-warning
+#   라벨 미분류는 루트(critical)로 — 못 보고 지나가는 것보다 과알림이 낫다(fail-safe).
 apiVersion: 1
 policies:
   - orgId: 1
-    receiver: discord-alerts
+    receiver: discord-critical  # 루트 기본값(미분류 fail-safe)
     group_by: ["alertname"]     # 같은 알림의 다중 인스턴스 발화 = 메시지 1개로 묶음
     group_wait: 30s             # 첫 발화 후 묶음 대기
     group_interval: 5m          # 같은 그룹의 추가 발화 알림 간격
     repeat_interval: 4h         # 미해결 건 재알림 주기(잊힘 방지, 시끄러우면 조정)
+    routes:
+      - receiver: discord-critical
+        object_matchers:
+          - ["severity", "=", "critical"]
+      - receiver: discord-warning
+        object_matchers:
+          - ["severity", "=", "warning"]
