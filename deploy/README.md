@@ -41,6 +41,45 @@ curl -s localhost:8080/actuator/health          # 컴포넌트별(db/redis 등)
 curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/actuator/health/readiness
 ```
 
+## 관측성 스택 (Prometheus + Grafana, #88)
+
+별도 모니터링 인스턴스 없이 **t3 App 인스턴스에 콜로케이트**한다. 스택은 `docker-compose.dev.yml`에 포함되고
+설정은 `deploy/monitoring/`(prometheus·grafana provisioning)로 관리한다. 전부 `restart: unless-stopped`로 상주.
+
+| 구성요소 | 포트(바인딩) | 역할 |
+|----------|--------------|------|
+| Prometheus | `127.0.0.1:9090` | 스크랩·저장(로컬 TSDB, retention 15d) |
+| Grafana | `127.0.0.1:3000` | 대시보드(인증 필수, 외부 미노출) |
+| node-exporter | (미게시, 내부 `:9100`) | t3 시스템 메트릭 |
+| cAdvisor | (미게시, 내부 `:8080`) | t3 컨테이너 메트릭 |
+
+- **스크랩은 전부 내부망(brbs-net)** 에서 컨테이너 이름으로 수행 → exporter·앱 메트릭 포트는 **호스트에 미게시**.
+- **외부 노출 최소화**: Prometheus·Grafana는 `127.0.0.1` 바인딩 → 퍼블릭 접근 불가. 접근은 **SSM 포트포워드**로:
+  ```bash
+  aws ssm start-session --target <t3-instance-id> \
+    --document-name AWS-StartPortForwardingSession \
+    --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'   # → http://localhost:3000 (Grafana)
+  ```
+- 앱 메트릭(`backend:9292/actuator/prometheus`)은 #131 배포로 관리 포트가 열려 있어 **스택 기동 시 바로 UP**.
+- g6에 node_exporter·cAdvisor 배포 후 `monitoring/prometheus.yml`의 GPU job 주석 해제 + 보안그룹(t3→g6 9100·8080 private) 허용.
+- **알림**: Grafana 통합 알림을 provisioning으로 관리(`monitoring/grafana/provisioning/alerting/`) → **Discord**
+  (`ALERT_WEBHOOK_URL`, 시크릿). 룰 6종 — 타깃다운·5xx에러율·CPU·메모리·디스크·Hikari 대기.
+  룰/정책 변경은 리포 수정 → CD 동기화 → `docker compose restart grafana`. GPU 타깃은 붙는 순간 타깃다운 룰이 자동 커버.
+
+### 기동
+```bash
+cd ~/backend
+# .env.dev 에 GRAFANA_ADMIN_PASSWORD 채운 뒤 (미설정 시 grafana 기동 실패)
+docker compose --env-file .env.dev up -d prometheus grafana node-exporter cadvisor
+# 타깃 상태(UP/DOWN) 확인
+curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'
+```
+
+> **CD 동기화**: `deploy-dev.yml`이 `docker-compose.dev.yml`과 함께 **`deploy/monitoring/` 디렉터리도**
+> tar.gz+SSM으로 EC2에 동기화한다(드리프트 차단 — 서버에서 수동 편집 금지). 배포 시 prometheus엔 SIGHUP을
+> 보내 스크랩 설정을 자동 리로드하고, 대시보드 JSON은 grafana가 30초마다 재스캔한다.
+> 단 **grafana provisioning(datasource·alerting) 변경은 재시작 필요**: `docker compose restart grafana`.
+
 ## 주의
 - 자격증명: S3는 **EC2 IAM Role** 자동 사용(정적 키 불필요).
 - backend healthcheck는 alpine 이미지 기준 **`wget` + `/actuator/health/readiness`** (curl 미설치).

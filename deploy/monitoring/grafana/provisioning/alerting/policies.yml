@@ -1,0 +1,9 @@
+# 알림 라우팅 정책 — 전부 discord-alerts로 (severity 라벨은 추후 채널 분리 대비)
+apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: discord-alerts
+    group_by: ["alertname"]     # 같은 알림의 다중 인스턴스 발화 = 메시지 1개로 묶음
+    group_wait: 30s             # 첫 발화 후 묶음 대기
+    group_interval: 5m          # 같은 그룹의 추가 발화 알림 간격
+    repeat_interval: 4h         # 미해결 건 재알림 주기(잊힘 방지, 시끄러우면 조정)
