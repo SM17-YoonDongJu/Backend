@@ -7,9 +7,17 @@ spring:
 
 app:
   cookie:
-    secure: false   # 로컬 http 개발용
+    # 기본 false(백엔드가 평문 http일 때). cross-site(SameSite=None) HTTPS 배포 시
+    # COOKIE_SECURE=true·COOKIE_SAME_SITE=None을 .env.dev로 주입한다(same-site는 application.yml에서 env 주입).
+    secure: ${COOKIE_SECURE:false}
   docs:
     public: true    # dev 전용: Scalar 문서(/docs·/scalar.html·/v3/api-docs)를 인증 없이 개방
+  cors:
+    # dev 기본값에 Vercel 프론트 오리진 포함 (env로 덮어쓰기 가능)
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000,https://frontend-web-psi-two.vercel.app}
+  oauth:
+    # Vercel 프론트가 인가요청에 쓴 redirect_uri(자기 오리진)를 토큰 교환에 그대로 허용
+    allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:8080,http://localhost:3000,https://frontend-web-psi-two.vercel.app}
 
 logging:
   level:
