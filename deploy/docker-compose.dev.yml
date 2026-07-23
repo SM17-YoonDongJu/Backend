@@ -324,6 +324,12 @@ services:
     container_name: brbs-cadvisor
     restart: unless-stopped
     privileged: true
+    # dev EC2의 Docker는 containerd 이미지 스토어(storage driver: overlayfs)라, cAdvisor의 컨테이너별
+    # 디스크 사용량 수집이 classic overlay2 전용 경로(image/…/layerdb)의 RW 레이어 조회에 실패해
+    # 컨테이너 등록 자체가 전멸했다(container_* 메트릭 no data). 디스크 사용량을 뺀 allowlist로
+    # 그 조회를 우회한다 — 컨테이너별 디스크 사용량만 포기(호스트 디스크는 node-exporter가 커버).
+    command:
+      - "--enable_metrics=cpu,cpuLoad,diskIO,memory,network,oom_event"
     devices:
       - /dev/kmsg
     volumes:
