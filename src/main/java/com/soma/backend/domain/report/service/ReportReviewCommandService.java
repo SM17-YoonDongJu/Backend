@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportReviewIssue;
+import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
@@ -50,6 +52,7 @@ public class ReportReviewCommandService {
   private final ReportReviewRepository reportReviewRepository;
   private final ReportIssueRepository reportIssueRepository;
   private final ReportReviewSkeletonInitializer reportReviewSkeletonInitializer;
+  private final ApplicationEventPublisher eventPublisher;
 
   public ReviewReportResponse review(UUID adjusterId, UUID reportId, ReviewReportRequest request) {
     Report report = reportRepository.findById(reportId)
@@ -71,7 +74,17 @@ public class ReportReviewCommandService {
     report.applyReviewStart();
 
     // 동시성: 스켈레톤 멱등 생성(별도 트랜잭션) 후 관리 엔티티로 로드 → check-then-insert 경쟁의 UK 충돌 500 제거.
-    ReportReview reportReview = getOrCreateSkeleton(reportId, adjusterId);
+    // 신규 생성 여부(proposalCreated)로 RECEIVED_PROPOSAL 발행을 게이팅한다 — 재수정(이미 존재)·동시 최초 제출
+    // (다른 트랜잭션이 먼저 커밋 → UK 충돌)은 false라 무발행(스팸 방지).
+    boolean proposalCreated;
+    try {
+      proposalCreated = reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId);
+    } catch (DataIntegrityViolationException ex) {
+      proposalCreated = false;
+      log.debug("동시 최초 검수 스켈레톤 삽입 감지 — reportId={}, adjusterId={}", reportId, adjusterId);
+    }
+    ReportReview reportReview = reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));
     reportReview.updateReviewContent(request.estimateMinAmount(), request.estimateMaxAmount(),
         request.applicableGuarantees(), request.omittedSpecialContract(), request.basisTermsPrecedents(),
         request.review());
@@ -86,24 +99,15 @@ public class ReportReviewCommandService {
 
     report = reportRepository.save(report);
 
+    // 저장 성공 후 발행 — 새 스켈레톤이 생성됐을 때만 "새 제안 도착"을 알린다. AFTER_COMMIT 리스너가
+    // 원 트랜잭션 커밋 후 인앱 알림 저장 + 푸시를 수행한다(수신자=리포트 소유자).
+    if (proposalCreated) {
+      eventPublisher.publishEvent(new ReviewProposalReceivedEvent(report.getUserId(), report.getId(), adjusterId));
+    }
+
     return new ReviewReportResponse(
         report.getId(), report.getStatus().name(), reportReview.getId(), reportReview.getStatus().name(),
         reportReview.getCreatedAt());
-  }
-
-  /**
-   * 검수 스켈레톤을 멱등 확보한 뒤 관리 엔티티로 로드한다. 동시 최초 제출로 UK가 충돌하면
-   * REQUIRES_NEW 트랜잭션에서만 롤백되어 {@link DataIntegrityViolationException}으로 전파되며, 이를 멱등으로 흡수한다.
-   */
-  private ReportReview getOrCreateSkeleton(UUID reportId, UUID adjusterId) {
-    try {
-      reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId);
-    } catch (DataIntegrityViolationException ex) {
-      // 동시 최초 제출: 다른 트랜잭션이 먼저 스켈레톤을 커밋했다. 멱등 처리로 무시하고 아래에서 로드한다.
-      log.debug("동시 최초 검수 스켈레톤 삽입 감지 — reportId={}, adjusterId={}", reportId, adjusterId);
-    }
-    return reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId)
-        .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR));
   }
 
   private ReportReviewIssue toReportReviewIssue(

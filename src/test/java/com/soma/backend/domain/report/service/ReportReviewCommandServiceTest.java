@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.time.LocalDateTime;
@@ -15,10 +16,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.soma.backend.domain.report.dto.ReviewReportRequest;
@@ -29,6 +33,7 @@ import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportReviewIssue;
 import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
@@ -51,6 +56,8 @@ class ReportReviewCommandServiceTest {
   private ReportIssueRepository reportIssueRepository;
   @Mock
   private ReportReviewSkeletonInitializer reportReviewSkeletonInitializer;
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
 
   @InjectMocks
   private ReportReviewCommandService service;
@@ -343,5 +350,102 @@ class ReportReviewCommandServiceTest {
     ReportReviewIssue kept = review.getIssues().stream()
         .filter(it -> issueId2.equals(it.getReportIssueId())).findFirst().orElseThrow();
     assertThat(kept.getReviewStatus()).isEqualTo(IssueReviewStatus.ACCEPTED);
+  }
+
+  // --- RECEIVED_PROPOSAL 발행 게이팅 (B안: RECEIVED_PROPOSAL만 배선, REVIEW_COMPLETE 미배선) ---
+
+  @Test
+  @DisplayName("신규 스켈레톤(ensureExists=true)이 생성되면 ReviewProposalReceivedEvent를 1건 발행한다")
+  void publishesProposalReceivedWhenSkeletonCreated() {
+    UUID ownerId = UUID.randomUUID();
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+    ReflectionTestUtils.setField(report, "userId", ownerId);
+    ReportReview review = persistedReview();
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(true);
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
+        .willReturn(Optional.of(review));
+    given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
+
+    service.review(adjusterId, reportId, request(List.of()));
+
+    ArgumentCaptor<ReviewProposalReceivedEvent> captor =
+        ArgumentCaptor.forClass(ReviewProposalReceivedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    ReviewProposalReceivedEvent event = captor.getValue();
+    assertThat(event.userId()).isEqualTo(ownerId);
+    assertThat(event.reportId()).isEqualTo(report.getId());
+    assertThat(event.adjusterId()).isEqualTo(adjusterId);
+  }
+
+  @Test
+  @DisplayName("최초 검수(AWAITING_INSPECTION)도 스켈레톤 신규 생성이면 RECEIVED_PROPOSAL을 발행한다 (B안: 첫 제안 포함)")
+  void publishesProposalOnFirstReviewWhenSkeletonCreated() {
+    UUID ownerId = UUID.randomUUID();
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+    ReflectionTestUtils.setField(report, "userId", ownerId);
+    ReportReview review = persistedReview();
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(true);
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
+        .willReturn(Optional.of(review));
+    given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
+
+    service.review(adjusterId, reportId, request(List.of()));
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+    verify(eventPublisher).publishEvent(any(ReviewProposalReceivedEvent.class));
+  }
+
+  @Test
+  @DisplayName("재수정(ensureExists=false, 이미 존재하는 스켈레톤)이면 이벤트를 발행하지 않는다")
+  void noPublishWhenSkeletonAlreadyExists() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+    ReportReview review = persistedReview();
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(false);
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
+        .willReturn(Optional.of(review));
+    given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
+
+    service.review(adjusterId, reportId, request(List.of()));
+
+    verify(eventPublisher, never()).publishEvent(any());
+  }
+
+  @Test
+  @DisplayName("동시 최초 제출 UK 충돌(DataIntegrityViolationException)은 흡수하고 이벤트를 발행하지 않는다")
+  void absorbsUkConflictAndDoesNotPublish() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+    ReportReview review = persistedReview();
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId))
+        .willThrow(new DataIntegrityViolationException("동시 최초 삽입 UK 충돌"));
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
+        .willReturn(Optional.of(review));
+    given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
+
+    service.review(adjusterId, reportId, request(List.of()));
+
+    verify(eventPublisher, never()).publishEvent(any());
+  }
+
+  @Test
+  @DisplayName("조기 예외(CLOSED → INVALID_STATE_TRANSITION)면 발행 지점에 도달하지 않아 무발행")
+  void noPublishWhenEarlyExceptionBeforePublishPoint() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+
+    assertThatThrownBy(() -> service.review(adjusterId, reportId, request(List.of())))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+
+    verify(eventPublisher, never()).publishEvent(any());
   }
 }

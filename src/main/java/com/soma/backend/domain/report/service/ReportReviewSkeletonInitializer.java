@@ -22,10 +22,17 @@ public class ReportReviewSkeletonInitializer {
 
   private final ReportReviewRepository reportReviewRepository;
 
+  /**
+   * (report_id, adjuster_id) 스켈레톤을 멱등 확보한다.
+   *
+   * @return 이번 호출로 스켈레톤을 새로 생성했으면 {@code true}, 이미 존재해 아무것도 하지 않았으면 {@code false}
+   */
   @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public void ensureExists(UUID reportId, UUID adjusterId) {
-    if (!reportReviewRepository.existsByReportIdAndAdjusterId(reportId, adjusterId)) {
-      reportReviewRepository.save(new ReportReview(reportId, adjusterId));
+  public boolean ensureExists(UUID reportId, UUID adjusterId) {
+    if (reportReviewRepository.existsByReportIdAndAdjusterId(reportId, adjusterId)) {
+      return false;
     }
+    reportReviewRepository.save(new ReportReview(reportId, adjusterId));
+    return true;
   }
 }

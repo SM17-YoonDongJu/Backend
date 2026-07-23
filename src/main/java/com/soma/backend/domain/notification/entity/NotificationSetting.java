@@ -68,6 +68,27 @@ public class NotificationSetting {
   @Column(name = "updated_at")
   private LocalDateTime updatedAt;
 
+  /**
+   * type→토글 매핑. 해당 {@link NotificationType}의 푸시 발송이 허용되는지(토글 ON) 반환한다.
+   * 토글 데이터가 사는 엔티티에서 매핑을 소유해 응집도를 높인다 — type 추가 시 이 switch만 확장한다.
+   * 전용 토글이 없는 type은 fail-open(true)으로 두어 미매핑 알림이 조용히 유실되지 않게 한다.
+   */
+  public boolean allows(NotificationType type) {
+    return switch (type) {
+      case RECEIVED_PROPOSAL -> receivedProposal;
+      case REVIEW_COMPLETE -> reviewComplete;
+      case CONSULT_ACCEPTED -> consultAccepted;
+      case ANALYSIS_COMPLETE -> analysisComplete;
+      case IDENTITY_VERIFIED -> identityVerified;
+      case SETTLEMENT_NOTICE -> settlementNotice;
+      case NEW_REVIEW_REQUEST -> newReviewRequest;
+      case REVIEW_DEADLINE_SOON -> reviewDeadlineSoon;
+      case CHAT_MESSAGE, CONSULT_REQUESTED -> consultMessage;
+      case PROPOSAL_CLOSED -> true;
+      default -> true;
+    };
+  }
+
   /** 최초 조회 시 없으면 만드는 기본 설정 — DDL DEFAULT와 동일(정산·마케팅만 false). */
   public static NotificationSetting createDefault(UUID userId) {
     NotificationSetting setting = new NotificationSetting();
