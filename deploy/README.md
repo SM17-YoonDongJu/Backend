@@ -61,7 +61,7 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/actuator/health/readines
     --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'   # → http://localhost:3000 (Grafana)
   ```
 - **앱 메트릭(`backend:9292/actuator/prometheus`)은 #89 배포 전까지 DOWN** 이 정상 — #89에서 관리 포트(9292) 노출 시 UP.
-- **GPU(g6) exporter는 종윤 담당** — g6에 node_exporter·cAdvisor 배포 후 `monitoring/prometheus.yml`의 GPU job 주석 해제 + 보안그룹(t3→g6 9100·8080 private) 허용.
+- g6에 node_exporter·cAdvisor 배포 후 `monitoring/prometheus.yml`의 GPU job 주석 해제 + 보안그룹(t3→g6 9100·8080 private) 허용.
 
 ### 기동
 ```bash
