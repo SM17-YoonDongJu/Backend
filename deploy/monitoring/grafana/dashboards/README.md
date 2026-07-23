@@ -10,6 +10,7 @@
 | `14282.json` | Cadvisor exporter | 컨테이너별 리소스 | cAdvisor UP |
 | `12900.json` | SpringBoot APM Dashboard | HTTP·HikariCP·로그·메모리풀 | ⚠️ **`application` 라벨 필요** |
 | `4701.json` | JVM (Micrometer) | JVM 힙·GC·스레드·버퍼풀 | ⚠️ **`application` 라벨 필요** |
+| `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | t3 행 즉시, GPU 행은 g6 exporter 후 |
 
 > ⚠️ `application` 라벨은 앱의 `management.metrics.tags.application=${spring.application.name}`
 > (PR #132)이 채운다. 이 설정 없이는 12900·4701의 application 변수가 비어 패널이 No data가 된다.
