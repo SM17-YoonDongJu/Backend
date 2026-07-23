@@ -268,9 +268,10 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
-      # 알림(Discord) 웹훅 — provisioning/alerting/contact-points.yml 이 참조(시크릿).
+      # 알림(Discord) 웹훅 2개 — severity 라우팅(critical/warning 채널). provisioning/alerting 이 참조(시크릿).
       # 미설정 시 기동 실패: "알림 없는 줄 모르고 운영"을 막는 의도된 가드(GRAFANA_ADMIN_PASSWORD와 동일 철학).
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:?set ALERT_WEBHOOK_URL}
+      ALERT_WEBHOOK_URL_CRITICAL: ${ALERT_WEBHOOK_URL_CRITICAL:?set ALERT_WEBHOOK_URL_CRITICAL}
+      ALERT_WEBHOOK_URL_WARNING: ${ALERT_WEBHOOK_URL_WARNING:?set ALERT_WEBHOOK_URL_WARNING}
       TZ: Asia/Seoul
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
