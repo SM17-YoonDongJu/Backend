@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 
 /**
- * 본인 프로필 조회 응답(GET /adjusters/me/profile). 파트너 헤더·인사말용 요약 + 검수 대기 수.
+ * 본인 프로필 조회 응답(GET /adjusters/me/mypage). 파트너 헤더·인사말용 요약 + 검수 대기 수.
  * 필드는 Jackson 전역 설정으로 snake_case 직렬화된다(average_rating, review_count, pending_review_count 등).
  */
 public record AdjusterMyProfileResponse(

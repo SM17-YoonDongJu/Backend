@@ -15,7 +15,7 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
 /**
- * 손해사정사 본인 프로필 조회 유스케이스(GET /adjusters/me/profile).
+ * 손해사정사 본인 프로필 조회 유스케이스(GET /adjusters/me/mypage).
  *
  * <p>검수 대기 수(pendingReviewCount)는 검수 대기 풀 전역 집계({@code reportRepository.countPending})를
  * 재사용한다 — {@code /reports/pending-review/summary}의 pending_count와 동일 값이라 중복 구현하지 않는다.
