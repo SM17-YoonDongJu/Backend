@@ -62,6 +62,30 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
       + "AND rv.status = com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING")
   long countConsultationConvertedByAdjusterId(@Param("adjusterId") UUID adjusterId);
 
+  /**
+   * 마이페이지 누적 상담전환(전환율 분자) — 상담 도달 기준 status IN (COUNSELING, ACCEPTED).
+   * COUNSELING은 전이형 상태라 사용자 수락 시 ACCEPTED로 넘어가므로, 과거 전환분 누락을 막기 위해 ACCEPTED를
+   * 포함한다(COUNSELING-only인 {@link #countConsultationConvertedByAdjusterId}와 공존).
+   */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
+      + "AND rv.status IN ("
+      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING, "
+      + "com.soma.backend.domain.report.entity.ReviewStatus.ACCEPTED)")
+  long countReachedConsultationByAdjusterId(@Param("adjusterId") UUID adjusterId);
+
+  /**
+   * 마이페이지 당월 상담전환 — 상태 전이 시각 컬럼이 없어 검수 등록 시각(created_at) 기준으로 근사한다.
+   * 범위는 [from, to). 도달 기준은 {@link #countReachedConsultationByAdjusterId}와 동일하다.
+   */
+  @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
+      + "AND rv.status IN ("
+      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING, "
+      + "com.soma.backend.domain.report.entity.ReviewStatus.ACCEPTED) "
+      + "AND rv.createdAt >= :from AND rv.createdAt < :to")
+  long countReachedConsultationByAdjusterIdBetween(
+      @Param("adjusterId") UUID adjusterId,
+      @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
   /** 검수 대기 요약의 "진행 중인 사건" 카운트 — 요청 사정사의 미완료 검수(SENT·COUNSELING). */
   @Query("SELECT COUNT(rv) FROM ReportReview rv WHERE rv.adjusterId = :adjusterId "
       + "AND rv.status IN ("
