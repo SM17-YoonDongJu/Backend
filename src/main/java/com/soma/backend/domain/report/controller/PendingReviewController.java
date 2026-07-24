@@ -65,7 +65,7 @@ public class PendingReviewController {
       @RequestParam(required = false) String accidentType,
       @RequestParam(required = false) String region,
       @RequestParam(defaultValue = "1") int page,
-      @RequestParam(defaultValue = "20") int size) {
+      @RequestParam(defaultValue = "10") int size) {
     Pageable pageable = PageRequests.ofOneBased(page, size);
     PendingReviewListResponse result =
         pendingReviewQueryService.getPendingReviewList(

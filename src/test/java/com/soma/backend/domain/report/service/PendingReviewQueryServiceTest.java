@@ -95,13 +95,17 @@ class PendingReviewQueryServiceTest {
     PendingReviewListResponse result =
         service.getPendingReviewList(null, null, null, reportId, pageable);
 
-    PendingReviewListResponse.Item item = result.items().get(0);
+    PendingReviewListResponse.Item item = result.list().get(0);
+    assertThat(item.caseId()).isEqualTo("CASE-1");
+    assertThat(item.region()).isEqualTo("서울");
     assertThat(item.offerHeadroom()).isEqualTo(-3000L);
     assertThat(item.issueCount()).isEqualTo(2L);
     assertThat(item.held()).isTrue();
     assertThat(item.reportReviewStatus()).isEqualTo("SENT");
     assertThat(item.createdAt()).isEqualTo(LocalDateTime.of(2026, 5, 31, 9, 0));
-    assertThat(result.totalElements()).isEqualTo(1L);
+    assertThat(result.pagination().totalElements()).isEqualTo(1L);
+    assertThat(result.pagination().page()).isEqualTo(1);
+    assertThat(result.pagination().hasNext()).isFalse();
   }
 
   @Test
@@ -115,7 +119,7 @@ class PendingReviewQueryServiceTest {
     given(reportReviewRepository.findAdjusterReviewStatuses(any(), any())).willReturn(List.of());
 
     PendingReviewListResponse.Item item =
-        service.getPendingReviewList(null, null, null, adjusterId, pageable).items().get(0);
+        service.getPendingReviewList(null, null, null, adjusterId, pageable).list().get(0);
 
     assertThat(item.offerHeadroom()).isZero();
     assertThat(item.issueCount()).isZero();
