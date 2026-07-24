@@ -85,13 +85,14 @@ public class AdjusterHomeQueryService {
 
   /**
    * 평점은 adjuster_profiles 비정규화 컬럼(rating_mean·review_count)에서 읽는다.
-   * 집계(후기 POST 시 갱신) 미구현이라 아직 채워지지 않았으면 average=null, reviewCount=0으로 내린다.
+   * 집계(후기 POST 시 갱신) 미구현이라 아직 채워지지 않았으면 average=0.0, reviewCount=0으로 내린다
+   * (프론트 계약을 항상 number로 고정 — 평점 유무는 reviewCount로 판별).
    */
   private Rating toRating(AdjusterIdentityRow identity) {
     if (identity == null) {
-      return new Rating(null, 0L);
+      return new Rating(0.0, 0L);
     }
-    Double average = identity.ratingMean() == null ? null : identity.ratingMean().doubleValue();
+    double average = identity.ratingMean() == null ? 0.0 : identity.ratingMean().doubleValue();
     return new Rating(average, nullSafe(identity.reviewCount()));
   }
 

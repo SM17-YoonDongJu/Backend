@@ -15,7 +15,7 @@ public record AdjusterHomeResponse(Adjuster adjuster, Summary summary, InProgres
 
   /**
    * 요약 카드 수치. pendingCount·pendingNewCount는 전체 풀(global) 기준,
-   * 나머지는 요청 사정사(me) 기준. rating은 평점 계산 미구현으로 현재 placeholder(null/0)다.
+   * 나머지는 요청 사정사(me) 기준. rating은 평점 계산 미구현으로 현재 placeholder(0/0)다.
    */
   public record Summary(
       long pendingCount,
@@ -27,8 +27,8 @@ public record AdjusterHomeResponse(Adjuster adjuster, Summary summary, InProgres
       Rating rating) {
   }
 
-  /** 고객 평정. 평균(평점 계산 미구현 시 null)과 후기 수. */
-  public record Rating(Double average, long reviewCount) {
+  /** 고객 평정. 평균(평점 계산 미구현 시 0.0)과 후기 수. 프론트 계약을 항상 number로 고정한다. */
+  public record Rating(double average, long reviewCount) {
   }
 
   /** 진행 중 사건 미리보기(top N) + 전체 개수. */
