@@ -87,7 +87,7 @@ class AdjusterHomeQueryServiceTest {
   }
 
   @Test
-  @DisplayName("비정규화 컬럼이 아직 null이면 누적·상담 0, 평점 average null·후기 0으로 안전 처리")
+  @DisplayName("비정규화 컬럼이 아직 null이면 누적·상담 0, 평점 average 0.0·후기 0으로 안전 처리")
   void denormalizedNullSafe() {
     stubMinimal();
     given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt())).willReturn(List.of());
@@ -96,7 +96,7 @@ class AdjusterHomeQueryServiceTest {
 
     assertThat(summary.totalCompletedCount()).isZero();
     assertThat(summary.consultationConvertedCount()).isZero();
-    assertThat(summary.rating().average()).isNull();
+    assertThat(summary.rating().average()).isEqualTo(0.0);
     assertThat(summary.rating().reviewCount()).isZero();
   }
 
