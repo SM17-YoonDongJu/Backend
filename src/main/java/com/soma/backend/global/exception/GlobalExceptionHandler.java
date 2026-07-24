@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -87,6 +88,17 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex) {
     return ResponseEntity.status(ErrorCode.MISSING_REQUIRED_FIELD.getStatus())
         .body(ErrorResponse.of(ErrorCode.MISSING_REQUIRED_FIELD));
+  }
+
+  /**
+   * 매핑된 경로를 지원하지 않는 HTTP 메서드로 호출하면(예: POST 전용 /auth/reissue를 GET 호출) 스프링 MVC가
+   * HttpRequestMethodNotSupportedException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 405 METHOD_NOT_ALLOWED로 매핑한다.
+   */
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+    return ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getStatus())
+        .body(ErrorResponse.of(ErrorCode.METHOD_NOT_ALLOWED));
   }
 
   /**
