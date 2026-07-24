@@ -30,6 +30,9 @@ public enum ErrorCode {
   POST_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 게시물/리포트를 찾을 수 없습니다."),
   SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "구독 정보를 찾을 수 없습니다."),
 
+  // 405 Method Not Allowed — 지원하지 않는 HTTP 메서드
+  METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청 메서드입니다."),
+
   // 409 Conflict — 리소스 상태 충돌
   DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "이미 존재하는 리소스입니다."),
   // INVALID_STATE_TRANSITION: 현재 리소스 상태 때문에 요청이 충돌(예: 상담 중이 아닌 제안 채택). 검수 생명주기
