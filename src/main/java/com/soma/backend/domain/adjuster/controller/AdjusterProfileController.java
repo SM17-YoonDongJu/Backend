@@ -23,7 +23,7 @@ public class AdjusterProfileController {
   private final AdjusterProfileQueryService adjusterProfileQueryService;
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
-  @GetMapping("/adjusters/me/profile")
+  @GetMapping("/adjusters/me/mypage")
   public ResponseEntity<ApiResponse<AdjusterMyProfileResponse>> getMyProfile(
       @AuthenticationPrincipal CustomUserDetails principal) {
     AdjusterMyProfileResponse result = adjusterProfileQueryService.getMyProfile(principal.getUserId());
