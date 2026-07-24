@@ -2,6 +2,7 @@ package com.soma.backend.domain.report.dto;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,14 +23,15 @@ import com.soma.backend.domain.report.repository.ReviewContextRow;
  *
  * <p>규칙: 보장·특약·근거는 작업본 유무로 전환(resolved), 쟁점은 AI 원본(REPORT_ISSUES)에 사정사 오버레이
  * (REPORT_ISSUES_REVIEWS)를 병합, 예상 보상은 AI 추정과 사정사 확정을 함께 담는다. 필드는 camelCase로 두고
- * snake_case 직렬화는 Jackson 전역 설정이 처리한다.
+ * snake_case 직렬화는 Jackson 전역 설정이 처리한다. region은 프론트 계약에 맞춰 단일 문자열로 내리고,
+ * 리스트 필드는 null 대신 빈 배열로 직렬화한다.
  */
 public record ReviewWorkspaceResponse(
     UUID reportId,
     String caseNo,
     String title,
     String accidentType,
-    List<String> region,
+    String region,
     String status,
     String confidenceLevel,
     boolean isMasked,
@@ -52,6 +54,7 @@ public record ReviewWorkspaceResponse(
       Report report, ReviewContextRow context, List<String> region, ClaimDetails claimDetails,
       List<ReportIssue> aiIssues, ReportReview review, List<ReportAttachment> attachments) {
     boolean started = review != null;
+    String regionText = ReportResponseSupport.joinRegion(region);
     List<IssueItem> issues = mergeIssues(aiIssues, review);
     List<AttachmentItem> attachmentItems = attachments.stream().map(AttachmentItem::from).toList();
     Estimate aiEstimate = new Estimate(report.getClaimedMinAmount(), report.getClaimedMaxAmount());
@@ -65,19 +68,19 @@ public record ReviewWorkspaceResponse(
         report.getCaseNo(),
         report.getTitle(),
         report.getAccidentType() == null ? null : report.getAccidentType().getValue(),
-        region,
+        regionText,
         report.getStatus() == null ? null : report.getStatus().name(),
         report.getConfidenceLevel(),
         Boolean.TRUE.equals(report.getIsMasked()),
         report.getOfferedAmount(),
-        Client.from(context, region),
+        Client.from(context, regionText),
         ClaimContext.from(context, claimDetails),
         attachmentItems,
         aiEstimate,
         adjusterEstimate,
-        guarantees,
-        special,
-        basis,
+        ReportResponseSupport.nullSafe(guarantees),
+        ReportResponseSupport.nullSafe(special),
+        ReportResponseSupport.nullSafe(basis),
         issues,
         started ? review.getReview() : null,
         started ? review.getStatus().name() : null,
@@ -124,11 +127,27 @@ public record ReviewWorkspaceResponse(
     return new Progress(issues.size(), accepted, modified, excluded);
   }
 
-  /** ① 의뢰인 정보(users). */
-  public record Client(
-      String nickname, String gender, LocalDate birthDate, List<String> region, LocalDateTime joinedAt) {
+  /** 입원 이력(구조)을 프론트 표기용 단일 문자열로 요약한다("입원 N일", 여러 건은 ", "로 연결, 없으면 ""). */
+  private static String formatHospitalization(List<Hospitalization> hospitalizations) {
+    if (hospitalizations == null || hospitalizations.isEmpty()) {
+      return "";
+    }
+    List<String> parts = new ArrayList<>();
+    for (Hospitalization item : hospitalizations) {
+      if (item.hospitalStart() == null || item.hospitalEnd() == null) {
+        continue;
+      }
+      long days = ChronoUnit.DAYS.between(item.hospitalStart(), item.hospitalEnd()) + 1;
+      parts.add("입원 " + days + "일");
+    }
+    return String.join(", ", parts);
+  }
 
-    public static Client from(ReviewContextRow context, List<String> region) {
+  /** ① 의뢰인 정보(users). region은 단일 문자열. */
+  public record Client(
+      String nickname, String gender, LocalDate birthDate, String region, LocalDateTime joinedAt) {
+
+    public static Client from(ReviewContextRow context, String region) {
       if (context == null) {
         return null;
       }
@@ -139,15 +158,16 @@ public record ReviewWorkspaceResponse(
   }
 
   /**
-   * ②③ 사고·청구·가입 보험 맥락. 진단(diagnosis)·입원(hospitalizations)은 user_claims.details
-   * (sealed {@link ClaimDetails})에서 구조 그대로 읽고, 나머지 사고 정보·상품/보험사는 조회 프로젝션에서 온다.
+   * ②③ 사고·청구·가입 보험 맥락. 진단(diagnosis)·입원(hospitalization)은 user_claims.details
+   * (sealed {@link ClaimDetails})에서 읽어 프론트 표기용 단일 문자열로 단순화한다(진단은 · 대신 ", " 연결,
+   * 입원은 "입원 N일"). 나머지 사고 정보·상품/보험사는 조회 프로젝션에서 온다.
    * 도메인 엔티티 {@code UserClaim}과 구분하기 위해 ClaimContext로 둔다(뷰 조각).
    */
   public record ClaimContext(
       String accidentType,
       LocalDate accidentDate,
-      List<String> diagnosis,
-      List<Hospitalization> hospitalizations,
+      String diagnosis,
+      String hospitalization,
       String description,
       String additionalInformation,
       String productName,
@@ -159,8 +179,8 @@ public record ReviewWorkspaceResponse(
       }
       return new ClaimContext(
           context.getClaimAccidentType(), context.getAccidentDate(),
-          details == null ? null : details.diagnosis(),
-          details == null ? null : details.hospitalizations(),
+          ReportResponseSupport.joinText(details == null ? null : details.diagnosis(), ", "),
+          formatHospitalization(details == null ? null : details.hospitalizations()),
           context.getClaimDescription(), context.getAdditionalInformation(),
           context.getProductName(), context.getInsurerName());
     }
@@ -224,7 +244,7 @@ public record ReviewWorkspaceResponse(
           ai.getTitle(),
           ai.getDescription(),
           ai.getAiStatus(),
-          ai.getTags(),
+          ReportResponseSupport.nullSafe(ai.getTags()),
           ai.getImpactAmount(),
           overlay == null ? null : overlay.getReviewStatus().name(),
           overlay == null ? null : overlay.getAdjusterOpinion(),
@@ -242,7 +262,7 @@ public record ReviewWorkspaceResponse(
           null,
           null,
           null,
-          null,
+          List.of(),
           null,
           added.getReviewStatus().name(),
           added.getAdjusterOpinion(),

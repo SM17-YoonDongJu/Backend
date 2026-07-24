@@ -12,6 +12,7 @@ import com.soma.backend.domain.report.entity.ReportIssue;
  *
  * <p>필드는 camelCase로 두고 snake_case 직렬화는 Jackson 전역 설정이 처리한다.
  * accidentType은 목록(API#2)과 표기를 맞추기 위해 enum이 아니라 DB 원본 문자열(getValue)을 담는다.
+ * region은 프론트 계약에 맞춰 단일 문자열로 내리고(text[] 조인), 리스트 필드는 null 대신 빈 배열로 직렬화한다.
  * 첨부는 검수 대기 화면용이라 REPORTS.documents({name:url} 비정규화 맵)에서 내린다 — ai_summary 등 상세 첨부는
  * 검수 화면 전용 API가 REPORT_ATTACHMENTS로 별도 제공한다. 확정 보상금액은 노출하지 않고 청구 범위·offerHeadroom만
  * 제공한다(금소법 §17).
@@ -20,7 +21,7 @@ public record ReportDetailResponse(
     UUID reportId,
     String caseNo,
     String accidentType,
-    List<String> region,
+    String region,
     boolean isMasked,
     Long claimedMinAmount,
     Long claimedMaxAmount,
@@ -45,7 +46,7 @@ public record ReportDetailResponse(
         report.getId(),
         report.getCaseNo(),
         report.getAccidentType() == null ? null : report.getAccidentType().getValue(),
-        region,
+        ReportResponseSupport.joinRegion(region),
         Boolean.TRUE.equals(report.getIsMasked()),
         report.getClaimedMinAmount(),
         report.getClaimedMaxAmount(),
@@ -53,9 +54,9 @@ public record ReportDetailResponse(
         report.amountRange().offerHeadroom(),
         report.getTreatment(),
         report.getQuestion(),
-        report.getApplicableGuarantees(),
-        report.getOmittedSpecialContract(),
-        report.getBasisTermsPrecedents(),
+        ReportResponseSupport.nullSafe(report.getApplicableGuarantees()),
+        ReportResponseSupport.nullSafe(report.getOmittedSpecialContract()),
+        ReportResponseSupport.nullSafe(report.getBasisTermsPrecedents()),
         issueItems,
         issueItems.size(),
         documentItems,
@@ -87,7 +88,7 @@ public record ReportDetailResponse(
           issue.getTitle(),
           issue.getDescription(),
           issue.getAiStatus(),
-          issue.getTags(),
+          ReportResponseSupport.nullSafe(issue.getTags()),
           issue.getImpactAmount());
     }
   }
