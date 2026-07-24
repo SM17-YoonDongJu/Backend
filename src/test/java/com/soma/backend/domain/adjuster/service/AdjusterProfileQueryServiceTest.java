@@ -89,7 +89,7 @@ class AdjusterProfileQueryServiceTest {
     assertThat(response.profile().nickname()).isEqualTo("김사정");
     assertThat(response.profile().email()).isNull();
     assertThat(response.profile().role()).isEqualTo("CERTIFICATED_ADJUSTER");
-    assertThat(response.profile().activityRegion()).containsExactly("서울", "경기");
+    assertThat(response.profile().activityRegion()).isEqualTo("서울·경기");
     assertThat(response.stats().averageRating()).isEqualTo(4.9);
     assertThat(response.stats().reviewCount()).isEqualTo(12);
     assertThat(response.stats().totalCompletedCount()).isEqualTo(10L);
@@ -99,7 +99,7 @@ class AdjusterProfileQueryServiceTest {
     assertThat(response.monthlyActivity().consultationConvertedCount()).isEqualTo(2L);
     assertThat(response.monthlyActivity().averageRating()).isEqualTo(4.9);
     assertThat(response.certification().licenseNo()).isEqualTo("제2026-0412호");
-    assertThat(response.certification().activityRegion()).containsExactly("서울", "경기");
+    assertThat(response.certification().activityRegion()).isEqualTo("서울·경기");
     assertThat(response.certification().createdAt()).isEqualTo(LocalDateTime.of(2026, 1, 1, 0, 0));
   }
 

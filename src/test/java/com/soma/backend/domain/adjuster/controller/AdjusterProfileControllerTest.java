@@ -145,8 +145,7 @@ class AdjusterProfileControllerTest {
         .andExpect(jsonPath("$.data.adjuster_id").value(PRINCIPAL_ID.toString()))
         .andExpect(jsonPath("$.data.nickname").value("김사정"))
         .andExpect(jsonPath("$.data.avatar_url").value("https://cdn/a.png"))
-        .andExpect(jsonPath("$.data.activity_region[0]").value("서울"))
-        .andExpect(jsonPath("$.data.activity_region[1]").value("경기"))
+        .andExpect(jsonPath("$.data.activity_region").value("서울·경기"))
         .andExpect(jsonPath("$.data.specialties[0]").value("교통사고"))
         .andExpect(jsonPath("$.data.careers[0].period").value("2018~2022"))
         .andExpect(jsonPath("$.data.careers[0].company").value("OO손해사정법인"))
@@ -177,7 +176,7 @@ class AdjusterProfileControllerTest {
         .andExpect(jsonPath("$.data.recent_reviews", hasSize(0)))
         .andExpect(jsonPath("$.data.specialties", hasSize(0)))
         .andExpect(jsonPath("$.data.careers", hasSize(0)))
-        .andExpect(jsonPath("$.data.activity_region", hasSize(0)));
+        .andExpect(jsonPath("$.data.activity_region").value(""));
   }
 
   // ---------- JSON 계약 (GET /adjusters/me/mypage) ----------
@@ -194,7 +193,7 @@ class AdjusterProfileControllerTest {
         .andExpect(jsonPath("$.data.profile", hasKey("email")))
         .andExpect(jsonPath("$.data.profile.email").doesNotExist())
         .andExpect(jsonPath("$.data.profile.role").value("CERTIFICATED_ADJUSTER"))
-        .andExpect(jsonPath("$.data.profile.activity_region[0]").value("서울"))
+        .andExpect(jsonPath("$.data.profile.activity_region").value("서울·경기"))
         .andExpect(jsonPath("$.data.stats.average_rating").value(4.9))
         .andExpect(jsonPath("$.data.stats.review_count").value(12))
         .andExpect(jsonPath("$.data.stats.total_completed_count").value(10))
@@ -233,7 +232,7 @@ class AdjusterProfileControllerTest {
         "김사정",
         "장해등급 재산정 전문",
         "https://cdn/a.png",
-        List.of("서울", "경기"),
+        "서울·경기",
         "교통사고 전문 손해사정사입니다.",
         List.of("교통사고", "상해"),
         List.of(new AdjusterProfileResponse.CareerItem("2018~2022", "OO손해사정법인")),
@@ -253,7 +252,7 @@ class AdjusterProfileControllerTest {
 
   private static AdjusterProfileResponse emptyProfile() {
     return new AdjusterProfileResponse(
-        PRINCIPAL_ID, "새사정", null, null, List.of(), null, List.of(), List.of(),
+        PRINCIPAL_ID, "새사정", null, null, "", null, List.of(), List.of(),
         null, 0.0, 0, List.of(), 0, 0L, 0, null);
   }
 
@@ -261,20 +260,20 @@ class AdjusterProfileControllerTest {
     return new AdjusterMyPageResponse(
         new AdjusterMyPageResponse.Profile(
             "김사정", null, "https://cdn/a.png", "장해등급 재산정 전문",
-            List.of("교통사고", "상해"), 7, List.of("서울", "경기"), "CERTIFICATED_ADJUSTER"),
+            List.of("교통사고", "상해"), 7, "서울·경기", "CERTIFICATED_ADJUSTER"),
         new AdjusterMyPageResponse.Stats(4.9, 12, 10L, 60),
         new AdjusterMyPageResponse.MonthlyActivity(3L, 2L, 4.9),
         new AdjusterMyPageResponse.Certification(
-            "제2026-0412호", List.of("서울", "경기"), LocalDateTime.of(2026, 1, 1, 0, 0)));
+            "제2026-0412호", "서울·경기", LocalDateTime.of(2026, 1, 1, 0, 0)));
   }
 
   private static AdjusterMyPageResponse emptyMyPage() {
     return new AdjusterMyPageResponse(
         new AdjusterMyPageResponse.Profile(
-            "새사정", null, null, null, List.of(), null, List.of(), "UNCERTIFICATED_ADJUSTER"),
+            "새사정", null, null, null, List.of(), null, "", "UNCERTIFICATED_ADJUSTER"),
         new AdjusterMyPageResponse.Stats(0.0, 0, 0L, 0),
         new AdjusterMyPageResponse.MonthlyActivity(0L, 0L, 0.0),
-        new AdjusterMyPageResponse.Certification(null, List.of(), LocalDateTime.of(2026, 2, 1, 0, 0)));
+        new AdjusterMyPageResponse.Certification(null, "", LocalDateTime.of(2026, 2, 1, 0, 0)));
   }
 
   /**

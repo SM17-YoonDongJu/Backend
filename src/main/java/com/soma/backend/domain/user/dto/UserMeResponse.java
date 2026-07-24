@@ -1,12 +1,12 @@
 package com.soma.backend.domain.user.dto;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 
 import com.soma.backend.domain.user.entity.User;
+import com.soma.backend.global.common.RegionFormat;
 
 /**
  * 내 정보 응답. 본인 조회이므로 전화번호는 마스킹 없이 원본을 내려준다(수정 화면 prefill용).
@@ -21,7 +21,7 @@ public record UserMeResponse(
     @Nullable String phoneNumber,
     String role,
     @Nullable String gender,
-    @Nullable List<String> region,
+    String region,
     @Nullable String avatarUrl,
     @Nullable String socialProvider,
     LocalDateTime createdAt) {
@@ -33,7 +33,7 @@ public record UserMeResponse(
         user.getPhoneNumber(),
         user.getRole().name(),
         user.getGender(),
-        user.getRegion(),
+        RegionFormat.toSingle(user.getRegion()),
         user.getAvatarUrl(),
         socialProvider,
         user.getCreatedAt());

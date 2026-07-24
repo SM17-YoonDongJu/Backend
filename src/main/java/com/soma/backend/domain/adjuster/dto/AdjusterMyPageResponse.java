@@ -7,6 +7,7 @@ import org.jspecify.annotations.Nullable;
 
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.user.entity.User;
+import com.soma.backend.global.common.RegionFormat;
 
 /**
  * 손해사정사 마이페이지 조회 응답(GET /adjusters/me/mypage). 프론트 마이페이지 화면 계약에 맞춘 4개 섹션 —
@@ -38,7 +39,7 @@ public record AdjusterMyPageResponse(
       @Nullable String headline,
       List<String> specialties,
       @Nullable Integer career,
-      List<String> activityRegion,
+      String activityRegion,
       String role) {
   }
 
@@ -63,7 +64,7 @@ public record AdjusterMyPageResponse(
   /** 자격·등록 섹션. {@code createdAt}은 사정사 가입일(USERS.created_at). */
   public record Certification(
       @Nullable String licenseNo,
-      List<String> activityRegion,
+      String activityRegion,
       LocalDateTime createdAt) {
   }
 
@@ -82,8 +83,7 @@ public record AdjusterMyPageResponse(
     Integer rawReviewCount = profile.getReviewCount();
     int reviewCount = rawReviewCount == null ? 0 : rawReviewCount;
     double averageRating = resolveAverageRating(rawReviewCount, profile);
-    List<String> activityRegion =
-        profile.getActivityRegion() == null ? List.of() : profile.getActivityRegion();
+    String activityRegion = RegionFormat.toSingle(profile.getActivityRegion());
 
     Profile profileSection = new Profile(
         user.getNickname(),

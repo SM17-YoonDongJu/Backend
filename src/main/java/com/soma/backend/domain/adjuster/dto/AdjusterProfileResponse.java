@@ -9,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.report.repository.AdjusterReviewRow;
 import com.soma.backend.domain.user.entity.User;
+import com.soma.backend.global.common.RegionFormat;
 
 /**
  * 손해사정사 프로필 조회 응답(GET /adjusters/me/profile). 프로필 수정 화면 초기값용 flat 구조 —
@@ -23,7 +24,7 @@ public record AdjusterProfileResponse(
     String nickname,
     @Nullable String headline,
     @Nullable String avatarUrl,
-    List<String> activityRegion,
+    String activityRegion,
     @Nullable String introduction,
     List<String> specialties,
     List<CareerItem> careers,
@@ -70,7 +71,7 @@ public record AdjusterProfileResponse(
         user.getNickname(),
         profile.getHeadline(),
         user.getAvatarUrl(),
-        profile.getActivityRegion() == null ? List.of() : profile.getActivityRegion(),
+        RegionFormat.toSingle(profile.getActivityRegion()),
         profile.getIntroduction(),
         profile.getSpecialties() == null ? List.of() : profile.getSpecialties(),
         toCareerItems(profile.getCareers()),
