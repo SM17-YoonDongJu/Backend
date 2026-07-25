@@ -21,3 +21,7 @@ logging:
     format:
       console: logstash
       file: logstash
+    json:
+      # 구조화 로그에 traceId·spanId 주입(로그↔트레이스 상관용). Boot 구조화 로깅은 MDC를 읽는데
+      # 트레이스 correlation이 MDC를 안 채우므로, 로그 시점 Span.current()에서 직접 뽑아 넣는다.
+      customizer: com.soma.backend.global.config.TracingStructuredLogCustomizer

@@ -23,5 +23,8 @@ logging:
     format:
       console: logstash
       file: logstash
+    json:
+      # 구조화 로그에 traceId·spanId 주입(로그↔트레이스 상관용). Span.current()에서 직접 뽑아 넣는다.
+      customizer: com.soma.backend.global.config.TracingStructuredLogCustomizer
   level:
     com.soma.backend: INFO    # application.yml의 DEBUG를 운영에선 INFO로(성능·PII·로그량 관리)
