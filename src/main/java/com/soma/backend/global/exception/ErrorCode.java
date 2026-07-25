@@ -26,6 +26,8 @@ public enum ErrorCode {
   FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 
   // 404 Not Found — 리소스 없음
+  // NOT_FOUND: 매핑되지 않은 경로(정적 리소스 미존재 등) 요청 시 GlobalExceptionHandler가 내보내는 범용 404.
+  NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
   USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
   POST_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 게시물/리포트를 찾을 수 없습니다."),
   SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "구독 정보를 찾을 수 없습니다."),
