@@ -23,13 +23,12 @@ import com.soma.backend.domain.user.dto.UserDashboardResponse;
 import com.soma.backend.domain.user.dto.UserDashboardResponse.ProposalSummary;
 import com.soma.backend.domain.user.repository.ActiveReportRow;
 import com.soma.backend.domain.user.repository.ProposalItemRow;
-import com.soma.backend.domain.user.repository.UnreadChatRow;
 import com.soma.backend.domain.user.repository.UserDashboardRepository;
 
 /**
  * 고객 홈 BFF 집계 유스케이스 단위 테스트. report_count는 기존 집계 재사용, 대표 활성 리포트·제안 요약(min·max·
- * 중앙값 평균)·speciality 파생·null 섹션 처리·대표 안읽음 채팅 매핑을 검증한다. 조회는 두 읽기 모델
- * (ReportRepository·UserDashboardRepository)로 위임한다.
+ * 중앙값 평균)·speciality 파생·null 섹션 처리를 검증한다. 조회는 두 읽기 모델(ReportRepository·
+ * UserDashboardRepository)로 위임한다.
  */
 @ExtendWith(MockitoExtension.class)
 class UserDashboardQueryServiceTest {
@@ -86,7 +85,7 @@ class UserDashboardQueryServiceTest {
   }
 
   @Test
-  @DisplayName("활성 리포트가 없으면 active_report·proposal_summary는 null, report_count·todos·unread는 그대로 채운다")
+  @DisplayName("활성 리포트가 없으면 active_report·proposal_summary는 null, report_count는 그대로 채운다")
   void noActiveReportYieldsNullSections() {
     stubBaseline();
     given(userDashboardRepository.findLatestActiveReport(userId)).willReturn(Optional.empty());
@@ -96,9 +95,6 @@ class UserDashboardQueryServiceTest {
     assertThat(result.activeReport()).isNull();
     assertThat(result.proposalSummary()).isNull();
     assertThat(result.reportCount()).isEqualTo(3L);
-    assertThat(result.todos().unconfirmedProposals()).isEqualTo(2L);
-    assertThat(result.todos().reviewCompleted()).isEqualTo(1L);
-    assertThat(result.unreadChat()).isNull();
   }
 
   @Test
@@ -140,31 +136,12 @@ class UserDashboardQueryServiceTest {
     assertThat(summary.avgAmount()).isEqualTo(3000L);
   }
 
-  @Test
-  @DisplayName("안읽음 채팅이 있으면 unread_chat(상대=사정사)을 매핑한다")
-  void mapsUnreadChat() {
-    UUID chatRoomId = UUID.randomUUID();
-    stubBaseline();
-    given(userDashboardRepository.findLatestActiveReport(userId)).willReturn(Optional.empty());
-    given(userDashboardRepository.findTopUnreadChat(userId)).willReturn(Optional.of(
-        new UnreadChatRow(chatRoomId, UUID.randomUUID(), UUID.randomUUID(),
-            "김민준", "https://cdn/adj.png", "안녕하세요", LocalDateTime.now(), 3L)));
-
-    UserDashboardResponse.UnreadChat unreadChat = service.getDashboard(userId).unreadChat();
-
-    assertThat(unreadChat.chatRoomId()).isEqualTo(chatRoomId);
-    assertThat(unreadChat.adjusterNickname()).isEqualTo("김민준");
-    assertThat(unreadChat.unreadCount()).isEqualTo(3L);
-  }
-
   /**
-   * getDashboard가 항상 호출하는 카운트 3종만 기본 스텁한다. findLatestActiveReport·findTopUnreadChat은
-   * 테스트마다 present/absent가 달라 이중 스텁을 피하려 각 테스트가 직접 스텁하거나(present) 기본 empty에 맡긴다.
+   * getDashboard가 항상 호출하는 report_count만 기본 스텁한다. findLatestActiveReport는 테스트마다
+   * present/absent가 달라 각 테스트가 직접 스텁하거나(present) 기본 empty에 맡긴다.
    */
   private void stubBaseline() {
     given(reportRepository.countByUserId(userId)).willReturn(3L);
-    given(userDashboardRepository.countUnconfirmedProposals(userId)).willReturn(2L);
-    given(userDashboardRepository.countReviewCompletedReports(userId)).willReturn(1L);
   }
 
   private static ProposalItemRow proposalItem(Long estimateMin, Long estimateMax, List<String> specialties) {
