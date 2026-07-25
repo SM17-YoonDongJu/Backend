@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportStatus;
 
@@ -55,6 +56,12 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
       + "AND r.createdAt <= :dueSoonThreshold")
   long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
+
+  /** 검수 대기(AWAITING_INSPECTION) 풀 중 지정 사고유형(사정사 전문분야 매칭)에 해당하는 건수. */
+  @Query("SELECT COUNT(r) FROM Report r "
+      + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
+      + "AND r.accidentType IN :types")
+  long countPendingByAccidentTypeIn(@Param("types") Collection<AccidentType> types);
 
   /*
    * 아직 엔티티로 모델링되지 않은 테이블을 조인하는 읽기 전용 projection이라 QueryDSL로 표현할 수 없다.
