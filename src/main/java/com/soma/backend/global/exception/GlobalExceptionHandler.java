@@ -118,11 +118,30 @@ public class GlobalExceptionHandler {
    * (예: actuator를 관리 포트 9292로 분리한 뒤 헬스체커가 8080의 /actuator/health/readiness를 호출)
    * 아래 catch-all(Exception → 500)에 삼켜지면 404가 500으로 둔갑해 5xx 지표·ERROR 로그를 오염시키므로,
    * 여기서 404 NOT_FOUND로 매핑하고 ERROR 로깅하지 않는다.
+   *
+   * <p>단, {@code /actuator/**}(헬스체크 프로브)는 조용히 두되, 그 외 매핑 없는 경로 요청은
+   * 프론트↔백엔드 계약 불일치(경로 오타·미구현 엔드포인트)일 수 있으므로 WARN으로 남겨
+   * Loki에서 추적 가능하게 한다. 요청 본문·헤더는 남기지 않고 메서드·경로만 기록한다(PII 안전).
    */
   @ExceptionHandler(NoResourceFoundException.class)
   public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
+    if (!isProbePath(ex.getResourcePath())) {
+      log.warn("매핑되지 않은 경로 요청(404): {} {}", ex.getHttpMethod(), ex.getResourcePath());
+    }
     return ResponseEntity.status(ErrorCode.NOT_FOUND.getStatus())
         .body(ErrorResponse.of(ErrorCode.NOT_FOUND));
+  }
+
+  /**
+   * actuator 경로(헬스체크 프로브)면 true — 프로브가 내는 404는 주기적 노이즈라 로그로 남기지 않는다.
+   * resourcePath는 선행 슬래시가 없을 수 있어 정규화 후 판별한다.
+   */
+  private static boolean isProbePath(String resourcePath) {
+    if (resourcePath == null) {
+      return false;
+    }
+    String normalized = resourcePath.startsWith("/") ? resourcePath : "/" + resourcePath;
+    return normalized.startsWith("/actuator");
   }
 
   @ExceptionHandler(Exception.class)
