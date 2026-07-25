@@ -139,7 +139,7 @@ class ChatMessageControllerTest {
     UUID me = UUID.randomUUID();
     authenticateAs(me, "USER");
     given(chatMessageCommandService.send(eq(me), eq(roomId), any())).willReturn(new ChatMessageResponse(
-        UUID.randomUUID(), roomId, me, ChatMessageType.TEXT, "안녕하세요", List.of(), true, LocalDateTime.now()));
+        UUID.randomUUID(), roomId, me, ChatMessageType.TEXT, "안녕하세요", null, true, LocalDateTime.now()));
 
     mockMvc.perform(post("/chats/{id}/messages", roomId)
             .contentType(MediaType.APPLICATION_JSON)

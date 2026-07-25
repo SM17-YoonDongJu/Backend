@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.chat.dto.ChatMessageListResponse;
 import com.soma.backend.domain.chat.dto.ChatMessageResponse;
+import com.soma.backend.domain.chat.entity.ChatAttachment;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatRoom;
 import com.soma.backend.domain.chat.repository.ChatMessageRepository;
@@ -64,22 +65,22 @@ public class ChatMessageQueryService {
   }
 
   private ChatMessageResponse toResponse(ChatMessage message, UUID roomId, UUID me) {
-    List<ChatMessageResponse.Attachment> attachments = message.hasAttachment()
-        ? message.getAttachments().stream()
-            .map(attachment -> new ChatMessageResponse.Attachment(
-                chatAttachmentUploader.presignedGetUrl(attachment.attachmentKey()),
-                attachment.name(),
-                attachment.contentType(),
-                attachment.size()))
-            .toList()
-        : List.of();
+    ChatMessageResponse.Attachment attachment = null;
+    if (message.hasAttachment()) {
+      ChatAttachment first = message.getAttachments().get(0);
+      attachment = new ChatMessageResponse.Attachment(
+          chatAttachmentUploader.presignedGetUrl(first.attachmentKey()),
+          first.name(),
+          first.contentType(),
+          first.size());
+    }
     return new ChatMessageResponse(
         message.getId(),
         roomId,
         message.getSenderId(),
         message.getMessageType(),
         message.getContent(),
-        attachments,
+        attachment,
         message.isMine(me),
         message.getCreatedAt());
   }

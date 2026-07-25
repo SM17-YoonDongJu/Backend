@@ -119,22 +119,21 @@ public class ChatMessageCommandService {
         message.getSenderId(),
         message.getMessageType(),
         message.getContent(),
-        toResponseAttachments(message),
+        toResponseAttachment(message),
         message.isMine(me),
         message.getCreatedAt());
   }
 
-  private List<ChatMessageResponse.Attachment> toResponseAttachments(ChatMessage message) {
+  private ChatMessageResponse.Attachment toResponseAttachment(ChatMessage message) {
     if (!message.hasAttachment()) {
-      return List.of();
+      return null;
     }
-    return message.getAttachments().stream()
-        .map(attachment -> new ChatMessageResponse.Attachment(
-            chatAttachmentUploader.presignedGetUrl(attachment.attachmentKey()),
-            attachment.name(),
-            attachment.contentType(),
-            attachment.size()))
-        .toList();
+    ChatAttachment attachment = message.getAttachments().get(0);
+    return new ChatMessageResponse.Attachment(
+        chatAttachmentUploader.presignedGetUrl(attachment.attachmentKey()),
+        attachment.name(),
+        attachment.contentType(),
+        attachment.size());
   }
 
   private ChatBroadcastMessage toBroadcast(ChatMessage message) {

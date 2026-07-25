@@ -174,9 +174,9 @@ class ChatMessageQueryServiceTest {
     ChatMessageListResponse response = service.getMessages(userId, roomId, null, 30);
 
     ChatMessageResponse messageResponse = response.messages().get(0);
-    assertThat(messageResponse.attachments()).hasSize(1);
-    assertThat(messageResponse.attachments().get(0).url()).isEqualTo("https://s3.example/presigned-url");
-    assertThat(messageResponse.attachments().get(0).name()).isEqualTo("photo.png");
+    assertThat(messageResponse.attachment()).isNotNull();
+    assertThat(messageResponse.attachment().url()).isEqualTo("https://s3.example/presigned-url");
+    assertThat(messageResponse.attachment().name()).isEqualTo("photo.png");
     assertThat(messageResponse.isMine()).isFalse();
   }
 }
