@@ -31,14 +31,16 @@ docker compose --env-file .env.dev up -d
 
 # 3) 상태 확인
 docker ps --format '{{.Names}}\t{{.Status}}'          # 전부 (healthy)
-curl -s localhost:8080/actuator/health | grep -o '"status":"[A-Z]*"' | head -1   # UP
+# actuator는 관리 포트 9292(호스트 게시). 비즈니스 API는 8080.
+curl -s localhost:9292/actuator/health | grep -o '"status":"[A-Z]*"' | head -1   # UP
 ```
 
 ## 헬스 확인
 ```bash
 docker ps --format '{{.Names}}\t{{.Status}}'
-curl -s localhost:8080/actuator/health          # 컴포넌트별(db/redis 등)
-curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/actuator/health/readiness
+# actuator = 관리 포트 9292(8080은 비즈니스 API 전용, actuator 미제공)
+curl -s localhost:9292/actuator/health          # 컴포넌트별(db/redis 등)
+curl -s -o /dev/null -w '%{http_code}\n' localhost:9292/actuator/health/readiness
 ```
 
 ## 관측성 스택 (Prometheus + Grafana, #88)
