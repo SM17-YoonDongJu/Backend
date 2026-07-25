@@ -1,8 +1,10 @@
 package com.soma.backend.domain.report.service;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -14,6 +16,8 @@ import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
+import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
 import com.soma.backend.domain.report.dto.ReportDetailResponse;
@@ -44,17 +48,56 @@ public class PendingReviewQueryService {
   /** 마감 임박으로 간주하는 SLA 잔여 여유 기간. SLA_DAYS 이내 이 값만큼 남았으면 due_soon. */
   private static final long DUE_SOON_WINDOW_DAYS = 1L;
 
+  /** accident_type → 사정사 전문분야(specialties) 매칭용 대표 키워드. specialty가 이 키워드를 포함하면 매칭(OTHER 제외). */
+  private static final Map<AccidentType, String> SPECIALTY_MATCH_KEYWORD = Map.of(
+      AccidentType.MEDICAL_INDEMNITY, "실손",
+      AccidentType.TRAFFIC, "교통사고",
+      AccidentType.DISABILITY, "장해",
+      AccidentType.CANCER_DIAGNOSIS, "암",
+      AccidentType.FIRE, "화재",
+      AccidentType.LIABILITY, "배상");
+
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;
   private final ReportIssueRepository reportIssueRepository;
   private final ReportReviewRepository reportReviewRepository;
+  private final AdjusterProfileRepository adjusterProfileRepository;
 
   public PendingReviewSummaryResponse getSummary(UUID adjusterId) {
     long pendingCount = reportRepository.countPending();
     LocalDateTime dueSoonThreshold = LocalDateTime.now().minusDays(SLA_DAYS - DUE_SOON_WINDOW_DAYS);
     long dueSoonCount = reportRepository.countDueSoon(dueSoonThreshold);
     long inProgressCount = reportReviewRepository.countInProgressByAdjusterId(adjusterId);
-    return new PendingReviewSummaryResponse(pendingCount, dueSoonCount, inProgressCount);
+    long specialtyMatchCount = countSpecialtyMatch(adjusterId);
+    return new PendingReviewSummaryResponse(pendingCount, dueSoonCount, inProgressCount, specialtyMatchCount);
+  }
+
+  /**
+   * 검수 대기 풀(AWAITING_INSPECTION) 중 요청 사정사의 전문분야(specialties)와 accident_type이 매칭되는 건수.
+   * specialties는 자유 텍스트라 accident_type별 대표 키워드 포함 여부로 매칭한다(전문분야 없거나 매칭 없으면 0).
+   */
+  private long countSpecialtyMatch(UUID adjusterId) {
+    List<String> specialties = adjusterProfileRepository.findByUserId(adjusterId)
+        .map(AdjusterProfile::getSpecialties)
+        .orElse(null);
+    Set<AccidentType> matched = matchedAccidentTypes(specialties);
+    if (matched.isEmpty()) {
+      return 0L;
+    }
+    return reportRepository.countPendingByAccidentTypeIn(matched);
+  }
+
+  private Set<AccidentType> matchedAccidentTypes(List<String> specialties) {
+    if (specialties == null || specialties.isEmpty()) {
+      return Set.of();
+    }
+    Set<AccidentType> matched = EnumSet.noneOf(AccidentType.class);
+    SPECIALTY_MATCH_KEYWORD.forEach((type, keyword) -> {
+      if (specialties.stream().anyMatch(specialty -> specialty != null && specialty.contains(keyword))) {
+        matched.add(type);
+      }
+    });
+    return matched;
   }
 
   public PendingReviewListResponse getPendingReviewList(

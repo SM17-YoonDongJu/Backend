@@ -26,6 +26,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
+import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
 import com.soma.backend.domain.report.dto.ReportDetailResponse;
@@ -55,6 +57,8 @@ class PendingReviewQueryServiceTest {
   private ReportIssueRepository reportIssueRepository;
   @Mock
   private ReportReviewRepository reportReviewRepository;
+  @Mock
+  private AdjusterProfileRepository adjusterProfileRepository;
 
   @InjectMocks
   private PendingReviewQueryService service;
@@ -66,6 +70,9 @@ class PendingReviewQueryServiceTest {
     given(reportRepository.countPending()).willReturn(9L);
     given(reportRepository.countDueSoon(any(LocalDateTime.class))).willReturn(3L);
     given(reportReviewRepository.countInProgressByAdjusterId(adjusterId)).willReturn(4L);
+    given(adjusterProfileRepository.findByUserId(adjusterId))
+        .willReturn(Optional.of(adjusterProfile(List.of("교통사고"))));
+    given(reportRepository.countPendingByAccidentTypeIn(any())).willReturn(5L);
 
     LocalDateTime before = LocalDateTime.now().minusDays(6);
     PendingReviewSummaryResponse summary = service.getSummary(adjusterId);
@@ -74,10 +81,17 @@ class PendingReviewQueryServiceTest {
     assertThat(summary.pendingCount()).isEqualTo(9L);
     assertThat(summary.dueSoonCount()).isEqualTo(3L);
     assertThat(summary.inProgressCount()).isEqualTo(4L);
+    assertThat(summary.specialtyMatchCount()).isEqualTo(5L);
 
     ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
     verify(reportRepository).countDueSoon(captor.capture());
     assertThat(captor.getValue()).isBetween(before, after);
+  }
+
+  private AdjusterProfile adjusterProfile(List<String> specialties) {
+    AdjusterProfile profile = BeanUtils.instantiateClass(AdjusterProfile.class);
+    ReflectionTestUtils.setField(profile, "specialties", specialties);
+    return profile;
   }
 
   @Test

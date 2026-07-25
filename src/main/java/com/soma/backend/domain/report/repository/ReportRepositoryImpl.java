@@ -37,6 +37,9 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
     QReportHold rh = QReportHold.reportHold;
 
     BooleanBuilder where = new BooleanBuilder();
+    // 검수 대기 목록은 검수 단계(AWAITING_INSPECTION·AWAITING_ADOPTION, 상세 조회 노출 정책과 동일)만 노출한다.
+    // CLOSED·COUNSELING·NOT_SELECTED가 목록에 새어 클릭 시 상세가 404 나던 불일치를 막는다.
+    where.and(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION));
     if (status != null) {
       where.and(rp.status.eq(status));
     }
