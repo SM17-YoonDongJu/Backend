@@ -28,10 +28,13 @@
         </root>
     </springProfile>
 
-    <!-- dev·prod: 구조화 JSON 콘솔 + 파일. Boot 인클루드가 logging.structured.format.* 를 반영한다. -->
+    <!-- dev·prod: 구조화 JSON 콘솔 + 파일.
+         ⚠️ Boot 4는 평문용(console-appender.xml)과 구조화용(structured-*-appender.xml) 인클루드가 분리돼 있다.
+         구조화 인클루드는 StructuredLogEncoder + ${*_LOG_STRUCTURED_FORMAT}를 써서 logging.structured.format.*
+         (dev·prod yml의 logstash)를 실제로 반영한다. 평문 인클루드를 쓰면 포맷 설정이 무시된다. -->
     <springProfile name="dev,prod">
-        <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
-        <include resource="org/springframework/boot/logging/logback/file-appender.xml"/>
+        <include resource="org/springframework/boot/logging/logback/structured-console-appender.xml"/>
+        <include resource="org/springframework/boot/logging/logback/structured-file-appender.xml"/>
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
