@@ -44,6 +44,11 @@ services:
       # actuator 관리 포트 분리: health·info·metrics·prometheus를 관리 포트(9292)로 격리해 앱 트래픽(8080)과 분리한다.
       # Prometheus는 brbs-net에서 backend:9292 스크랩, 헬스체크는 컨테이너 내부 localhost:9292로 접근.
       MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
+      # 분산 트레이싱: Tempo가 있는 dev에서만 켠다(prod은 스택 미배포라 미주입 → OFF). OTLP HTTP로 tempo:4318에 push.
+      TRACING_ENABLED: "true"
+      OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
+      # 샘플링(dev 전량=1.0). 운영 조정은 이 값만 교체.
+      TRACING_SAMPLE_PROBABILITY: ${TRACING_SAMPLE_PROBABILITY:-1.0}
       TZ: Asia/Seoul
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
@@ -237,6 +242,10 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
       - "--web.enable-lifecycle"
+      # Tempo metrics_generator가 span 메트릭(서비스 그래프)을 remote_write로 밀어넣게 수신 활성.
+      - "--web.enable-remote-write-receiver"
+      # exemplar 저장 — 메트릭 → 트레이스 점프(metric-to-trace)용.
+      - "--enable-feature=exemplar-storage"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -347,11 +356,104 @@ services:
     networks:
       - brbs-net
 
+  # ── 로그 집계 (Loki + Alloy) ──
+  # Loki: 로그 저장·검색. 조회 포트(3100)만 loopback 게시(SSM 포워드), push는 brbs-net 내부.
+  # ⚠️ 스택 추가로 t3 메모리 여유(대략 +640m)가 필요 — 배포 전 `free -m`/node-exporter 메모리 패널로 확인.
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: brbs-loki
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:3100"
+    command:
+      - "-config.file=/etc/loki/loki-config.yml"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    mem_limit: 256m
+    mem_reservation: 128m
+    healthcheck:
+      # grafana/loki 이미지는 alpine 기반(busybox wget). 이 스택은 아무도 service_healthy로 의존하지 않으므로
+      # 헬스체크 오탐이 나도 컨테이너는 계속 뜬다(비차단).
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Tempo: 트레이스 저장·조회. 조회 포트(3200)만 loopback. OTLP 리시버(4317/4318)는 brbs-net 내부만
+  # (backend가 tempo:4318로 push) → 호스트 미게시.
+  tempo:
+    image: grafana/tempo:2.7.1
+    container_name: brbs-tempo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3200:3200"
+    command:
+      - "-config.file=/etc/tempo/tempo-config.yml"
+    volumes:
+      - ./monitoring/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - tempo-data:/var/tempo
+    mem_limit: 256m
+    mem_reservation: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Alloy: Docker 데몬의 모든 컨테이너 stdout을 수집해 Loki로 push. docker.sock을 read-only로 마운트한다.
+  # ⚠️ docker.sock 권한: 이미지 기본 사용자로 못 읽으면 `user: root` 또는 `group_add: [docker]` 추가.
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: brbs-alloy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:12345:12345"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    mem_limit: 128m
+    mem_reservation: 64m
+    depends_on:
+      - loki
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
 volumes:
   redis-data:
   kafka-data:
   prometheus-data:
   grafana-data:
+  loki-data:
+  tempo-data:
+  alloy-data:
 
 networks:
   brbs-net:

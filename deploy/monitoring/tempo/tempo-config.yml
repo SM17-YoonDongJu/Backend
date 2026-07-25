@@ -1,0 +1,56 @@
+# Tempo 설정 — 분산 트레이스 저장·조회. t3 콜로케이트.
+# OTLP 리시버(4317 gRPC·4318 HTTP)는 brbs-net 내부로만 열고(backend가 tempo:4318로 push), 조회 포트(3200)는 loopback.
+# 저장은 로컬 파일시스템 + 7일 보존. 스케일업 시 storage.trace.backend를 s3로 교체.
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m           # 블록 flush 주기 — 조회 지연과 블록 수의 균형
+
+compactor:
+  compaction:
+    block_retention: 168h          # 7일 트레이스 보존
+
+# 서비스 그래프·span 메트릭을 생성해 Grafana serviceMap/exemplar 연동에 쓴다.
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: brbs-dev
+  storage:
+    path: /var/tempo/generator/wal
+    # 생성한 span 메트릭을 콜로케이트된 Prometheus로 remote_write.
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  traces_storage:
+    path: /var/tempo/generator/traces
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+
+# metrics_generator를 기본 활성화할 프로세서 지정(서비스 그래프 + span 메트릭).
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+
+usage_report:
+  reporting_enabled: false

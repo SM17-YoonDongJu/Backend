@@ -20,6 +20,11 @@ app:
     allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:8080,http://localhost:3000,https://frontend-web-psi-two.vercel.app}
 
 logging:
+  # 콘솔·파일 로그를 구조화 JSON(logstash)으로 출력 → Alloy가 Loki로 수집·필드 필터, traceId로 Tempo 상관.
+  structured:
+    format:
+      console: logstash
+      file: logstash
   level:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE

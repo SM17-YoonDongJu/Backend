@@ -118,6 +118,23 @@ management:
       # 모든 메트릭에 붙는 공통 라벨. Grafana SpringBoot APM(12900)·JVM Micrometer(4701) 대시보드가
       # application 라벨(label_values(application))로 대상을 선택한다 — 없으면 패널이 No data.
       application: ${spring.application.name}
+  tracing:
+    # 기본 OFF. Tempo가 있는 환경(dev)에서만 compose가 TRACING_ENABLED=true로 켠다.
+    # → Tempo가 아직 없는 prod/기타 환경은 OTLP export를 시도하지 않아 연결실패 경고가 없다.
+    enabled: ${TRACING_ENABLED:false}
+    sampling:
+      # 샘플링 확률. 기본 1.0(dev = 전량). prod은 application-prod.yml에서 0.1(10%)로 낮춘다.
+      # 운영 중 조정은 TRACING_SAMPLE_PROBABILITY env로(재배포 없이 값만 교체).
+      probability: ${TRACING_SAMPLE_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      # OTLP HTTP 익스포터 → Tempo. tracing.enabled=true인 환경에서 compose가 tempo:4318을 주입한다.
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+    logging:
+      export:
+        # OTel SDK(starter-opentelemetry)가 켤 수 있는 OTLP '로그' export를 강제 비활성.
+        # 로그 경로는 logback→Alloy→Loki 하나로 고정한다(중복 방지 + logback PII 억제 우회 차단).
+        enabled: false
   info:
     env:
       enabled: true            # 아래 info.* 커스텀 프로퍼티 노출
@@ -137,9 +154,15 @@ info:
 
 logging:
   file:
-    # /actuator/logfile 엔드포인트가 읽는 경로. logback-spring.xml의 FILE appender(${LOG_DIR}/app.log)와 동일하게
-    # LOG_DIR로 맞춘다. 파일 로깅은 dev·prod 프로파일에서만 활성(local·test는 파일 미생성 → 엔드포인트 404).
+    # /actuator/logfile 엔드포인트가 읽는 경로. logback-spring.xml의 FILE appender(Boot file-appender include)가
+    # LOG_FILE로 참조한다. 파일 로깅은 dev·prod 프로파일에서만 활성(local·test는 파일 미생성 → 엔드포인트 404).
     name: ${LOG_DIR:/app/logs}/app.log
+  logback:
+    rollingpolicy:
+      # Boot file-appender.xml이 참조하는 회전 정책. 기존 로그 보존값(일 10MB·14일·총 500MB)을 유지한다.
+      max-file-size: 10MB
+      max-history: 14
+      total-size-cap: 500MB
   level:
     root: ${LOG_LEVEL:INFO}
     com.soma.backend: DEBUG

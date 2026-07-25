@@ -1,4 +1,5 @@
-# Grafana 데이터소스 provisioning — 콜로케이트된 Prometheus를 기본 소스로 등록 (#88)
+# Grafana 데이터소스 provisioning — 메트릭(Prometheus)·로그(Loki)·트레이스(Tempo)를 한 Grafana에 등록하고
+# traceId로 셋을 상호 연결한다(로그↔트레이스↔메트릭). 고정 uid로 프로비저닝(대시보드 JSON이 uid로 참조).
 apiVersion: 1
 datasources:
   - name: Prometheus
@@ -11,3 +12,50 @@ datasources:
     editable: false
     jsonData:
       timeInterval: "15s"
+      # 메트릭 exemplar → 트레이스 점프. Tempo metrics_generator가 remote_write한 span 메트릭의
+      # exemplar에 붙은 trace id 라벨을 Tempo로 링크한다(라벨명은 실측 후 조정 가능).
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  # 로그 — Alloy가 전 컨테이너 stdout을 수집. service 라벨 = 컨테이너 이름(brbs-backend 등).
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      # 로그 → 트레이스: 구조화 JSON 로그의 "traceId" 필드를 뽑아 Tempo 트레이스로 점프.
+      derivedFields:
+        - name: TraceID
+          matcherType: regex
+          matcherRegex: '"traceId":"(\w+)"'
+          url: '${__value.raw}'
+          datasourceUid: tempo
+
+  # 트레이스 — backend가 OTLP(tempo:4318)로 push. service.name = spring.application.name(brbs-backend).
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      # 트레이스 → 로그: 같은 traceId의 로그를 Loki에서 조회. 스팬의 service.name을 Loki service 라벨에 매핑
+      # (brbs-backend == brbs-backend). 시간창을 ±5분 확장해 근접 로그를 포함.
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        tags:
+          - key: 'service.name'
+            value: 'service'
+      # 트레이스 → 메트릭·서비스 그래프(Tempo span 메트릭 → Prometheus).
+      tracesToMetrics:
+        datasourceUid: prometheus
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
