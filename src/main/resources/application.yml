@@ -130,6 +130,11 @@ management:
     tracing:
       # OTLP HTTP 익스포터 → Tempo. tracing.enabled=true인 환경에서 compose가 tempo:4318을 주입한다.
       endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+    metrics:
+      export:
+        # OTLP '메트릭' export 비활성 — 메트릭은 Prometheus 스크랩(/actuator/prometheus)으로만 수집한다.
+        # starter-opentelemetry가 OtlpMeterRegistry를 켜 localhost:4318로 1분마다 푸시하다 실패하던 WARN 폭탄 제거.
+        enabled: false
     logging:
       export:
         # OTel SDK(starter-opentelemetry)가 켤 수 있는 OTLP '로그' export를 강제 비활성.
