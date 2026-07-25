@@ -11,6 +11,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -110,6 +111,18 @@ public class GlobalExceptionHandler {
     log.warn("데이터 무결성 위반(유니크 제약 등), 409로 변환", ex);
     ErrorCode code = ErrorCode.DUPLICATE_RESOURCE;
     return ResponseEntity.status(code.getStatus()).body(ErrorResponse.of(code));
+  }
+
+  /**
+   * 매핑되지 않은 경로(정적 리소스 미존재 포함) 요청은 스프링 MVC가 NoResourceFoundException을 던진다.
+   * (예: actuator를 관리 포트 9292로 분리한 뒤 헬스체커가 8080의 /actuator/health/readiness를 호출)
+   * 아래 catch-all(Exception → 500)에 삼켜지면 404가 500으로 둔갑해 5xx 지표·ERROR 로그를 오염시키므로,
+   * 여기서 404 NOT_FOUND로 매핑하고 ERROR 로깅하지 않는다.
+   */
+  @ExceptionHandler(NoResourceFoundException.class)
+  public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
+    return ResponseEntity.status(ErrorCode.NOT_FOUND.getStatus())
+        .body(ErrorResponse.of(ErrorCode.NOT_FOUND));
   }
 
   @ExceptionHandler(Exception.class)
