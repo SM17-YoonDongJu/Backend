@@ -45,6 +45,15 @@ loki.source.docker "containers" {
 loki.process "parse" {
   forward_to = [loki.write.default.receiver]
 
+  // 7일(=Loki 보관/거부 기준 reject_old_samples_max_age)을 넘은 로그는 에이전트에서 드롭한다.
+  // 오래 떠 있던 컨테이너(chatbot·report 등)의 docker json-file 백로그가 Alloy 재시작 시 재생되면
+  // Loki가 "entry too old" 400으로 무더기 거부해 로그가 폭탄이 된다 — 어차피 못 담을 오래된 로그를
+  // Loki로 보내기 전에 여기서 버려 그 폭탄을 없앤다.
+  stage.drop {
+    older_than          = "168h"
+    drop_counter_reason = "too_old"
+  }
+
   stage.json {
     expressions = {
       level = "level",
