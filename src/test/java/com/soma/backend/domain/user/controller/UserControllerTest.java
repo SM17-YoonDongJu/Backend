@@ -10,7 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -66,7 +65,7 @@ class UserControllerTest {
 
   private UserMeResponse sampleResponse(UUID userId) {
     return new UserMeResponse(
-        userId, "홍길동", "010-1234-5678", "USER", null, List.of("서울"), null, "kakao", LocalDateTime.now());
+        userId, "홍길동", "010-1234-5678", "USER", null, "서울", null, "kakao", LocalDateTime.now());
   }
 
   @Test
@@ -108,7 +107,7 @@ class UserControllerTest {
             .content(body))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.message").value("회원 정보가 수정되었습니다."))
-        .andExpect(jsonPath("$.data.region[0]").value("서울"));
+        .andExpect(jsonPath("$.data.region").value("서울"));
   }
 
   @Test

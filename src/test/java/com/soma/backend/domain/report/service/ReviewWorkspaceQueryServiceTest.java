@@ -97,8 +97,8 @@ class ReviewWorkspaceQueryServiceTest {
     assertThat(result.progress().total()).isEqualTo(1);
     assertThat(result.progress().accepted()).isZero();
     assertThat(result.client().nickname()).isEqualTo("운수");
-    assertThat(result.claim().diagnosis()).containsExactly("후방십자인대 파열");
-    assertThat(result.claim().hospitalizations()).hasSize(1);
+    assertThat(result.claim().diagnosis()).isEqualTo("후방십자인대 파열");
+    assertThat(result.claim().hospitalization()).isEqualTo("입원 10일");
   }
 
   @Test

@@ -165,7 +165,7 @@ class UserServiceTest {
     UserMeResponse result = userService.updateMe(userId, request);
 
     // Then
-    assertThat(result.region()).containsExactly("서울");
+    assertThat(result.region()).isEqualTo("서울");
     assertThat(result.avatarUrl()).isEqualTo("https://img/new.png");
     assertThat(result.phoneNumber()).isEqualTo("010-1234-5678");
     then(userRepository).should(never()).existsByPhoneNumber("010-1234-5678");

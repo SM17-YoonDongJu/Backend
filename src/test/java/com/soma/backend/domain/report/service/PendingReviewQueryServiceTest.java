@@ -180,7 +180,7 @@ class PendingReviewQueryServiceTest {
 
     assertThat(result.reportId()).isEqualTo(reportId);
     assertThat(result.accidentType()).isEqualTo("disability");
-    assertThat(result.region()).containsExactly("서울 강남");
+    assertThat(result.region()).isEqualTo("서울 강남");
     assertThat(result.isMasked()).isTrue();
     assertThat(result.offerHeadroom()).isEqualTo(9_500_000L);
     assertThat(result.issues()).hasSize(1);
