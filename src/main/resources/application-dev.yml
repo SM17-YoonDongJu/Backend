@@ -17,11 +17,10 @@ logging:
   # dev 로그는 Loki로 중앙 수집되므로 프레임워크 verbose(SQL·security DEBUG)는 끈다 — 신호를 덮는 노이즈라서.
   # show-sql(stdout)도 제거: org.hibernate.SQL 로깅과 중복이고, format_sql 멀티라인이 Loki에서 줄 단위로 파편화됨.
   # SQL·security 상세는 로컬 콘솔(local 프로파일)에서 보고, dev에서 급히 볼 땐 런타임에 POST /actuator/loggers로 조정.
+  # 트레이싱이 켜지면 Micrometer가 MDC에 traceId·spanId를 채우고, logstash 구조화 포맷이 이를
+  # 자동으로 JSON 필드로 넣는다(별도 커스터마이저 불필요). 과거 커스터마이저로 traceId를 중복 주입해
+  # "name 'traceId' has already been written"으로 in-span 로그가 통째로 유실됐던 이슈를 제거함.
   structured:
     format:
       console: logstash
       file: logstash
-    json:
-      # 구조화 로그에 traceId·spanId 주입(로그↔트레이스 상관용). Boot 구조화 로깅은 MDC를 읽는데
-      # 트레이스 correlation이 MDC를 안 채우므로, 로그 시점 Span.current()에서 직접 뽑아 넣는다.
-      customizer: com.soma.backend.global.config.TracingStructuredLogCustomizer
