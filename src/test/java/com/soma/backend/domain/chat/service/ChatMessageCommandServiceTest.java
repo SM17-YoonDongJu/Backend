@@ -112,8 +112,8 @@ class ChatMessageCommandServiceTest {
 
     assertThat(response.messageType()).isEqualTo(ChatMessageType.IMAGE);
     assertThat(response.content()).isEqualTo("캡션입니다");
-    assertThat(response.attachments()).hasSize(1);
-    assertThat(response.attachments().get(0).url()).isEqualTo("https://s3.example/presigned");
+    assertThat(response.attachment()).isNotNull();
+    assertThat(response.attachment().url()).isEqualTo("https://s3.example/presigned");
   }
 
   @Test
@@ -132,7 +132,7 @@ class ChatMessageCommandServiceTest {
   }
 
   @Test
-  @DisplayName("한 메시지에 첨부 여러 개: 이미지+파일 혼합이면 FILE, 응답에 첨부 배열 전체가 담긴다")
+  @DisplayName("한 메시지에 첨부 여러 개: 이미지+파일 혼합이면 FILE, 응답 attachment는 첫 번째만 담긴다")
   void send_multipleAttachments_returnsAllAndDerivesFileWhenMixed() {
     ChatRoom room = activeRoom();
     given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
@@ -147,9 +147,8 @@ class ChatMessageCommandServiceTest {
         service.send(userId, roomId, new SendMessageRequest(null, List.of(image, pdf)));
 
     assertThat(response.messageType()).isEqualTo(ChatMessageType.FILE);
-    assertThat(response.attachments()).hasSize(2);
-    assertThat(response.attachments()).extracting(ChatMessageResponse.Attachment::name)
-        .containsExactly("photo.png", "doc.pdf");
+    assertThat(response.attachment()).isNotNull();
+    assertThat(response.attachment().name()).isEqualTo("photo.png");
   }
 
   @Test
