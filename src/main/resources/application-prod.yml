@@ -11,6 +11,17 @@ spring:
     clean-disabled: true      # flyway clean(DROP 계열) 원천 차단 — 실사용자 데이터 보호
     baseline-on-migrate: false
 
+management:
+  tracing:
+    sampling:
+      # 운영은 10%만 샘플링 — 부하·Tempo 저장량 관리. 필요 시 TRACING_SAMPLE_PROBABILITY env로 상향.
+      probability: ${TRACING_SAMPLE_PROBABILITY:0.1}
+
 logging:
+  # 콘솔·파일 로그를 구조화 JSON(logstash)으로 — Alloy→Loki 수집·traceId 상관.
+  structured:
+    format:
+      console: logstash
+      file: logstash
   level:
     com.soma.backend: INFO    # application.yml의 DEBUG를 운영에선 INFO로(성능·PII·로그량 관리)

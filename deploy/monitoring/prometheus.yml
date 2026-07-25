@@ -36,6 +36,26 @@ scrape_configs:
         labels:
           instance: t3-app
 
+  # 관측성 스택 자체 메트릭(로그·트레이스 파이프라인 건강성). 내부망 스크랩.
+  - job_name: loki
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          instance: t3-app
+  - job_name: tempo
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels:
+          instance: t3-app
+  - job_name: alloy
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels:
+          instance: t3-app
+
   # ── GPU(g6.xlarge) 시스템·컨테이너 메트릭  ──
   # g6에 node_exporter(9100)·cAdvisor(8080) 배포 후, 그 private IP로 아래 주석을 해제한다.
   # 보안그룹: t3 → g6 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).

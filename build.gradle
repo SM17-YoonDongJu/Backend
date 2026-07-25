@@ -39,6 +39,13 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	// 메트릭을 Prometheus 포맷으로 노출 (/actuator/prometheus) — Micrometer Prometheus registry
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+	// 분산 트레이싱 (Boot 4.0 모듈형 자동구성):
+	//  - starter-opentelemetry: OpenTelemetry SDK 자동구성 + OTLP 익스포터(→ Tempo) + management.otlp.* 프로퍼티.
+	//  - micrometer-tracing-opentelemetry: Spring Observation(MVC·RestClient·JDBC·Kafka 스팬) → OTel 브리지 +
+	//    management.tracing.* 프로퍼티. traceId/spanId를 MDC에 주입 → 구조화 로그에 실린다.
+	// 버전은 Boot BOM이 관리하므로 명시하지 않는다. (raw micrometer-tracing-bridge-otel만으론 autoconfig가 없어 미배선)
+	implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+	implementation 'org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry'
 
 	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3'
