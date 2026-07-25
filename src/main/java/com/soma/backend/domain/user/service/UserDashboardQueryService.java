@@ -13,17 +13,14 @@ import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.user.dto.UserDashboardResponse;
 import com.soma.backend.domain.user.dto.UserDashboardResponse.ActiveReport;
 import com.soma.backend.domain.user.dto.UserDashboardResponse.ProposalSummary;
-import com.soma.backend.domain.user.dto.UserDashboardResponse.Todos;
-import com.soma.backend.domain.user.dto.UserDashboardResponse.UnreadChat;
 import com.soma.backend.domain.user.repository.ActiveReportRow;
 import com.soma.backend.domain.user.repository.ProposalItemRow;
-import com.soma.backend.domain.user.repository.UnreadChatRow;
 import com.soma.backend.domain.user.repository.UserDashboardRepository;
 
 /**
  * 고객 홈 BFF 집계 유스케이스(CQRS, 조회 전용). report_count는 기존 집계를 재사용하고, 대표 활성 리포트·
- * 제안 요약·할 일·대표 안읽음 채팅은 대시보드 읽기 모델에서 조립한다(사정사 홈 AdjusterHomeQueryService 관례).
- * 대상은 항상 요청 principal 본인이라 별도 인가 없이 userId로만 조회한다.
+ * 제안 요약은 대시보드 읽기 모델에서 조립한다(사정사 홈 AdjusterHomeQueryService 관례). 대상은 항상 요청
+ * principal 본인이라 별도 인가 없이 userId로만 조회한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -46,15 +43,7 @@ public class UserDashboardQueryService {
       proposalSummary = toProposalSummary(itemRows);
     }
 
-    Todos todos = new Todos(
-        userDashboardRepository.countUnconfirmedProposals(userId),
-        userDashboardRepository.countReviewCompletedReports(userId));
-
-    UnreadChat unreadChat = userDashboardRepository.findTopUnreadChat(userId)
-        .map(this::toUnreadChat)
-        .orElse(null);
-
-    return new UserDashboardResponse(reportCount, activeReport, proposalSummary, todos, unreadChat);
+    return new UserDashboardResponse(reportCount, activeReport, proposalSummary);
   }
 
   private ActiveReport toActiveReport(ActiveReportRow row, LocalDateTime firstReviewedAt, long proposalCount) {
@@ -111,18 +100,5 @@ public class UserDashboardQueryService {
         speciality,
         row.estimateMinAmount(),
         row.estimateMaxAmount());
-  }
-
-  private UnreadChat toUnreadChat(UnreadChatRow row) {
-    long unreadCount = row.unreadCount() == null ? 0L : row.unreadCount();
-    return new UnreadChat(
-        row.chatRoomId(),
-        row.reportId(),
-        row.adjusterId(),
-        row.adjusterNickname(),
-        row.adjusterAvatarUrl(),
-        row.lastMessage(),
-        row.lastMessageAt(),
-        unreadCount);
   }
 }

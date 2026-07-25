@@ -9,17 +9,12 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Repository;
 
-import com.querydsl.core.types.Expression;
 import com.querydsl.core.types.Projections;
-import com.querydsl.core.types.dsl.BooleanExpression;
-import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.adjuster.entity.QAdjusterProfile;
-import com.soma.backend.domain.chat.entity.QChatMessage;
-import com.soma.backend.domain.chat.entity.QChatRoom;
 import com.soma.backend.domain.report.entity.QReport;
 import com.soma.backend.domain.report.entity.QReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
@@ -28,9 +23,9 @@ import com.soma.backend.domain.user.entity.QUser;
 
 /**
  * 고객 홈 대시보드 크로스-애그리거트 읽기 모델(QueryDSL, 조회 전용). reports·report_reviews·adjuster_profiles·
- * users·chat_rooms(_messages)를 읽어 대표 활성 리포트·제안 요약·할 일 카운트·대표 안읽음 채팅을 조립한다.
- * 쓰기는 없다 — 각 Aggregate 상태 변경은 소유 Repository만 담당하고 여기서는 읽기 프로젝션만 만든다
- * (사정사 홈 AdjusterHomeRepository 관례). native 미사용(하네스 규칙): 조인 대상이 전부 엔티티로 매핑돼 있다.
+ * users를 읽어 대표 활성 리포트·제안 요약을 조립한다. 쓰기는 없다 — 각 Aggregate 상태 변경은 소유 Repository만
+ * 담당하고 여기서는 읽기 프로젝션만 만든다(사정사 홈 AdjusterHomeRepository 관례). native 미사용(하네스 규칙):
+ * 조인 대상이 전부 엔티티로 매핑돼 있다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -84,70 +79,5 @@ public class UserDashboardRepository {
         .where(rv.reportId.eq(reportId).and(rv.status.ne(ReviewStatus.REJECTED)))
         .orderBy(rv.createdAt.desc())
         .fetch();
-  }
-
-  /** 할 일 — 소유자의 리포트에 달린 미결정(SENT) 제안 수(미확인 제안 배지). */
-  public long countUnconfirmedProposals(UUID userId) {
-    QReportReview rv = QReportReview.reportReview;
-    QReport rp = QReport.report;
-    Long count = queryFactory
-        .select(rv.count())
-        .from(rv)
-        .join(rp).on(rp.id.eq(rv.reportId))
-        .where(rp.userId.eq(userId).and(rv.status.eq(ReviewStatus.SENT)))
-        .fetchOne();
-    return count == null ? 0L : count;
-  }
-
-  /** 할 일 — 소유자의 검수 완료(채택 대기, AWAITING_ADOPTION) 리포트 수. */
-  public long countReviewCompletedReports(UUID userId) {
-    QReport rp = QReport.report;
-    Long count = queryFactory
-        .select(rp.count())
-        .from(rp)
-        .where(rp.userId.eq(userId).and(rp.status.eq(ReportStatus.AWAITING_ADOPTION)))
-        .fetchOne();
-    return count == null ? 0L : count;
-  }
-
-  /**
-   * 대표 안읽음 채팅 1건 — 요청 사용자가 고객(room.user_id)인 방 중 안읽음이 있는 방을 최근 메시지순으로
-   * 하나 고른다. 안읽음 판정은 상대(사정사)가 보낸 메시지(내 것·SYSTEM 제외) 중 내 읽음 커서 이후 존재 여부다.
-   */
-  public Optional<UnreadChatRow> findTopUnreadChat(UUID userId) {
-    QChatRoom room = QChatRoom.chatRoom;
-    QChatMessage countMsg = new QChatMessage("countMsg");
-    QChatMessage existsMsg = new QChatMessage("existsMsg");
-    QUser adjuster = QUser.user;
-
-    Expression<Long> unreadCount = JPAExpressions
-        .select(countMsg.count())
-        .from(countMsg)
-        .where(unreadCondition(countMsg, room, userId));
-    BooleanExpression hasUnread = JPAExpressions
-        .selectOne()
-        .from(existsMsg)
-        .where(unreadCondition(existsMsg, room, userId))
-        .exists();
-
-    return Optional.ofNullable(queryFactory
-        .select(Projections.constructor(UnreadChatRow.class,
-            room.id, room.reportId, room.adjusterId,
-            adjuster.nickname, adjuster.avatarUrl,
-            room.lastMessage, room.lastMessageAt, unreadCount))
-        .from(room)
-        .leftJoin(adjuster).on(adjuster.id.eq(room.adjusterId))
-        .where(room.userId.eq(userId).and(hasUnread))
-        .orderBy(room.lastMessageAt.desc().nullsLast())
-        .limit(1)
-        .fetchOne());
-  }
-
-  /** 고객 관점 안읽음 조건 — 상대(사정사)가 보낸 메시지 중 내 읽음 커서 이후. senderId null(SYSTEM)은 제외. */
-  private BooleanExpression unreadCondition(QChatMessage msg, QChatRoom room, UUID userId) {
-    return msg.roomId.eq(room.id)
-        .and(msg.senderId.isNotNull())
-        .and(msg.senderId.ne(userId))
-        .and(room.userLastReadAt.isNull().or(msg.createdAt.gt(room.userLastReadAt)));
   }
 }
