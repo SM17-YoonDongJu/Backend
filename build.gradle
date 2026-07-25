@@ -40,14 +40,15 @@ dependencies {
 	// 메트릭을 Prometheus 포맷으로 노출 (/actuator/prometheus) — Micrometer Prometheus registry
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 	// 분산 트레이싱 (Boot 4.0): Spring Observation(MVC·RestClient·JDBC·Kafka) → Micrometer Tracing → OTel 브리지
-	// → OTLP span export(→ Tempo). micrometer-tracing-opentelemetry가 브리지 + OTLP span exporter 자동구성
-	// (OtlpTracingAutoConfiguration) + traceId/spanId MDC 주입을 제공한다.
-	// - opentelemetry-exporter-otlp를 명시 추가: OtlpTracingAutoConfiguration이 @ConditionalOnClass(OtlpHttpSpanExporter)라
-	//   이 클래스가 없으면 조용히 backoff한다(모듈이 transitive로 안 끌어옴).
-	// - starter-opentelemetry는 쓰지 않는다: 트레이싱엔 불필요하고, OTLP 메트릭 레지스트리(OtlpMeterRegistry)를
-	//   끌어와 localhost:4318로 매분 푸시 실패 WARN을 냈다. (span export가 안 되던 실제 원인은 프로퍼티명 —
-	//   Boot 4.0에서 endpoint가 management.opentelemetry.tracing.export.otlp.endpoint로 리네임됨, application.yml 참조)
+	// → OTLP span export(→ Tempo). 세 조각이 모두 있어야 배선된다(starter-opentelemetry를 안 쓰므로 명시):
+	//  - spring-boot-micrometer-tracing-opentelemetry: 자동구성(OtlpTracingAutoConfiguration 등)
+	//  - micrometer-tracing-bridge-otel: OtelTracer·Slf4JBaggageEventListener 등 실제 브리지 클래스
+	//    (없으면 OpenTelemetryPropagationConfigurations가 NoClassDefFound로 컨텍스트 기동 실패)
+	//  - opentelemetry-exporter-otlp: OtlpHttpSpanExporter (없으면 @ConditionalOnClass로 exporter backoff)
+	// ⚠️ 위 브리지·exporter는 autoconfig 모듈이 transitive로 안 끌어온다(원래 starter가 제공하던 것).
+	// 엔드포인트 프로퍼티는 Boot 4.0에서 management.opentelemetry.tracing.export.otlp.endpoint로 리네임됨(application.yml).
 	implementation 'org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry'
+	implementation 'io.micrometer:micrometer-tracing-bridge-otel'
 	implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 
 	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
