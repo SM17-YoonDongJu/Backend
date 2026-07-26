@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.adjuster.dto.AdjusterDetailResponse;
 import com.soma.backend.domain.adjuster.dto.AdjusterMyPageResponse;
 import com.soma.backend.domain.adjuster.dto.AdjusterProfileResponse;
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
@@ -87,6 +88,22 @@ public class AdjusterProfileQueryService {
     int pendingReviewCount = Math.toIntExact(adjusterHomeRepository.countPendingPool());
 
     return AdjusterProfileResponse.from(profile, user, recentReviews, handledCaseCount, pendingReviewCount);
+  }
+
+  /**
+   * 사정사 공개 상세(GET /adjusters/{adjusterId}, adjusterId=user_id). 본인 프로필과 동일 소스를
+   * path user_id로 조립하되 self 전용 지표(검수 대기 수)는 빼고 상담 안내·자격 인증 블록을 더한다.
+   */
+  public AdjusterDetailResponse getAdjusterDetail(UUID adjusterId) {
+    AdjusterProfile profile = findProfile(adjusterId);
+    User user = findUser(adjusterId);
+
+    List<AdjusterReviewRow> recentReviews = adjusterReviewRepository
+        .findReviewRows(adjusterId, PageRequest.of(0, RECENT_REVIEW_LIMIT))
+        .getContent();
+    long handledCaseCount = reportReviewRepository.countByAdjusterId(adjusterId);
+
+    return AdjusterDetailResponse.from(profile, user, recentReviews, handledCaseCount);
   }
 
   private AdjusterProfile findProfile(UUID userId) {
