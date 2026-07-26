@@ -25,12 +25,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
 import com.soma.backend.domain.report.dto.Pagination;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.service.ProposalQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
 import com.soma.backend.domain.report.service.ReportQueryService;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.CookieProvider;
 import com.soma.backend.global.security.CustomUserDetails;
 import com.soma.backend.global.security.JwtFilter;
@@ -163,5 +166,84 @@ class ReportControllerAuthTest {
         .andExpect(status().isOk());
 
     then(reportQueryService).should().getUserReports(any(), eq("COUNSELING"), eq(2), eq(20));
+  }
+
+  @Test
+  @DisplayName("비로그인이면 GET /reports/{id}는 401 LOGIN_REQUIRED")
+  void unauthenticatedDetailReturns401() throws Exception {
+    mockMvc.perform(get("/reports/{id}", UUID.randomUUID()))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
+  }
+
+  @Test
+  @DisplayName("소유자는 GET /reports/{id} 200 — 고객 상세 shape을 FE 계약(snake_case)으로 전수 직렬화한다")
+  void ownerDetailReturns200() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    UUID adjusterId = UUID.randomUUID();
+    CustomerReportDetailResponse.IssueItem issue = new CustomerReportDetailResponse.IssueItem(
+        "장해등급 과소 산정 가능", "우측 슬관절 후유장해 등급이 낮게 산정됨", "CONFIRMED",
+        List.of("약관 제12조", "진단서"), 3_000_000L);
+    CustomerReportDetailResponse.Adjuster adjuster =
+        new CustomerReportDetailResponse.Adjuster("홍사정", "7");
+    CustomerReportDetailResponse response = new CustomerReportDetailResponse(
+        reportId, "COUNSELING", "disability", "3주 입원 후 통원",
+        12_000_000L, 18_000_000L, 8_500_000L,
+        List.of("상해후유장해"), List.of("일상생활배상책임"), List.of("대법원 2019다12345"),
+        List.of(issue), "후유장해 청구가 가능한가요?", adjusterId, "HIGH", "20260727-1",
+        "검수 의견입니다", LocalDateTime.of(2026, 7, 27, 12, 0), adjuster);
+    given(reportQueryService.getReportDetail(any(), any(), any())).willReturn(response);
+
+    mockMvc.perform(get("/reports/{id}", reportId).with(authenticatedAs(userId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("200"))
+        .andExpect(jsonPath("$.data.report_id").value(reportId.toString()))
+        .andExpect(jsonPath("$.data.status").value("COUNSELING"))
+        .andExpect(jsonPath("$.data.accident_type").value("disability"))
+        .andExpect(jsonPath("$.data.treatment").value("3주 입원 후 통원"))
+        .andExpect(jsonPath("$.data.claimed_min_amount").value(12_000_000))
+        .andExpect(jsonPath("$.data.claimed_max_amount").value(18_000_000))
+        .andExpect(jsonPath("$.data.offered_amount").value(8_500_000))
+        .andExpect(jsonPath("$.data.applicable_guarantees[0]").value("상해후유장해"))
+        .andExpect(jsonPath("$.data.omitted_special_contract[0]").value("일상생활배상책임"))
+        .andExpect(jsonPath("$.data.basis_terms_precedents[0]").value("대법원 2019다12345"))
+        .andExpect(jsonPath("$.data.issues[0].title").value("장해등급 과소 산정 가능"))
+        .andExpect(jsonPath("$.data.issues[0].description").value("우측 슬관절 후유장해 등급이 낮게 산정됨"))
+        .andExpect(jsonPath("$.data.issues[0].ai_status").value("CONFIRMED"))
+        .andExpect(jsonPath("$.data.issues[0].tags[0]").value("약관 제12조"))
+        .andExpect(jsonPath("$.data.issues[0].impact_amount").value(3_000_000))
+        .andExpect(jsonPath("$.data.question").value("후유장해 청구가 가능한가요?"))
+        .andExpect(jsonPath("$.data.adjuster_id").value(adjusterId.toString()))
+        .andExpect(jsonPath("$.data.confidence_level").value("HIGH"))
+        .andExpect(jsonPath("$.data.case_no").value("20260727-1"))
+        .andExpect(jsonPath("$.data.review_comment").value("검수 의견입니다"))
+        .andExpect(jsonPath("$.data.reviewed_at").exists())
+        .andExpect(jsonPath("$.data.adjuster.nickname").value("홍사정"))
+        .andExpect(jsonPath("$.data.adjuster.career").value("7"));
+
+    then(reportQueryService).should().getReportDetail(userId, "USER", reportId);
+  }
+
+  @Test
+  @DisplayName("소유자도 사정사도 아니면 서비스가 던진 403 FORBIDDEN을 그대로 전달한다")
+  void nonOwnerNonAdjusterDetailReturns403() throws Exception {
+    given(reportQueryService.getReportDetail(any(), any(), any()))
+        .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
+
+    mockMvc.perform(get("/reports/{id}", UUID.randomUUID()).with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 리포트면 서비스가 던진 404 REPORT_NOT_FOUND를 그대로 전달한다")
+  void missingReportDetailReturns404() throws Exception {
+    given(reportQueryService.getReportDetail(any(), any(), any()))
+        .willThrow(new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+
+    mockMvc.perform(get("/reports/{id}", UUID.randomUUID()).with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("REPORT_NOT_FOUND"));
   }
 }

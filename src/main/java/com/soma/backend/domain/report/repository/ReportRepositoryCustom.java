@@ -24,4 +24,11 @@ public interface ReportRepositoryCustom {
 
   /** 리포트 의뢰인의 지역 목록(users.region text[]). 매핑 엔티티 조인 + 배열 컬럼 단일 조회라 QueryDSL fetchOne. */
   List<String> findRegionByReportId(UUID reportId);
+
+  /**
+   * GET /reports/{reportId} 고객 상세용 크로스-애그리거트 읽기 모델. 채택된 제안(report_reviews.status=ACCEPTED)의
+   * 코멘트·확정 시각·확정 배열 3종과 담당 사정사(users.nickname·adjuster_profiles.career)를 한 번에 조회한다.
+   * ACCEPTED 제안·담당 사정사가 없으면 해당 필드는 null이다(존재 시 리포트당 ACCEPTED는 최대 1건).
+   */
+  CustomerReportDetailRow findCustomerReportDetail(UUID reportId);
 }

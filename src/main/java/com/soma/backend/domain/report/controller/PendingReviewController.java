@@ -20,7 +20,6 @@ import com.soma.backend.domain.report.dto.HoldReportRequest;
 import com.soma.backend.domain.report.dto.HoldResponse;
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
-import com.soma.backend.domain.report.dto.ReportDetailResponse;
 import com.soma.backend.domain.report.dto.ReviewReportRequest;
 import com.soma.backend.domain.report.dto.ReviewReportResponse;
 import com.soma.backend.domain.report.dto.ReviewWorkspaceResponse;
@@ -70,14 +69,6 @@ public class PendingReviewController {
     PendingReviewListResponse result =
         pendingReviewQueryService.getPendingReviewList(
             status, accidentType, region, principal.getUserId(), pageable);
-    return ResponseEntity.ok(ApiResponse.ok(result));
-  }
-
-  @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
-  @GetMapping("/reports/{reportId}")
-  public ResponseEntity<ApiResponse<ReportDetailResponse>> reportDetail(
-      @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
-    ReportDetailResponse result = pendingReviewQueryService.getReportDetail(reportId, principal.getUserId());
     return ResponseEntity.ok(ApiResponse.ok(result));
   }
 

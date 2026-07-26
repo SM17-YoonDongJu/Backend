@@ -136,4 +136,25 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .where(rp.id.eq(reportId))
         .fetchOne();
   }
+
+  @Override
+  public CustomerReportDetailRow findCustomerReportDetail(UUID reportId) {
+    QReport rp = QReport.report;
+    // 채택된 제안(리포트당 최대 1건)을 report_id로, 담당 사정사(users·adjuster_profiles)를 report.adjuster_id로 붙인다.
+    QReportReview accepted = QReportReview.reportReview;
+    QUser adjusterUser = QUser.user;
+    QAdjusterProfile adjusterProfile = QAdjusterProfile.adjusterProfile;
+
+    return queryFactory
+        .select(Projections.constructor(CustomerReportDetailRow.class,
+            accepted.id, accepted.review, accepted.updatedAt,
+            accepted.applicableGuarantees, accepted.omittedSpecialContract, accepted.basisTermsPrecedents,
+            adjusterUser.nickname, adjusterProfile.career))
+        .from(rp)
+        .leftJoin(accepted).on(accepted.reportId.eq(rp.id).and(accepted.status.eq(ReviewStatus.ACCEPTED)))
+        .leftJoin(adjusterUser).on(adjusterUser.id.eq(rp.adjusterId))
+        .leftJoin(adjusterProfile).on(adjusterProfile.userId.eq(rp.adjusterId))
+        .where(rp.id.eq(reportId))
+        .fetchOne();
+  }
 }
