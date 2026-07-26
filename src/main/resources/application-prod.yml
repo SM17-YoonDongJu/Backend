@@ -19,12 +19,11 @@ management:
 
 logging:
   # 콘솔·파일 로그를 구조화 JSON(logstash)으로 — Alloy→Loki 수집·traceId 상관.
+  # 트레이싱이 켜지면 Micrometer가 MDC에 traceId·spanId를 채우고 logstash 포맷이 자동으로 넣는다
+  # (커스터마이저로 중복 주입하면 "traceId already written"으로 in-span 로그가 유실됨 — 넣지 않는다).
   structured:
     format:
       console: logstash
       file: logstash
-    json:
-      # 구조화 로그에 traceId·spanId 주입(로그↔트레이스 상관용). Span.current()에서 직접 뽑아 넣는다.
-      customizer: com.soma.backend.global.config.TracingStructuredLogCustomizer
   level:
     com.soma.backend: INFO    # application.yml의 DEBUG를 운영에선 INFO로(성능·PII·로그량 관리)
