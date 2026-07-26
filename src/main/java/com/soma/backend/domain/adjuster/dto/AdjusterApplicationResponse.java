@@ -13,6 +13,7 @@ import com.soma.backend.domain.adjuster.entity.AdjusterApplicationDocument;
 /**
  * 내 자격 신청 상태 조회 응답(GET /users/adjuster-applications/me).
  * documents는 문서 종류(LICENSE→REGISTRATION) 순으로 정렬해 안정적으로 노출한다.
+ * speciality(단수)는 프론트 계약용으로 specialties 첫 항목에서 파생한다(specialties 배열도 함께 유지).
  */
 public record AdjusterApplicationResponse(
     UUID applicationId,
@@ -21,6 +22,7 @@ public record AdjusterApplicationResponse(
     String name,
     @Nullable String phone,
     List<String> specialties,
+    String speciality,
     @Nullable String licenseNo,
     List<Document> documents,
     @Nullable LocalDateTime rejectedAt,
@@ -31,13 +33,16 @@ public record AdjusterApplicationResponse(
         .sorted(Comparator.comparing(AdjusterApplicationDocument::getDocType))
         .map(Document::from)
         .toList();
+    List<String> specialties = application.getSpecialties();
+    String speciality = specialties == null || specialties.isEmpty() ? "" : specialties.get(0);
     return new AdjusterApplicationResponse(
         application.getId(),
         application.getStatus().name(),
         application.getCreatedAt(),
         application.getName(),
         application.getPhone(),
-        application.getSpecialties(),
+        specialties,
+        speciality,
         application.getLicenseNo(),
         documents,
         application.getRejectedAt(),
