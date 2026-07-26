@@ -15,11 +15,14 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.adjuster.entity.QAdjusterProfile;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.QReport;
 import com.soma.backend.domain.report.entity.QReportHold;
 import com.soma.backend.domain.report.entity.QReportIssue;
+import com.soma.backend.domain.report.entity.QReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.user.entity.QUser;
 
 /** Report 동적 조회 QueryDSL 구현. issueCount·held는 상관 서브쿼리, users 조인은 엔티티 조인(on)으로 처리한다. */
@@ -71,6 +74,51 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .select(rp.count())
         .from(rp)
         .join(us).on(us.id.eq(rp.userId))
+        .where(where)
+        .fetchOne();
+
+    return new PageImpl<>(content, pageable, total == null ? 0L : total);
+  }
+
+  @Override
+  public Page<ReportCardRow> findUserReportCards(UUID userId, ReportStatus status, Pageable pageable) {
+    QReport rp = QReport.report;
+    // ACCEPTED 제안(리포트당 최대 1건, accept 시 리포트 종결)을 붙이는 조인 별칭과, proposalCount 상관
+    // 서브쿼리용 별도 별칭을 분리한다(같은 report_reviews를 서로 다른 조건으로 두 번 참조).
+    QReportReview accepted = QReportReview.reportReview;
+    QReportReview sibling = new QReportReview("sibling");
+    QUser au = QUser.user;
+    QAdjusterProfile ap = QAdjusterProfile.adjusterProfile;
+
+    BooleanBuilder where = new BooleanBuilder();
+    where.and(rp.userId.eq(userId));
+    if (status != null) {
+      where.and(rp.status.eq(status));
+    }
+
+    List<ReportCardRow> content = queryFactory
+        .select(Projections.constructor(ReportCardRow.class,
+            rp.id, rp.status, rp.accidentType, rp.title, rp.createdAt, rp.caseNo,
+            rp.claimedMinAmount, rp.claimedMaxAmount,
+            // proposalCount = REJECTED 제외 제안 수(SENT·COUNSELING·ACCEPTED).
+            JPAExpressions.select(sibling.count()).from(sibling)
+                .where(sibling.reportId.eq(rp.id).and(sibling.status.ne(ReviewStatus.REJECTED))),
+            accepted.updatedAt, au.nickname, accepted.estimateMinAmount, accepted.estimateMaxAmount,
+            ap.ratingMean))
+        .from(rp)
+        .leftJoin(accepted).on(accepted.reportId.eq(rp.id).and(accepted.status.eq(ReviewStatus.ACCEPTED)))
+        .leftJoin(au).on(au.id.eq(accepted.adjusterId))
+        .leftJoin(ap).on(ap.userId.eq(accepted.adjusterId))
+        .where(where)
+        .orderBy(rp.createdAt.desc())
+        .offset(pageable.getOffset())
+        .limit(pageable.getPageSize())
+        .fetch();
+
+    // 카운트는 소유자·status 필터만 걸린 reports 단일 테이블 집계다(ACCEPTED 조인은 행 수를 늘리지 않음).
+    Long total = queryFactory
+        .select(rp.count())
+        .from(rp)
         .where(where)
         .fetchOne();
 
