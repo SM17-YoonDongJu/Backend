@@ -28,8 +28,6 @@ import com.soma.backend.infra.redis.TokenBlacklistRepository;
 @RequiredArgsConstructor
 public class JwtFilter extends OncePerRequestFilter {
 
-  private static final String AUTH_HEADER = "Authorization";
-  private static final String BEARER_PREFIX = "Bearer ";
   private static final String AUTH_PATH_PREFIX = "/auth/";
   private static final String OAUTH2_PATH_PREFIX = "/api/v1/auth/oauth2/";
 
@@ -84,11 +82,11 @@ public class JwtFilter extends OncePerRequestFilter {
     jsonMapper.writeValue(response.getWriter(), ErrorResponse.of(ex.getErrorCode()));
   }
 
+  /**
+   * {@code access_token} HttpOnly 쿠키에서만 토큰을 읽는다. 인증은 쿠키 단일 경로로 통일하며
+   * {@code Authorization: Bearer} 헤더 인증은 지원하지 않는다(운영·프론트 모두 쿠키 경로).
+   */
   private String resolveToken(HttpServletRequest request) {
-    String header = request.getHeader(AUTH_HEADER);
-    if (StringUtils.hasText(header) && header.startsWith(BEARER_PREFIX)) {
-      return header.substring(BEARER_PREFIX.length());
-    }
     return cookieProvider.readCookie(request, CookieProvider.ACCESS_TOKEN_COOKIE)
         .filter(StringUtils::hasText)
         .orElse(null);
