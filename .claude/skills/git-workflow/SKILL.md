@@ -85,19 +85,21 @@ git diff --stat HEAD
 | scope          | 해당 영역 |
 |----------------|---------|
 | `auth`         | JWT, OAuth2, Spring Security, 회원가입 |
-| `user`         | 사용자 엔티티, 프로필, 내 정보 |
-| `adjuster`     | 사정사 신청·프로필 |
-| `report`       | 리포트 생성·조회·검수 및 서명 |
-| `match`        | 상담 신청·매칭 수락 |
+| `user`         | 사용자 엔티티, 프로필, 내 정보, 보험 정보 |
+| `adjuster`     | 사정사 신청·프로필·공개 목록 |
+| `report`       | 리포트 생성·조회·검수·서명, 제안 수락/거절(매칭) |
 | `chat`         | WebSocket 채팅 |
-| `payment`      | 결제 내역, 구독 |
+| `notification` | FCM 푸시, 인앱 알림, 알림 설정 |
+| `upload`       | S3 presigned 업로드 |
 | `config`       | 설정, 환경변수 |
+| `match`        | (placeholder — 실제 매칭 로직은 `report`/proposal) |
+| `payment`      | 결제·구독 — **계획, 미구현** (예약 에러코드만 존재) |
 
 **예시:**
 ```
 feat(auth): 카카오 OAuth2 소셜 로그인 구현
-fix(match): 매칭 수락 시 중복 채팅방 생성 버그 수정
-test(payment): 결제 웹훅 멱등성 통합 테스트 추가
+fix(report): 제안 수락 시 중복 채팅방 생성 버그 수정
+test(report): 검수 리포트 서명 등록 통합 테스트 추가
 ```
 
 
@@ -174,7 +176,7 @@ gh issue create \
 EOF
 )" \
   --label "<라벨1>,<라벨2>" \
-  --assignee "이동형"
+  --assignee "@me"
 ```
 
 ### B-4. 브랜치 생성 및 체크아웃
@@ -200,7 +202,7 @@ ISSUE_URL=$(gh issue create \
   --title "..." \
   --body "..." \
   --label "..." \
-  --assignee "이동형")
+  --assignee "@me")
 ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
 
 # develop 기준으로 브랜치 생성 후 체크아웃
