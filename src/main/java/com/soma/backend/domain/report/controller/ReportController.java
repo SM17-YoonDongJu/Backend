@@ -70,6 +70,19 @@ public class ReportController {
   }
 
   /**
+   * 받은 제안 목록 조회(GET /me/received-proposals). 제안 받은(REJECTED 제외) 리뷰를 per-review 카드 목록으로
+   * 반환한다(응답 shape는 GET /reports와 동일). page는 1-based.
+   */
+  @GetMapping("/me/received-proposals")
+  public ResponseEntity<ApiResponse<ReportCardListResponse>> receivedProposals(
+      @AuthenticationPrincipal CustomUserDetails principal,
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "10") int size) {
+    ReportCardListResponse data = reportQueryService.getReceivedProposals(principal.getUserId(), page, size);
+    return ResponseEntity.ok(ApiResponse.ok(data));
+  }
+
+  /**
    * 고객 리포트 상세 조회(고객·사정사 공용 shape). 소유자(USER) 또는 사정사만 조회 가능(그 외 403), 없으면 404.
    */
   @GetMapping("/reports/{reportId}")

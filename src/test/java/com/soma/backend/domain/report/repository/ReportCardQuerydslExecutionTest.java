@@ -153,6 +153,30 @@ class ReportCardQuerydslExecutionTest {
     assertThat(page2.hasNext()).isFalse();
   }
 
+  @Test
+  @DisplayName("findReportsWithProposals — REJECTED 제외 리뷰만 per-review로, 전부 REJECTED·무리뷰·타인은 제외")
+  void findReportsWithProposalsExcludesRejected() {
+    UUID userId = UUID.randomUUID();
+    UUID r1 = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER, "RP-1");
+    saveReview(r1, saveUser("사정1"), ReviewStatus.SENT);
+    saveReview(r1, saveUser("사정2"), ReviewStatus.REJECTED); // 제외
+    UUID r2 = saveReport(userId, ReportStatus.CLOSED, AccidentType.OTHER, "RP-2");
+    saveReview(r2, saveUser("사정3"), ReviewStatus.ACCEPTED);
+    UUID r3 = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "RP-3");
+    saveReview(r3, saveUser("사정4"), ReviewStatus.REJECTED); // 전부 REJECTED → 행 없음
+    saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "RP-4"); // 무리뷰 → 행 없음
+    UUID other = saveReport(UUID.randomUUID(), ReportStatus.COUNSELING, AccidentType.OTHER, "RP-5");
+    saveReview(other, saveUser("사정5"), ReviewStatus.SENT); // 타인 → 제외
+    flushAndClear();
+
+    Page<ReportCardRow> page = reportRepository.findReportsWithProposals(userId, PageRequest.of(0, 10));
+
+    assertThat(page.getTotalElements()).isEqualTo(2); // r1 SENT + r2 ACCEPTED
+    assertThat(page.getContent()).extracting(ReportCardRow::reportId).containsExactlyInAnyOrder(r1, r2);
+    assertThat(page.getContent()).extracting(ReportCardRow::adjusterNickname)
+        .containsExactlyInAnyOrder("사정1", "사정3");
+  }
+
   // --- 시드 헬퍼 ---
 
   private UUID saveReport(UUID userId, ReportStatus status, AccidentType accidentType, String caseNo) {

@@ -16,11 +16,16 @@ public interface ReportRepositoryCustom {
       ReportStatus status, AccidentType accidentType, String region, UUID adjusterId, Pageable pageable);
 
   /**
-   * GET /reports 고객 대시보드 카드 목록(design.md §6). userId 소유 리포트를 전 상태로 반환하며,
-   * status가 있으면 그 상태만 필터한다. 채택된 제안(report_reviews.status=ACCEPTED)을 LEFT JOIN해
-   * 확정 사정사·확정 견적·평점을 붙이고, proposalCount는 REJECTED 제외 상관 서브쿼리로 채운다.
+   * GET /reports 고객 리포트 목록(per-review). userId 소유 리포트에 달린 report_reviews를 1건당 1행으로
+   * 반환하며(전체 리뷰), status가 있으면 리포트 상태로 필터한다. reviewedAt·adjusterNickname은 그 리뷰값이다.
    */
   Page<ReportCardRow> findUserReportCards(UUID userId, ReportStatus status, Pageable pageable);
+
+  /**
+   * GET /me/received-proposals 받은 제안 목록(per-review, non-REJECTED). 소유자 리포트에 달린 리뷰 중
+   * REJECTED를 제외한 것(제안 받은 건)을 1건당 1행으로 반환한다. 응답 shape는 GET /reports와 동일이다.
+   */
+  Page<ReportCardRow> findReportsWithProposals(UUID userId, Pageable pageable);
 
   /** 리포트 의뢰인의 지역 목록(users.region text[]). 매핑 엔티티 조인 + 배열 컬럼 단일 조회라 QueryDSL fetchOne. */
   List<String> findRegionByReportId(UUID reportId);

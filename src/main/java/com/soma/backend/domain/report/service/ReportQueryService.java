@@ -54,6 +54,16 @@ public class ReportQueryService {
   }
 
   /**
+   * 받은 제안 목록(GET /me/received-proposals) — 제안 받은(REJECTED 제외) 리뷰를 per-review 카드로 반환한다.
+   * 응답 shape는 GET /reports와 동일이며 page는 1-based다.
+   */
+  public ReportCardListResponse getReceivedProposals(UUID userId, int page, int size) {
+    Pageable pageable = PageRequest.of(Math.max(page - 1, 0), clampSize(size));
+    Page<ReportCardRow> rows = reportRepository.findReportsWithProposals(userId, pageable);
+    return ReportCardListResponse.from(rows);
+  }
+
+  /**
    * 고객 리포트 상세(GET /reports/{reportId}). 인가는 리포트 소유자(USER, report.userId=principal) 또는
    * 사정사(CERTIFICATED/UNCERTIFICATED_ADJUSTER)만 허용하고, 둘 다 아니면 403 FORBIDDEN을 던진다.
    * 존재하지 않는 리포트는 404 REPORT_NOT_FOUND. 확정 배열·검수 코멘트·담당 사정사는 크로스-애그리거트
