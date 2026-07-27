@@ -121,11 +121,11 @@ class ReportControllerAuthTest {
   @DisplayName("로그인 사용자는 GET /reports 200 — list·pagination을 FE 계약(snake_case)으로 직렬화한다")
   void authenticatedListReturns200() throws Exception {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
-        UUID.randomUUID(), "AWAITING_INSPECTION", "traffic", "교통사고 리포트",
+        UUID.randomUUID(), "MATCHED", "traffic", "교통사고 리포트",
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-1",
         1_000_000L, 2_000_000L, 3L,
         LocalDateTime.of(2026, 7, 27, 12, 0), "홍사정",
-        1_500_000L, 1_800_000L, 4.5);
+        8_500_000L, "후유장해");
     ReportCardListResponse response =
         new ReportCardListResponse(List.of(card), new Pagination(1, 10, 1, 1, false));
     given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt())).willReturn(response);
@@ -134,7 +134,7 @@ class ReportControllerAuthTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("200"))
         .andExpect(jsonPath("$.data.list[0].report_id").value(card.reportId().toString()))
-        .andExpect(jsonPath("$.data.list[0].status").value("AWAITING_INSPECTION"))
+        .andExpect(jsonPath("$.data.list[0].status").value("MATCHED"))
         .andExpect(jsonPath("$.data.list[0].accident_type").value("traffic"))
         .andExpect(jsonPath("$.data.list[0].report_no").value("20260727-1"))
         .andExpect(jsonPath("$.data.list[0].claimed_min_amount").value(1_000_000))
@@ -142,9 +142,8 @@ class ReportControllerAuthTest {
         .andExpect(jsonPath("$.data.list[0].proposal_count").value(3))
         .andExpect(jsonPath("$.data.list[0].reviewed_at").exists())
         .andExpect(jsonPath("$.data.list[0].adjuster_nickname").value("홍사정"))
-        .andExpect(jsonPath("$.data.list[0].confirmed_min_amount").value(1_500_000))
-        .andExpect(jsonPath("$.data.list[0].confirmed_max_amount").value(1_800_000))
-        .andExpect(jsonPath("$.data.list[0].rating").value(4.5))
+        .andExpect(jsonPath("$.data.list[0].offered_amount").value(8_500_000))
+        .andExpect(jsonPath("$.data.list[0].treatment").value("후유장해"))
         .andExpect(jsonPath("$.data.pagination.page").value(1))
         .andExpect(jsonPath("$.data.pagination.size").value(10))
         .andExpect(jsonPath("$.data.pagination.total_elements").value(1))
@@ -183,12 +182,12 @@ class ReportControllerAuthTest {
     UUID reportId = UUID.randomUUID();
     UUID adjusterId = UUID.randomUUID();
     CustomerReportDetailResponse.IssueItem issue = new CustomerReportDetailResponse.IssueItem(
-        "장해등급 과소 산정 가능", "우측 슬관절 후유장해 등급이 낮게 산정됨", "CONFIRMED",
+        "장해등급 과소 산정 가능", "등급 재산정이 필요합니다(사정사 의견)", "TRUSTED",
         List.of("약관 제12조", "진단서"), 3_000_000L);
     CustomerReportDetailResponse.Adjuster adjuster =
-        new CustomerReportDetailResponse.Adjuster("홍사정", "7");
+        new CustomerReportDetailResponse.Adjuster("홍사정", 7);
     CustomerReportDetailResponse response = new CustomerReportDetailResponse(
-        reportId, "COUNSELING", "disability", "3주 입원 후 통원",
+        reportId, "MATCHED", "disability", "3주 입원 후 통원",
         12_000_000L, 18_000_000L, 8_500_000L,
         List.of("상해후유장해"), List.of("일상생활배상책임"), List.of("대법원 2019다12345"),
         List.of(issue), "후유장해 청구가 가능한가요?", adjusterId, "HIGH", "20260727-1",
@@ -199,7 +198,7 @@ class ReportControllerAuthTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("200"))
         .andExpect(jsonPath("$.data.report_id").value(reportId.toString()))
-        .andExpect(jsonPath("$.data.status").value("COUNSELING"))
+        .andExpect(jsonPath("$.data.status").value("MATCHED"))
         .andExpect(jsonPath("$.data.accident_type").value("disability"))
         .andExpect(jsonPath("$.data.treatment").value("3주 입원 후 통원"))
         .andExpect(jsonPath("$.data.claimed_min_amount").value(12_000_000))
@@ -208,19 +207,19 @@ class ReportControllerAuthTest {
         .andExpect(jsonPath("$.data.applicable_guarantees[0]").value("상해후유장해"))
         .andExpect(jsonPath("$.data.omitted_special_contract[0]").value("일상생활배상책임"))
         .andExpect(jsonPath("$.data.basis_terms_precedents[0]").value("대법원 2019다12345"))
-        .andExpect(jsonPath("$.data.issues[0].title").value("장해등급 과소 산정 가능"))
-        .andExpect(jsonPath("$.data.issues[0].description").value("우측 슬관절 후유장해 등급이 낮게 산정됨"))
-        .andExpect(jsonPath("$.data.issues[0].ai_status").value("CONFIRMED"))
-        .andExpect(jsonPath("$.data.issues[0].tags[0]").value("약관 제12조"))
-        .andExpect(jsonPath("$.data.issues[0].impact_amount").value(3_000_000))
+        .andExpect(jsonPath("$.data.issue[0].title").value("장해등급 과소 산정 가능"))
+        .andExpect(jsonPath("$.data.issue[0].opinion").value("등급 재산정이 필요합니다(사정사 의견)"))
+        .andExpect(jsonPath("$.data.issue[0].status").value("TRUSTED"))
+        .andExpect(jsonPath("$.data.issue[0].tags[0]").value("약관 제12조"))
+        .andExpect(jsonPath("$.data.issue[0].impact_amount").value(3_000_000))
         .andExpect(jsonPath("$.data.question").value("후유장해 청구가 가능한가요?"))
         .andExpect(jsonPath("$.data.adjuster_id").value(adjusterId.toString()))
         .andExpect(jsonPath("$.data.confidence_level").value("HIGH"))
-        .andExpect(jsonPath("$.data.case_no").value("20260727-1"))
+        .andExpect(jsonPath("$.data.report_no").value("20260727-1"))
         .andExpect(jsonPath("$.data.review_comment").value("검수 의견입니다"))
         .andExpect(jsonPath("$.data.reviewed_at").exists())
         .andExpect(jsonPath("$.data.adjuster.nickname").value("홍사정"))
-        .andExpect(jsonPath("$.data.adjuster.career").value("7"));
+        .andExpect(jsonPath("$.data.adjuster.career").value(7));
 
     then(reportQueryService).should().getReportDetail(userId, "USER", reportId);
   }

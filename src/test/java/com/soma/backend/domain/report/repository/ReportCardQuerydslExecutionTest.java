@@ -2,7 +2,6 @@ package com.soma.backend.domain.report.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -12,7 +11,6 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
@@ -24,8 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 
-import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
-import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
@@ -36,9 +32,11 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 
 /**
- * findUserReportCards(QueryDSL) 실행 검증 — 실제 test_db에 시드 데이터를 넣고 소유자 스코프·status 필터·
- * 페이지네이션·정렬·ACCEPTED 제안 조인(있음/없음)·proposalCount(REJECTED 제외)를 확인한다.
- * @Transactional로 각 테스트 종료 시 롤백돼 다른 실행 테스트(빈 DB 가정)를 오염시키지 않는다.
+ * findUserReportCards(QueryDSL, per-review) 실행 검증 — 실제 test_db에 시드 데이터를 넣고, report_reviews
+ * 1건당 1행으로 펴지는지·소유자 스코프·status 필터·페이지네이션·리뷰별 필드(adjusterNickname·reviewedAt)와
+ * 리포트 필드(offeredAmount·treatment·proposalCount=REJECTED 제외)를 확인한다. status의 CLOSED→MATCHED
+ * 매핑은 응답 DTO(Card.from) 책임이라 여기선 원본 ReportStatus를 검증한다.
+ * @Transactional로 각 테스트 종료 시 롤백돼 다른 실행 테스트를 오염시키지 않는다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -51,36 +49,40 @@ class ReportCardQuerydslExecutionTest {
   private ReportReviewRepository reportReviewRepository;
   @Autowired
   private UserRepository userRepository;
-  @Autowired
-  private AdjusterProfileRepository adjusterProfileRepository;
   @PersistenceContext
   private EntityManager entityManager;
 
   @Test
-  @DisplayName("소유자 스코프 — userId 소유 리포트만 반환하고 타인 리포트는 제외한다")
-  void findsOnlyOwnerReports() {
+  @DisplayName("per-review·소유자 스코프 — 소유 리포트의 리뷰만 1건당 1행으로 반환(타인·무리뷰 리포트 제외)")
+  void perReviewOwnerScope() {
     UUID userA = UUID.randomUUID();
     UUID userB = UUID.randomUUID();
-    UUID a1 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A1", null, null);
-    UUID a2 = saveReport(userA, ReportStatus.COUNSELING, AccidentType.OTHER, "OS-A2", null, null);
-    UUID b1 = saveReport(userB, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-B1", null, null);
+    UUID a1 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A1");
+    saveReview(a1, saveUser("사정1"), ReviewStatus.SENT);
+    saveReview(a1, saveUser("사정2"), ReviewStatus.COUNSELING);
+    saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A2"); // 리뷰 없음 → 행 없음
+    UUID b1 = saveReport(userB, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-B1");
+    saveReview(b1, saveUser("사정3"), ReviewStatus.SENT);
     flushAndClear();
 
     Page<ReportCardRow> pageA = reportRepository.findUserReportCards(userA, null, PageRequest.of(0, 10));
 
-    assertThat(pageA.getTotalElements()).isEqualTo(2);
-    assertThat(pageA.getContent()).extracting(ReportCardRow::reportId)
-        .containsExactlyInAnyOrder(a1, a2)
-        .doesNotContain(b1);
+    assertThat(pageA.getTotalElements()).isEqualTo(2); // a1의 리뷰 2건(무리뷰 리포트·타인 리뷰 제외)
+    assertThat(pageA.getContent()).extracting(ReportCardRow::reportId).containsOnly(a1);
+    assertThat(pageA.getContent()).extracting(ReportCardRow::adjusterNickname)
+        .containsExactlyInAnyOrder("사정1", "사정2");
   }
 
   @Test
-  @DisplayName("status 필터 — 지정 상태만 반환하고, 필터 없으면 전 상태를 반환한다")
-  void filtersByStatus() {
+  @DisplayName("status 필터 — 지정 리포트 상태의 리뷰만, 필터 없으면 전 상태")
+  void filtersByReportStatus() {
     UUID userId = UUID.randomUUID();
-    saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "SF-1", null, null);
-    UUID counseling = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER, "SF-2", null, null);
-    saveReport(userId, ReportStatus.CLOSED, AccidentType.OTHER, "SF-3", null, null);
+    UUID r1 = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "SF-1");
+    saveReview(r1, saveUser("a"), ReviewStatus.SENT);
+    UUID r2 = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER, "SF-2");
+    saveReview(r2, saveUser("b"), ReviewStatus.SENT);
+    UUID r3 = saveReport(userId, ReportStatus.CLOSED, AccidentType.OTHER, "SF-3");
+    saveReview(r3, saveUser("c"), ReviewStatus.ACCEPTED);
     flushAndClear();
 
     Page<ReportCardRow> all = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
@@ -88,18 +90,50 @@ class ReportCardQuerydslExecutionTest {
 
     Page<ReportCardRow> onlyCounseling =
         reportRepository.findUserReportCards(userId, ReportStatus.COUNSELING, PageRequest.of(0, 10));
-    assertThat(onlyCounseling.getContent()).extracting(ReportCardRow::reportId).containsExactly(counseling);
+    assertThat(onlyCounseling.getContent()).extracting(ReportCardRow::reportId).containsExactly(r2);
     assertThat(onlyCounseling.getContent().get(0).status()).isEqualTo(ReportStatus.COUNSELING);
   }
 
   @Test
-  @DisplayName("페이지네이션 — created_at DESC(최신순) 정렬 + total/hasNext가 정확하다")
+  @DisplayName("리뷰별·리포트별 필드 — 모든 리뷰(REJECTED 포함)가 행이 되고 리포트값·리뷰값이 맞게 채워진다")
+  void mapsReviewAndReportFields() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = saveReport(userId, ReportStatus.CLOSED, AccidentType.TRAFFIC, "AC-1");
+    setReportExtras(reportId, 1_000_000L, 2_000_000L, 8_500_000L, "후유장해");
+    saveReview(reportId, saveUser("김사정"), ReviewStatus.ACCEPTED);
+    saveReview(reportId, saveUser("이사정"), ReviewStatus.SENT);
+    saveReview(reportId, saveUser("박사정"), ReviewStatus.REJECTED);
+    flushAndClear();
+
+    Page<ReportCardRow> page = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
+
+    assertThat(page.getTotalElements()).isEqualTo(3); // 리뷰 3건 모두(REJECTED 포함)
+    assertThat(page.getContent()).allSatisfy(row -> {
+      assertThat(row.reportId()).isEqualTo(reportId);
+      assertThat(row.status()).isEqualTo(ReportStatus.CLOSED);
+      assertThat(row.accidentType()).isEqualTo(AccidentType.TRAFFIC);
+      assertThat(row.caseNo()).isEqualTo("AC-1");
+      assertThat(row.claimedMinAmount()).isEqualTo(1_000_000L);
+      assertThat(row.claimedMaxAmount()).isEqualTo(2_000_000L);
+      assertThat(row.proposalCount()).isEqualTo(2L); // ACCEPTED + SENT (REJECTED 제외)
+      assertThat(row.offeredAmount()).isEqualTo(8_500_000L);
+      assertThat(row.treatment()).isEqualTo("후유장해");
+      assertThat(row.reviewedAt()).isNotNull();
+    });
+    assertThat(page.getContent()).extracting(ReportCardRow::adjusterNickname)
+        .containsExactlyInAnyOrder("김사정", "이사정", "박사정");
+  }
+
+  @Test
+  @DisplayName("페이지네이션 — 리포트 created_at DESC 정렬 + total/hasNext(리뷰 행 기준)")
   void paginatesNewestFirst() {
     UUID userId = UUID.randomUUID();
     List<UUID> ids = new ArrayList<>();
     LocalDateTime base = LocalDateTime.of(2026, 7, 1, 9, 0);
     for (int idx = 0; idx < 5; idx++) {
-      ids.add(saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "PG-" + idx, null, null));
+      UUID reportId = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "PG-" + idx);
+      saveReview(reportId, saveUser("adj-" + idx), ReviewStatus.SENT);
+      ids.add(reportId);
     }
     entityManager.flush();
     for (int idx = 0; idx < 5; idx++) {
@@ -108,95 +142,43 @@ class ReportCardQuerydslExecutionTest {
     flushAndClear();
 
     Page<ReportCardRow> page0 = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 2));
-    assertThat(page0.getTotalElements()).isEqualTo(5);
+    assertThat(page0.getTotalElements()).isEqualTo(5); // 리포트 5개 × 리뷰 1건
     assertThat(page0.getTotalPages()).isEqualTo(3);
     assertThat(page0.hasNext()).isTrue();
-    // 최신순: idx4(가장 늦은 created_at) → idx3
     assertThat(page0.getContent()).extracting(ReportCardRow::reportId)
-        .containsExactly(ids.get(4), ids.get(3));
+        .containsExactly(ids.get(4), ids.get(3)); // 최신 리포트 먼저
 
     Page<ReportCardRow> page2 = reportRepository.findUserReportCards(userId, null, PageRequest.of(2, 2));
     assertThat(page2.getContent()).extracting(ReportCardRow::reportId).containsExactly(ids.get(0));
     assertThat(page2.hasNext()).isFalse();
   }
 
-  @Test
-  @DisplayName("ACCEPTED 제안 있음 — 확정 사정사·견적·평점을 붙이고 proposalCount는 REJECTED를 제외한다")
-  void joinsAcceptedProposal() {
-    UUID userId = UUID.randomUUID();
-    UUID reportId = saveReport(userId, ReportStatus.CLOSED, AccidentType.TRAFFIC, "AC-1", 1_000_000L, 2_000_000L);
-    UUID adjusterA = saveAdjuster("김사정", new BigDecimal("4.30"));
-    saveReview(reportId, adjusterA, ReviewStatus.ACCEPTED, 5_000_000L, 8_000_000L);
-    saveReview(reportId, UUID.randomUUID(), ReviewStatus.SENT, 3_000_000L, 4_000_000L);
-    saveReview(reportId, UUID.randomUUID(), ReviewStatus.REJECTED, 1_000_000L, 2_000_000L);
-    flushAndClear();
-
-    Page<ReportCardRow> page = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
-
-    assertThat(page.getContent()).hasSize(1);
-    ReportCardRow row = page.getContent().get(0);
-    assertThat(row.reportId()).isEqualTo(reportId);
-    assertThat(row.status()).isEqualTo(ReportStatus.CLOSED);
-    assertThat(row.accidentType()).isEqualTo(AccidentType.TRAFFIC);
-    assertThat(row.caseNo()).isEqualTo("AC-1");
-    assertThat(row.proposalCount()).isEqualTo(2L); // ACCEPTED + SENT (REJECTED 제외)
-    assertThat(row.reviewedAt()).isNotNull();
-    assertThat(row.adjusterNickname()).isEqualTo("김사정");
-    assertThat(row.confirmedMinAmount()).isEqualTo(5_000_000L);
-    assertThat(row.confirmedMaxAmount()).isEqualTo(8_000_000L);
-    assertThat(row.rating()).isEqualByComparingTo(new BigDecimal("4.30"));
-  }
-
-  @Test
-  @DisplayName("ACCEPTED 제안 없음 — 확정 필드 4개는 null이고 proposalCount는 REJECTED만 제외한다")
-  void nullWhenNoAcceptedProposal() {
-    UUID userId = UUID.randomUUID();
-    UUID reportId =
-        saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.CANCER_DIAGNOSIS, "NL-1", null, null);
-    saveReview(reportId, UUID.randomUUID(), ReviewStatus.SENT, null, null);
-    saveReview(reportId, UUID.randomUUID(), ReviewStatus.COUNSELING, null, null);
-    saveReview(reportId, UUID.randomUUID(), ReviewStatus.REJECTED, null, null);
-    flushAndClear();
-
-    Page<ReportCardRow> page = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
-
-    assertThat(page.getContent()).hasSize(1);
-    ReportCardRow row = page.getContent().get(0);
-    assertThat(row.proposalCount()).isEqualTo(2L); // SENT + COUNSELING (REJECTED 제외)
-    assertThat(row.reviewedAt()).isNull();
-    assertThat(row.adjusterNickname()).isNull();
-    assertThat(row.confirmedMinAmount()).isNull();
-    assertThat(row.confirmedMaxAmount()).isNull();
-    assertThat(row.rating()).isNull();
-  }
-
   // --- 시드 헬퍼 ---
 
-  private UUID saveReport(UUID userId, ReportStatus status, AccidentType accidentType, String caseNo,
-      Long claimMin, Long claimMax) {
+  private UUID saveReport(UUID userId, ReportStatus status, AccidentType accidentType, String caseNo) {
     Report report = Report.createPending(userId, null, null, accidentType, "질문", caseNo);
     ReflectionTestUtils.setField(report, "status", status);
-    ReflectionTestUtils.setField(report, "claimedMinAmount", claimMin);
-    ReflectionTestUtils.setField(report, "claimedMaxAmount", claimMax);
     return reportRepository.save(report).getId();
   }
 
-  private void saveReview(UUID reportId, UUID adjusterId, ReviewStatus status, Long estMin, Long estMax) {
+  private void setReportExtras(UUID reportId, Long claimMin, Long claimMax, Long offered, String treatment) {
+    Report report = reportRepository.findById(reportId).orElseThrow();
+    ReflectionTestUtils.setField(report, "claimedMinAmount", claimMin);
+    ReflectionTestUtils.setField(report, "claimedMaxAmount", claimMax);
+    ReflectionTestUtils.setField(report, "offeredAmount", offered);
+    ReflectionTestUtils.setField(report, "treatment", treatment);
+    reportRepository.save(report);
+  }
+
+  private void saveReview(UUID reportId, UUID adjusterId, ReviewStatus status) {
     ReportReview review = new ReportReview(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "status", status);
-    ReflectionTestUtils.setField(review, "estimateMinAmount", estMin);
-    ReflectionTestUtils.setField(review, "estimateMaxAmount", estMax);
     reportReviewRepository.save(review);
   }
 
-  private UUID saveAdjuster(String nickname, BigDecimal ratingMean) {
-    UUID adjusterId = userRepository.save(
+  private UUID saveUser(String nickname) {
+    return userRepository.save(
         User.create(nickname, LocalDate.of(1990, 1, 1), "", null, Role.CERTIFICATED_ADJUSTER)).getId();
-    AdjusterProfile profile = BeanUtils.instantiateClass(AdjusterProfile.class);
-    ReflectionTestUtils.setField(profile, "userId", adjusterId);
-    ReflectionTestUtils.setField(profile, "ratingMean", ratingMean);
-    adjusterProfileRepository.save(profile);
-    return adjusterId;
   }
 
   /** @CreatedDate(updatable=false)는 JPA로 못 바꾸므로 정렬 검증용으로 네이티브 UPDATE로 created_at을 고정한다. */

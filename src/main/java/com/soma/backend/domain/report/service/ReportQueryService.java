@@ -1,6 +1,8 @@
 package com.soma.backend.domain.report.service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -16,11 +18,14 @@ import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportIssue;
+import com.soma.backend.domain.report.entity.ReportReview;
+import com.soma.backend.domain.report.entity.ReportReviewIssue;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.CustomerReportDetailRow;
 import com.soma.backend.domain.report.repository.ReportCardRow;
 import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
+import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
@@ -38,6 +43,7 @@ public class ReportQueryService {
 
   private final ReportRepository reportRepository;
   private final ReportIssueRepository reportIssueRepository;
+  private final ReportReviewRepository reportReviewRepository;
 
   /** userId 소유 리포트 카드 목록. status는 옵션 필터(REPORTS.status), page는 1-based. */
   public ReportCardListResponse getUserReports(UUID userId, String status, int page, int size) {
@@ -61,7 +67,29 @@ public class ReportQueryService {
     }
     List<ReportIssue> issues = reportIssueRepository.findAllByReportId(reportId);
     CustomerReportDetailRow row = reportRepository.findCustomerReportDetail(reportId);
-    return CustomerReportDetailResponse.from(report, issues, row);
+    Map<UUID, String> opinions = loadAdjusterOpinions(row.acceptedReviewId());
+    return CustomerReportDetailResponse.from(report, issues, row, opinions);
+  }
+
+  /**
+   * 채택 리뷰(ACCEPTED report_review)의 쟁점 오버레이(report_issues_reviews)에서 report_issue_id→
+   * adjuster_opinion 맵을 만든다. 채택 리뷰가 없거나 사정사 의견이 없으면 빈 맵 — 상세는 AI description으로 폴백.
+   */
+  private Map<UUID, String> loadAdjusterOpinions(UUID acceptedReviewId) {
+    if (acceptedReviewId == null) {
+      return Map.of();
+    }
+    ReportReview review = reportReviewRepository.findById(acceptedReviewId).orElse(null);
+    if (review == null) {
+      return Map.of();
+    }
+    Map<UUID, String> opinions = new HashMap<>();
+    for (ReportReviewIssue overlay : review.getIssues()) {
+      if (overlay.getReportIssueId() != null && overlay.getAdjusterOpinion() != null) {
+        opinions.put(overlay.getReportIssueId(), overlay.getAdjusterOpinion());
+      }
+    }
+    return opinions;
   }
 
   /** 사정사 역할(자격 유무 무관)이면 임의 리포트 상세 조회를 허용한다(파트너 draft-preview 부분집합 소비). */
