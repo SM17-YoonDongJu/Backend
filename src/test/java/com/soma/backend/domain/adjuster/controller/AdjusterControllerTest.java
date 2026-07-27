@@ -1,8 +1,11 @@
 package com.soma.backend.domain.adjuster.controller;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
@@ -36,6 +39,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.soma.backend.domain.adjuster.dto.AdjusterDetailResponse;
+import com.soma.backend.domain.adjuster.dto.AdjusterListResponse;
+import com.soma.backend.domain.adjuster.service.AdjusterListQueryService;
 import com.soma.backend.domain.adjuster.service.AdjusterProfileQueryService;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -44,12 +49,13 @@ import com.soma.backend.global.security.CustomUserDetails;
 import com.soma.backend.global.security.JwtFilter;
 
 /**
- * 사정사 공개 상세(GET /adjusters/{adjusterId}) 컨트롤러 슬라이스 테스트.
+ * 사정사 공개 목록/검색(GET /adjusters)·공개 상세(GET /adjusters/{adjusterId}) 컨트롤러 슬라이스 테스트.
  *
  * <p>두 축을 검증한다. (1) 인가 — @PreAuthorize("isAuthenticated()")를 실제로 태워 비로그인은 401,
  * 인증된 고객(USER 포함)은 200(공개 프로필이라 롤 제한 없음). (2) JSON 계약 — 서비스를 목으로 두고 응답을
- * 실제 Jackson으로 직렬화해 snake_case 필드명·중첩 구조(consult_guide·certification)·verified·placeholder("")를
- * FE 계약대로 검증한다. 없는 사정사는 404(GlobalExceptionHandler가 ErrorResponse로 매핑).
+ * 실제 Jackson으로 직렬화해 snake_case 필드명·중첩 구조(list·pagination·meta, consult_guide·certification)·
+ * verified·nullable(avatar_url)·placeholder("")를 FE 계약대로 검증한다. 목록은 page(1-based) echo·전달도 함께
+ * 확인한다. 없는 사정사는 404(GlobalExceptionHandler가 ErrorResponse로 매핑).
  */
 @WebMvcTest(
     controllers = AdjusterController.class,
@@ -66,6 +72,9 @@ class AdjusterControllerTest {
 
   @MockitoBean
   private AdjusterProfileQueryService adjusterProfileQueryService;
+
+  @MockitoBean
+  private AdjusterListQueryService adjusterListQueryService;
 
   private static RequestPostProcessor as(String role) {
     CustomUserDetails principal = new CustomUserDetails(VIEWER_ID, role);
@@ -125,6 +134,61 @@ class AdjusterControllerTest {
         .andExpect(jsonPath("$.data.certification.verified_at").value("2026-01-01T00:00:00"));
 
     verify(adjusterProfileQueryService).getAdjusterDetail(eq(ADJUSTER_ID));
+  }
+
+  @Test
+  @DisplayName("비로그인이면 GET /adjusters는 401 LOGIN_REQUIRED")
+  void listUnauthenticated_returns401() throws Exception {
+    mockMvc.perform(get("/adjusters"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
+  }
+
+  @Test
+  @DisplayName("인증된 고객(USER)에게 목록을 snake_case 계약대로 내리고 page(1-based)를 echo·전달한다")
+  void authenticatedUser_returnsListContract() throws Exception {
+    given(adjusterListQueryService.getAdjusters(any(), any(), any(), any(), anyInt(), anyInt()))
+        .willReturn(populatedList());
+
+    mockMvc.perform(get("/adjusters").param("page", "2").param("sort", "rating").with(as("USER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("200"))
+        .andExpect(jsonPath("$.message").value("정상 처리되었습니다."))
+        .andExpect(jsonPath("$.data.list", hasSize(1)))
+        .andExpect(jsonPath("$.data.list[0].adjuster_id").value(ADJUSTER_ID.toString()))
+        .andExpect(jsonPath("$.data.list[0].name").value("김사정"))
+        .andExpect(jsonPath("$.data.list[0].avatar_url").value(nullValue()))
+        .andExpect(jsonPath("$.data.list[0].verified").value(true))
+        .andExpect(jsonPath("$.data.list[0].specialties[0]").value("교통사고"))
+        .andExpect(jsonPath("$.data.list[0].headline").value("장해등급 재산정 전문"))
+        .andExpect(jsonPath("$.data.list[0].average_rating").value(4.5))
+        .andExpect(jsonPath("$.data.list[0].review_count").value(12))
+        .andExpect(jsonPath("$.data.list[0].career").value(7))
+        .andExpect(jsonPath("$.data.list[0].completed_consult_count").value(30))
+        .andExpect(jsonPath("$.data.list[0].activity_region").value("서울·경기"))
+        .andExpect(jsonPath("$.data.pagination.page").value(2))
+        .andExpect(jsonPath("$.data.pagination.size").value(12))
+        .andExpect(jsonPath("$.data.pagination.total_elements").value(25))
+        .andExpect(jsonPath("$.data.pagination.total_pages").value(3))
+        .andExpect(jsonPath("$.data.pagination.has_next").value(true))
+        .andExpect(jsonPath("$.data.meta.total_adjuster_count").value(40))
+        .andExpect(jsonPath("$.data.meta.average_rating").value(4.2))
+        .andExpect(jsonPath("$.data.meta.total_consult_count").value(1200))
+        .andExpect(jsonPath("$.data.meta.average_career").value(6));
+
+    verify(adjusterListQueryService).getAdjusters(isNull(), isNull(), isNull(), eq("rating"), eq(2), eq(12));
+  }
+
+  private static AdjusterListResponse populatedList() {
+    AdjusterListResponse.Item item = new AdjusterListResponse.Item(
+        ADJUSTER_ID, "김사정", null, true,
+        List.of("교통사고", "상해"), "장해등급 재산정 전문",
+        4.5, 12, 7, 30, "서울·경기");
+    AdjusterListResponse.Pagination pagination =
+        new AdjusterListResponse.Pagination(2, 12, 25L, 3, true);
+    AdjusterListResponse.Meta meta =
+        new AdjusterListResponse.Meta(40L, 4.2, 1200L, 6);
+    return new AdjusterListResponse(List.of(item), pagination, meta);
   }
 
   private static AdjusterDetailResponse populatedDetail() {
