@@ -36,6 +36,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.soma.backend.domain.adjuster.dto.AdjusterMyPageResponse;
 import com.soma.backend.domain.adjuster.dto.AdjusterProfileResponse;
+import com.soma.backend.domain.adjuster.service.AdjusterProfileCommandService;
 import com.soma.backend.domain.adjuster.service.AdjusterProfileQueryService;
 import com.soma.backend.global.exception.GlobalExceptionHandler;
 import com.soma.backend.global.security.CustomUserDetails;
@@ -63,6 +64,10 @@ class AdjusterProfileControllerTest {
 
   @MockitoBean
   private AdjusterProfileQueryService adjusterProfileQueryService;
+
+  // PATCH 핸들러가 주입받는 커맨드 서비스 — 조회 테스트에선 쓰지 않지만 슬라이스 컨텍스트 로딩을 위해 목으로 등록.
+  @MockitoBean
+  private AdjusterProfileCommandService adjusterProfileCommandService;
 
   private static RequestPostProcessor as(String role) {
     CustomUserDetails principal = new CustomUserDetails(PRINCIPAL_ID, role);
