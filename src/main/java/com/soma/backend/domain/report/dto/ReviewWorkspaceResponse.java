@@ -6,6 +6,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -70,7 +71,7 @@ public record ReviewWorkspaceResponse(
         report.getAccidentType() == null ? null : report.getAccidentType().getValue(),
         regionText,
         report.getStatus() == null ? null : report.getStatus().name(),
-        report.getConfidenceLevel(),
+        normalizeConfidence(report.getConfidenceLevel()),
         Boolean.TRUE.equals(report.getIsMasked()),
         report.getOfferedAmount(),
         Client.from(context, regionText),
@@ -86,6 +87,11 @@ public record ReviewWorkspaceResponse(
         started ? review.getStatus().name() : null,
         started,
         progressOf(issues));
+  }
+
+  /** confidence_level 원본(FastAPI 산출)을 프론트 enum(LOW/MEDIUM/HIGH) 계약에 맞춰 대문자로 정규화한다. */
+  private static String normalizeConfidence(String confidenceLevel) {
+    return confidenceLevel == null ? null : confidenceLevel.toUpperCase(Locale.ROOT);
   }
 
   /** AI 쟁점(REPORT_ISSUES) 원본에 사정사 검수(REPORT_ISSUES_REVIEWS) 오버레이를 병합하고 ADDED 신규 쟁점을 덧붙인다. */

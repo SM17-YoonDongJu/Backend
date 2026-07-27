@@ -22,23 +22,23 @@ import com.soma.backend.global.common.RegionFormat;
 public record AdjusterProfileResponse(
     UUID adjusterId,
     String nickname,
-    @Nullable String headline,
+    String headline,
     @Nullable String avatarUrl,
     String activityRegion,
-    @Nullable String introduction,
+    String introduction,
     List<String> specialties,
     List<CareerItem> careers,
-    @Nullable Integer career,
+    Integer career,
     double averageRating,
     int reviewCount,
     List<RecentReview> recentReviews,
     int completedConsultCount,
     long handledCaseCount,
     int pendingReviewCount,
-    @Nullable LocalDateTime updatedAt) {
+    LocalDateTime updatedAt) {
 
   /** 주요 경력 항목(careers jsonb 요소). */
-  public record CareerItem(@Nullable String period, @Nullable String company) {
+  public record CareerItem(String period, String company) {
   }
 
   /** 최근 후기 항목. item은 연결 리포트의 사건 유형 영문 값(없으면 null). */
@@ -69,20 +69,20 @@ public record AdjusterProfileResponse(
     return new AdjusterProfileResponse(
         profile.getUserId(),
         user.getNickname(),
-        profile.getHeadline(),
+        orEmpty(profile.getHeadline()),
         user.getAvatarUrl(),
         RegionFormat.toSingle(profile.getActivityRegion()),
-        profile.getIntroduction(),
+        orEmpty(profile.getIntroduction()),
         profile.getSpecialties() == null ? List.of() : profile.getSpecialties(),
         toCareerItems(profile.getCareers()),
-        profile.getCareer(),
+        profile.getCareer() == null ? 0 : profile.getCareer(),
         averageRating,
         reviewCount,
         toRecentReviews(recent),
         profile.getCompletedConsultCount() == null ? 0 : profile.getCompletedConsultCount(),
         handledCaseCount,
         pendingReviewCount,
-        profile.getUpdatedAt());
+        profile.getUpdatedAt() != null ? profile.getUpdatedAt() : profile.getCreatedAt());
   }
 
   private static double resolveAverageRating(@Nullable Integer reviewCount, AdjusterProfile profile) {
@@ -97,7 +97,7 @@ public record AdjusterProfileResponse(
       return List.of();
     }
     return careers.stream()
-        .map(career -> new CareerItem(career.period(), career.company()))
+        .map(career -> new CareerItem(orEmpty(career.period()), orEmpty(career.company())))
         .toList();
   }
 
@@ -110,5 +110,9 @@ public record AdjusterProfileResponse(
             row.createdAt(),
             row.review()))
         .toList();
+  }
+
+  private static String orEmpty(@Nullable String value) {
+    return value == null ? "" : value;
   }
 }

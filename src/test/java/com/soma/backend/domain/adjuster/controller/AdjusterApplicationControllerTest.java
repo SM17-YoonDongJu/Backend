@@ -130,7 +130,7 @@ class AdjusterApplicationControllerTest {
   void getMyApplication_returns200() throws Exception {
     UUID userId = UUID.randomUUID();
     AdjusterApplicationResponse response = new AdjusterApplicationResponse(
-        UUID.randomUUID(), "PENDING", null, "홍길동", "010-1234-5678", List.of("신체"), "제2024-0001호",
+        UUID.randomUUID(), "PENDING", null, "홍길동", "010-1234-5678", List.of("신체"), "신체", "제2024-0001호",
         List.of(), null, null);
     given(queryService.getMyApplication(userId)).willReturn(response);
 
@@ -138,7 +138,8 @@ class AdjusterApplicationControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("200"))
         .andExpect(jsonPath("$.data.status").value("PENDING"))
-        .andExpect(jsonPath("$.data.name").value("홍길동"));
+        .andExpect(jsonPath("$.data.name").value("홍길동"))
+        .andExpect(jsonPath("$.data.speciality").value("신체"));
   }
 
   @Test
