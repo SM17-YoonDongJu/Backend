@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.jspecify.annotations.Nullable;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -90,6 +91,34 @@ public class AdjusterProfile extends BaseEntity {
 
   @Column(name = "registration_url")
   private String registrationUrl;
+
+  /**
+   * 프로필(태그라인·소개·경력연차·활동지역·전문분야·주요경력)을 부분 수정한다. {@code null} 인자는
+   * 변경하지 않는다(부분 수정). 프로필 사진(avatar_url)은 USERS 소관이라 여기서 다루지 않는다.
+   */
+  public void updateProfile(
+      @Nullable String headline, @Nullable String introduction, @Nullable Integer career,
+      @Nullable List<String> activityRegion, @Nullable List<String> specialties,
+      @Nullable List<Career> careers) {
+    if (headline != null) {
+      this.headline = headline;
+    }
+    if (introduction != null) {
+      this.introduction = introduction;
+    }
+    if (career != null) {
+      this.career = career;
+    }
+    if (activityRegion != null) {
+      this.activityRegion = activityRegion;
+    }
+    if (specialties != null) {
+      this.specialties = specialties;
+    }
+    if (careers != null) {
+      this.careers = careers;
+    }
+  }
 
   /** 주요 경력 항목(careers jsonb 요소) — {@code [{period, company}]}. */
   public record Career(String period, String company) {
