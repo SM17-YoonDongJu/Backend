@@ -15,11 +15,14 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.adjuster.entity.QAdjusterProfile;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.QReport;
 import com.soma.backend.domain.report.entity.QReportHold;
 import com.soma.backend.domain.report.entity.QReportIssue;
+import com.soma.backend.domain.report.entity.QReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.user.entity.QUser;
 
 /** Report 동적 조회 QueryDSL 구현. issueCount·held는 상관 서브쿼리, users 조인은 엔티티 조인(on)으로 처리한다. */
@@ -78,6 +81,66 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
   }
 
   @Override
+  public Page<ReportCardRow> findUserReportCards(UUID userId, ReportStatus status, Pageable pageable) {
+    return queryReportCards(userId, status, false, pageable);
+  }
+
+  @Override
+  public Page<ReportCardRow> findReportsWithProposals(UUID userId, Pageable pageable) {
+    return queryReportCards(userId, null, true, pageable);
+  }
+
+  /**
+   * 고객 리포트 카드 목록 공통 조회 — per-review. 소유자(rp.userId) 리포트에 달린 report_reviews를 1건당 1행으로
+   * 편다(리포트당 리뷰 N개면 N행). {@code excludeRejected}면 REJECTED 리뷰 행을 제외한다(받은 제안 목록용).
+   * status가 있으면 리포트 상태로 필터한다. reviewedAt·adjusterNickname은 그 리뷰값, proposalCount는 REJECTED
+   * 제외 리뷰 수(리포트 단위 상관 서브쿼리), 나머지(accidentType·claimed·offered·treatment)는 리포트값이다.
+   */
+  private Page<ReportCardRow> queryReportCards(
+      UUID userId, ReportStatus status, boolean excludeRejected, Pageable pageable) {
+    QReport rp = QReport.report;
+    QReportReview rv = QReportReview.reportReview;
+    QReportReview sibling = new QReportReview("sibling");
+    QUser au = QUser.user;
+
+    BooleanBuilder where = new BooleanBuilder();
+    where.and(rp.userId.eq(userId));
+    if (status != null) {
+      where.and(rp.status.eq(status));
+    }
+    if (excludeRejected) {
+      where.and(rv.status.ne(ReviewStatus.REJECTED));
+    }
+
+    List<ReportCardRow> content = queryFactory
+        .select(Projections.constructor(ReportCardRow.class,
+            rp.id, rp.status, rp.accidentType, rp.title, rp.createdAt, rp.caseNo,
+            rp.claimedMinAmount, rp.claimedMaxAmount,
+            // proposalCount = REJECTED 제외 리뷰 수(리포트 단위).
+            JPAExpressions.select(sibling.count()).from(sibling)
+                .where(sibling.reportId.eq(rp.id).and(sibling.status.ne(ReviewStatus.REJECTED))),
+            rv.updatedAt, au.nickname, rp.offeredAmount, rp.treatment))
+        .from(rv)
+        .join(rp).on(rp.id.eq(rv.reportId))
+        .leftJoin(au).on(au.id.eq(rv.adjusterId))
+        .where(where)
+        .orderBy(rp.createdAt.desc(), rv.createdAt.desc())
+        .offset(pageable.getOffset())
+        .limit(pageable.getPageSize())
+        .fetch();
+
+    // 카운트는 동일 join/where 아래 리뷰 행 수(per-review 페이지네이션).
+    Long total = queryFactory
+        .select(rv.count())
+        .from(rv)
+        .join(rp).on(rp.id.eq(rv.reportId))
+        .where(where)
+        .fetchOne();
+
+    return new PageImpl<>(content, pageable, total == null ? 0L : total);
+  }
+
+  @Override
   public List<String> findRegionByReportId(UUID reportId) {
     QReport rp = QReport.report;
     QUser us = QUser.user;
@@ -85,6 +148,27 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .select(us.region)
         .from(rp)
         .join(us).on(us.id.eq(rp.userId))
+        .where(rp.id.eq(reportId))
+        .fetchOne();
+  }
+
+  @Override
+  public CustomerReportDetailRow findCustomerReportDetail(UUID reportId) {
+    QReport rp = QReport.report;
+    // 채택된 제안(리포트당 최대 1건)을 report_id로, 담당 사정사(users·adjuster_profiles)를 report.adjuster_id로 붙인다.
+    QReportReview accepted = QReportReview.reportReview;
+    QUser adjusterUser = QUser.user;
+    QAdjusterProfile adjusterProfile = QAdjusterProfile.adjusterProfile;
+
+    return queryFactory
+        .select(Projections.constructor(CustomerReportDetailRow.class,
+            accepted.id, accepted.review, accepted.updatedAt,
+            accepted.applicableGuarantees, accepted.omittedSpecialContract, accepted.basisTermsPrecedents,
+            adjusterUser.nickname, adjusterProfile.career))
+        .from(rp)
+        .leftJoin(accepted).on(accepted.reportId.eq(rp.id).and(accepted.status.eq(ReviewStatus.ACCEPTED)))
+        .leftJoin(adjusterUser).on(adjusterUser.id.eq(rp.adjusterId))
+        .leftJoin(adjusterProfile).on(adjusterProfile.userId.eq(rp.adjusterId))
         .where(rp.id.eq(reportId))
         .fetchOne();
   }

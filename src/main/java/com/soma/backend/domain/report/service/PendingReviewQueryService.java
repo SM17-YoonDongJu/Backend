@@ -20,14 +20,9 @@ import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
 import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.dto.PendingReviewSummaryResponse;
-import com.soma.backend.domain.report.dto.ReportDetailResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
-import com.soma.backend.domain.report.entity.Report;
-import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
-import com.soma.backend.domain.report.repository.ReportHoldRepository;
-import com.soma.backend.domain.report.repository.ReportIssueRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.ReportReviewStatusRow;
@@ -58,8 +53,6 @@ public class PendingReviewQueryService {
       AccidentType.LIABILITY, "배상");
 
   private final ReportRepository reportRepository;
-  private final ReportHoldRepository reportHoldRepository;
-  private final ReportIssueRepository reportIssueRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final AdjusterProfileRepository adjusterProfileRepository;
 
@@ -121,23 +114,6 @@ public class PendingReviewQueryService {
     }
     return reportReviewRepository.findAdjusterReviewStatuses(adjusterId, reportIds).stream()
         .collect(Collectors.toMap(ReportReviewStatusRow::reportId, row -> row.status().name()));
-  }
-
-  /**
-   * API#6 — 검수 대기 리포트의 AI 초안 상세 조회. Aggregate 로딩을 우회하고 파생 필드(region·held·개수)를
-   * 조합한다. 쟁점은 report당 소량이라 findByReportId로 조회하고, 첨부는 검수 대기 화면용이라
-   * REPORTS.documents({name:url} 비정규화 맵)에서 내린다(상세 첨부 REPORT_ATTACHMENTS는 검수 화면 API 담당).
-   */
-  public ReportDetailResponse getReportDetail(UUID reportId, UUID adjusterId) {
-    Report report =
-        reportRepository.findById(reportId).orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
-    if (!report.isInReviewPhase()) {
-      throw new BusinessException(ErrorCode.REPORT_NOT_FOUND);
-    }
-    List<String> region = reportRepository.findRegionByReportId(reportId);
-    boolean held = reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId);
-    List<ReportIssue> issues = reportIssueRepository.findAllByReportId(reportId);
-    return ReportDetailResponse.from(report, region, held, issues);
   }
 
   /** 잘못된 status 필터 값은 조용한 빈 결과 대신 400으로 거른다. 빈 값이면 필터 없음(null). */

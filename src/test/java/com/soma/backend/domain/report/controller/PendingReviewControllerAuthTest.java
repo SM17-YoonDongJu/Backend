@@ -133,36 +133,6 @@ class PendingReviewControllerAuthTest {
   }
 
   @Nested
-  @DisplayName("상세 조회 엔드포인트(API#6)")
-  class DetailEndpoint {
-
-    private final UUID reportId = UUID.randomUUID();
-
-    @Test
-    @DisplayName("비로그인이면 401 LOGIN_REQUIRED")
-    void unauthenticatedReturns401() throws Exception {
-      mockMvc.perform(get("/reports/{reportId}", reportId))
-          .andExpect(status().isUnauthorized())
-          .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
-    }
-
-    @Test
-    @DisplayName("USER면 403 FORBIDDEN")
-    void userReturns403() throws Exception {
-      mockMvc.perform(get("/reports/{reportId}", reportId).with(as("USER")))
-          .andExpect(status().isForbidden())
-          .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-    }
-
-    @Test
-    @DisplayName("UNCERTIFICATED_ADJUSTER면 200")
-    void uncertificatedAdjuster200() throws Exception {
-      mockMvc.perform(get("/reports/{reportId}", reportId).with(as("UNCERTIFICATED_ADJUSTER")))
-          .andExpect(status().isOk());
-    }
-  }
-
-  @Nested
   @DisplayName("검수 화면 워크스페이스 엔드포인트(CERTIFICATED 전용)")
   class ReviewWorkspaceEndpoint {
 
