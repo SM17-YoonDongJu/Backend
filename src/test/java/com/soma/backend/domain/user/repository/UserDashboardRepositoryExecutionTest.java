@@ -13,8 +13,8 @@ import org.springframework.test.context.ActiveProfiles;
 /**
  * 고객 홈 대시보드 QueryDSL 읽기 모델이 실제 PostgreSQL에서 SQL로 번역·실행되는지 검증한다
  * (reports status IN + order/limit, min 집계, report_reviews→users/adjuster_profiles 조인 + text[] specialties
- * projection). 데이터가 없어도 SQL은 준비·실행되므로 번역 불가·문법 오류가 있으면 여기서 드러난다
- * (사정사 홈 AdjusterHomeRepositoryExecutionTest 관례).
+ * projection, todos 카운트, chat_rooms 상관 서브쿼리 exists). 데이터가 없어도 SQL은 준비·실행되므로 번역
+ * 불가·문법 오류가 있으면 여기서 드러난다(사정사 홈 AdjusterHomeRepositoryExecutionTest 관례).
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -39,5 +39,23 @@ class UserDashboardRepositoryExecutionTest {
   @DisplayName("findProposalItems — report_reviews→users/adjuster_profiles 조인 + text[] specialties projection이 실행된다")
   void findProposalItemsExecutes() {
     assertThat(userDashboardRepository.findProposalItems(UUID.randomUUID())).isEmpty();
+  }
+
+  @Test
+  @DisplayName("countUnreadProposals — report_reviews×reports SENT 카운트가 실행된다(빈 DB에서 0)")
+  void countUnreadProposalsExecutes() {
+    assertThat(userDashboardRepository.countUnreadProposals(UUID.randomUUID())).isZero();
+  }
+
+  @Test
+  @DisplayName("countUnreadReviewCompleted — reports AWAITING_ADOPTION 카운트가 실행된다(빈 DB에서 0)")
+  void countUnreadReviewCompletedExecutes() {
+    assertThat(userDashboardRepository.countUnreadReviewCompleted(UUID.randomUUID())).isZero();
+  }
+
+  @Test
+  @DisplayName("findTopUnreadChat — 상관 서브쿼리 exists + chat_rooms×users inner join이 실행된다(안읽음 없으면 empty)")
+  void findTopUnreadChatExecutes() {
+    assertThat(userDashboardRepository.findTopUnreadChat(UUID.randomUUID())).isEmpty();
   }
 }

@@ -13,14 +13,17 @@ import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.user.dto.UserDashboardResponse;
 import com.soma.backend.domain.user.dto.UserDashboardResponse.ActiveReport;
 import com.soma.backend.domain.user.dto.UserDashboardResponse.ProposalSummary;
+import com.soma.backend.domain.user.dto.UserDashboardResponse.Todos;
+import com.soma.backend.domain.user.dto.UserDashboardResponse.UnreadChat;
 import com.soma.backend.domain.user.repository.ActiveReportRow;
 import com.soma.backend.domain.user.repository.ProposalItemRow;
+import com.soma.backend.domain.user.repository.UnreadChatRow;
 import com.soma.backend.domain.user.repository.UserDashboardRepository;
 
 /**
  * 고객 홈 BFF 집계 유스케이스(CQRS, 조회 전용). report_count는 기존 집계를 재사용하고, 대표 활성 리포트·
- * 제안 요약은 대시보드 읽기 모델에서 조립한다(사정사 홈 AdjusterHomeQueryService 관례). 대상은 항상 요청
- * principal 본인이라 별도 인가 없이 userId로만 조회한다.
+ * 제안 요약·"지금 할 일"(todos)은 대시보드 읽기 모델에서 조립한다(사정사 홈 AdjusterHomeQueryService 관례).
+ * 대상은 항상 요청 principal 본인이라 별도 인가 없이 userId로만 조회한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,7 +46,12 @@ public class UserDashboardQueryService {
       proposalSummary = toProposalSummary(itemRows);
     }
 
-    return new UserDashboardResponse(reportCount, activeReport, proposalSummary);
+    Todos todos = new Todos(
+        userDashboardRepository.countUnreadProposals(userId),
+        userDashboardRepository.countUnreadReviewCompleted(userId),
+        userDashboardRepository.findTopUnreadChat(userId).map(this::toUnreadChat).orElse(null));
+
+    return new UserDashboardResponse(reportCount, activeReport, proposalSummary, todos);
   }
 
   private ActiveReport toActiveReport(ActiveReportRow row, LocalDateTime firstReviewedAt, long proposalCount) {
@@ -57,9 +65,17 @@ public class UserDashboardQueryService {
         proposalCount);
   }
 
-  /** 제안(거절 제외)이 하나도 없으면 null. 견적 집계는 min·max·중앙값 평균, 견적 있는 제안만 대상. */
+  /**
+   * 제안(거절 제외)이 없거나 집계할 견적(min·max 둘 다 있는 제안)이 하나도 없으면 null. 금액 필드에 null을
+   * 섞지 않도록, 평균을 낼 수 없으면(avgAmount=null) 요약 객체 자체를 내리지 않는다. avgAmount가 존재하면
+   * min·max도 항상 존재한다(그 제안이 둘 다 제공).
+   */
   private ProposalSummary toProposalSummary(List<ProposalItemRow> rows) {
     if (rows.isEmpty()) {
+      return null;
+    }
+    Long avgAmount = averageMidpoint(rows);
+    if (avgAmount == null) {
       return null;
     }
     Long minAmount = rows.stream()
@@ -73,7 +89,7 @@ public class UserDashboardQueryService {
         .max(Long::compareTo)
         .orElse(null);
     List<ProposalSummary.Item> items = rows.stream().map(this::toItem).toList();
-    return new ProposalSummary(rows.size(), minAmount, maxAmount, averageMidpoint(rows), items);
+    return new ProposalSummary(rows.size(), minAmount, maxAmount, avgAmount, items);
   }
 
   /** 제안가 평균 — 각 제안 중앙값((min+max)/2)의 평균을 반올림. min·max 둘 다 있는 제안만 집계, 없으면 null. */
@@ -100,5 +116,9 @@ public class UserDashboardQueryService {
         speciality,
         row.estimateMinAmount(),
         row.estimateMaxAmount());
+  }
+
+  private UnreadChat toUnreadChat(UnreadChatRow row) {
+    return new UnreadChat(row.chatRoomId(), row.adjusterNickname(), row.lastMessage());
   }
 }

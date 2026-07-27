@@ -21,14 +21,16 @@ import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.user.dto.UserDashboardResponse;
 import com.soma.backend.domain.user.dto.UserDashboardResponse.ProposalSummary;
+import com.soma.backend.domain.user.dto.UserDashboardResponse.Todos;
 import com.soma.backend.domain.user.repository.ActiveReportRow;
 import com.soma.backend.domain.user.repository.ProposalItemRow;
+import com.soma.backend.domain.user.repository.UnreadChatRow;
 import com.soma.backend.domain.user.repository.UserDashboardRepository;
 
 /**
  * 고객 홈 BFF 집계 유스케이스 단위 테스트. report_count는 기존 집계 재사용, 대표 활성 리포트·제안 요약(min·max·
- * 중앙값 평균)·speciality 파생·null 섹션 처리를 검증한다. 조회는 두 읽기 모델(ReportRepository·
- * UserDashboardRepository)로 위임한다.
+ * 중앙값 평균)·speciality 파생·null 섹션 처리·"지금 할 일"(todos) 조립을 검증한다. 조회는 두 읽기 모델
+ * (ReportRepository·UserDashboardRepository)로 위임한다.
  */
 @ExtendWith(MockitoExtension.class)
 class UserDashboardQueryServiceTest {
@@ -95,6 +97,8 @@ class UserDashboardQueryServiceTest {
     assertThat(result.activeReport()).isNull();
     assertThat(result.proposalSummary()).isNull();
     assertThat(result.reportCount()).isEqualTo(3L);
+    assertThat(result.todos()).isNotNull();
+    assertThat(result.todos().unreadChat()).isNull();
   }
 
   @Test
@@ -134,6 +138,45 @@ class UserDashboardQueryServiceTest {
     assertThat(summary.minAmount()).isEqualTo(2000L);
     assertThat(summary.maxAmount()).isEqualTo(5000L);
     assertThat(summary.avgAmount()).isEqualTo(3000L);
+  }
+
+  @Test
+  @DisplayName("todos — 미확인 제안·검수완료 카운트와 대표 안읽음 채팅을 조립한다(항상 존재)")
+  void assemblesTodosActionCenter() {
+    UUID chatRoomId = UUID.randomUUID();
+    stubBaseline();
+    given(userDashboardRepository.findLatestActiveReport(userId)).willReturn(Optional.empty());
+    given(userDashboardRepository.countUnreadProposals(userId)).willReturn(3L);
+    given(userDashboardRepository.countUnreadReviewCompleted(userId)).willReturn(1L);
+    given(userDashboardRepository.findTopUnreadChat(userId)).willReturn(Optional.of(
+        new UnreadChatRow(chatRoomId, "김민준", "서류 검토가 끝났습니다.")));
+
+    Todos todos = service.getDashboard(userId).todos();
+
+    assertThat(todos.unreadProposalCount()).isEqualTo(3L);
+    assertThat(todos.unreadReviewCompleteCount()).isEqualTo(1L);
+    assertThat(todos.unreadChat().chatRoomId()).isEqualTo(chatRoomId);
+    assertThat(todos.unreadChat().adjusterNickname()).isEqualTo("김민준");
+    assertThat(todos.unreadChat().lastMessage()).isEqualTo("서류 검토가 끝났습니다.");
+  }
+
+  @Test
+  @DisplayName("제안은 있으나 집계할 견적(min·max 둘 다)이 없으면 proposal_summary는 null이다")
+  void proposalSummaryNullWhenNoFullEstimate() {
+    UUID reportId = UUID.randomUUID();
+    stubBaseline();
+    given(userDashboardRepository.findLatestActiveReport(userId)).willReturn(Optional.of(
+        new ActiveReportRow(reportId, "제목", AccidentType.TRAFFIC,
+            ReportStatus.COUNSELING, LocalDateTime.now())));
+    given(userDashboardRepository.findFirstReviewedAt(reportId)).willReturn(null);
+    given(userDashboardRepository.findProposalItems(reportId)).willReturn(List.of(
+        proposalItem(1000L, null, null),
+        proposalItem(null, 2000L, null)));
+
+    UserDashboardResponse result = service.getDashboard(userId);
+
+    assertThat(result.activeReport().proposalCount()).isEqualTo(2L);
+    assertThat(result.proposalSummary()).isNull();
   }
 
   /**
