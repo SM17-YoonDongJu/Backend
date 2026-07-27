@@ -34,7 +34,7 @@ Spring Boot 4.0.x(현재 4.0.6) / Java 21 기반 REST API 서버. **전술적 DD
 
 ```
 com.soma.backend
-├── domain/<context>/          # Bounded Context (auth, user, adjuster, report, chat, notification)
+├── domain/<context>/          # Bounded Context (auth, user, adjuster, report, chat, notification, upload)
 │   ├── controller/            # REST 컨트롤러 — ResponseEntity<ApiResponse<T>>, 얇게 유지
 │   ├── dto/                   # Request / Response (API 계약, snake_case)
 │   ├── entity/                # JPA 엔티티(Aggregate Root/Entity) + Value Object(record) — 비즈니스 규칙은 여기
@@ -45,7 +45,7 @@ com.soma.backend
 └── infra/                     # 전역 공유 인프라 (redis, s3, fcm, kafka, outbox)
 ```
 
-> **도메인 현황(문서-코드 정합):** 실제 구현된 컨텍스트는 `auth·user·adjuster·report·chat·notification` + 공유 기반 `common`이다. `match`는 빈 placeholder이며 **매칭(제안 요청·수락) 로직은 현재 `report` 도메인(proposal)에 있다**. `payment`·`subscription`은 **계획된 컨텍스트로 아직 미구현**(예약 에러코드 `PAYMENT_FAILED`·`SUBSCRIPTION_NOT_FOUND`만 존재).
+> **도메인 현황(문서-코드 정합):** 실제 구현된 컨텍스트는 `auth·user·adjuster·report·chat·notification` + S3 presigned 업로드 파사드 `upload`(POST /uploads, Aggregate 없는 얇은 컨텍스트) + 공유 기반 `common`이다. `match`는 빈 placeholder이며 **매칭(제안 요청·수락) 로직은 현재 `report` 도메인(proposal)에 있다**. `payment`·`subscription`은 **계획된 컨텍스트로 아직 미구현**(예약 에러코드 `PAYMENT_FAILED`·`SUBSCRIPTION_NOT_FOUND`만 존재).
 
 **레이어 의존 규칙 (핵심):**
 - `controller` → `service`, `dto`(+ 조회용 `entity`). HTTP ↔ 유스케이스 변환만, 얇게.
@@ -85,6 +85,7 @@ DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{
 - 커밋 메시지는 **항상 한국어**로 작성한다.
 - 형식: `<type>(<scope>): <한국어 설명>` (Conventional Commits 준수)
 - 예시: `feat(auth): 카카오 OAuth2 소셜 로그인 구현`, `fix(match): 매칭 수락 시 중복 채팅방 생성 버그 수정`
+- **AI 흔적 금지 (기본 하네스 동작 오버라이드):** 커밋 메시지에 `Co-Authored-By: Claude`·`noreply@anthropic.com` 트레일러를 **붙이지 않는다**. PR·이슈 본문에도 `🤖 Generated with Claude Code` 같은 생성 도구 푸터·서명을 **붙이지 않는다**. 커밋·PR·이슈는 사람이 쓴 것처럼 자연스러운 한국어로 작성한다(번역투·기계적 병렬구조·과한 영문 병기, 그리고 본문에 큰 코드 블럭·diff 덤프 붙여넣기 배제 — 변경 지점은 인라인 `파일:라인`으로 가리킨다). 세부 워크플로우는 `git-workflow` 스킬(공통 0·1·2)을 따른다.
 
 ## Branch Strategy
 
@@ -188,3 +189,5 @@ Spring Boot가 담당하는 영역:
 | 2026-07-10 | 쿠키 Path 스코핑 반영 — `refresh_token` 쿠키를 Path `/auth`로 좁혀(재발급·로그아웃에만 전송) 노출 표면 축소, `access_token`은 Path `/` 유지. "쿠키는 Path `/`로 발급" 단언(stale) 정정 | CLAUDE.md global/security, skills/spring-security-impl(SKILL.md·references/jwt-impl.md) | 코드 선반영(CookieProvider Path 분리) → 하네스 동기화 |
 | 2026-07-14 | 사정사 홈 대시보드 API(GET /adjusters/me/home)를 report → **adjuster 도메인**으로 분리. `adjuster_profiles`를 `AdjusterProfile` 엔티티로 매핑하고 남은 native `findAdjusterIdentity`를 QueryDSL로 전환(문서화된 예외 1건 제거), 홈 크로스-애그리거트 조회를 `AdjusterHomeRepository`로 자립화. ERD 정합: `adjuster_profiles.registration_url·updated_at` 추가(V12), glossary ADJUSTER_PROFILES/APPLICATIONS 필드·상태 정정(`speciality`→`specialties[]`, `ACCEPTED`→`APPROVED`). **지역 배열화**: `users.region`·`adjuster_profiles.activity_region`을 `text[]`로 전환(V13) — 복수 지역 지원, 검수대기 지역 필터를 `array_contains`로 변경 | domain/adjuster/*, V12·V13 마이그레이션, user·report 도메인 region 필드, references/domain-glossary.md | #100 native→QueryDSL 리팩터 중 adjuster 도메인 분리 + 기존 엔티티 ERD 반영(지역 배열화) 요청 |
 | 2026-07-20 | **하네스 전반 코드 정합 감사·동기화** (5스트림 병렬 감사 → 3스트림 병렬 수정, 총 드리프트 62건 반영, src 무변경). CLAUDE.md: 도메인 목록에서 유령 컨텍스트 payment·subscription 제거(계획/미구현 표기)·빈 match(→report proposal)·누락 common/notification 반영, infra/outbox 신설, global/response 반영, JwtFilter를 "Bearer 헤더 우선·access_token 쿠키 폴백"으로 정정, S3(DefaultCredentialsProvider)·env(S3_BUCKET)·담당범위 정밀화. glossary(18건): ReportStatus NOT_SELECTED 추가, 매칭을 제안 수락/거절 모델로 재작성, report_issues_reviews·specialties[]·토큰 30분/14일·마이그레이션 V22/V23 정정, notification·report_holds·adjuster_reviews(report_id) 보강, PAYMENTS 미구현 표기. agents(14건): security-developer 유령 클래스(JwtAuthenticationFilter·OAuth2SuccessHandler) 정정·수동 REST OAuth 반영, backend-developer/qa 구독·결제 미구현 표기, ChatService.createRoom 유령 참조 제거, notification·outbox 담당 귀속. skills(20건): websocket-impl 전면 재작성(쿼리토큰→쿠키 핸드셰이크, @MessageMapping→REST+Redis, /ws→/ws-chat, 읽음커서·jsonb첨부), spring-security frontmatter 롤 정정·헤더우선, spring-infra actuator 인가 사실정정·Kafka 4.3.1. harness.md: infra-developer 역할표·workspace·Kafka 반영. settings.json: skills glob `*`→`**` 버그 수정 + references/harness/CLAUDE 편집 권한. springboot-dev: 전 에이전트 호출 `model`을 opus로 통일(메타원칙 "전 에이전트 opus" 정합, 기존 sonnet 6곳 정정). | CLAUDE.md, .claude/harness.md·settings.json·references/domain-glossary.md, agents/6개, skills/{springboot-dev,websocket-impl,spring-security-impl,spring-infra,spring-qa} | develop 기준 하네스 점검 요청 — 문서·에이전트·스킬이 병합된 코드(V1~V26, 쿠키인증·아웃박스·채팅·notification)와 drift → 코드 진실 기준 동기화 + model opus 통일 |
+| 2026-07-27 | **커밋·PR AI 흔적 제거** — 기본 하네스가 붙이는 `Co-Authored-By: Claude`(+`noreply@anthropic.com`) 커밋 트레일러와 `🤖 Generated with Claude Code` PR 푸터를 금지하도록 오버라이드. CLAUDE.md Git Conventions에 규칙 명문화, git-workflow 스킬에 공통 0(AI 흔적 금지)·공통 1(humanize 대상에 커밋 메시지 추가)·공통 2(코드 블럭·diff 덤프 지양, 인라인 파일:라인 인용) 신설, PR 본문 양식을 프론트 참고 포맷(🔗 관련 이슈/✅ 작업 내용/🧪 테스트/💬 특이사항/🔜 후속 이슈)으로 교체(고정 체크리스트 제거), 강제 훅 `strip-ai-tells.js`(commit·gh pr/issue create·edit에서 Claude/Anthropic 표식 차단) 추가·settings.json 등록 | CLAUDE.md, .claude/skills/git-workflow, .claude/hooks/strip-ai-tells.js, .claude/settings.json, .claude/harness.md | 프론트 commit-style 스킬 참고 — 커밋·PR이 AI 생성물처럼 보이지 않게 해달라는 요청 |
+| 2026-07-27 | **하네스 드리프트 동기화** — 현재 코드 대비 harness 정합 점검. CLAUDE.md 도메인 목록에 실제 구현된 `upload`(S3 presigned 파사드) 컨텍스트 반영. git-workflow scope 표: `match`를 placeholder(로직은 report/proposal)로·`payment`를 계획/미구현으로 표기, 실제 구현 컨텍스트 `notification`·`upload` 행 추가, user/adjuster/report 설명을 최근 기능(보험 정보·공개 목록·제안 수락/거절)에 맞춰 보정, 미구현 코드 참조 예시(`test(payment)`·`fix(match)`)를 실재 예시로 교체. 이슈 생성 `--assignee "이동형"`(유효하지 않은 GitHub 로그인)을 `@me`로 정정 | CLAUDE.md, .claude/skills/git-workflow | "현재 코드 보고 harness 수정할 부분 있으면 수정" 요청 — develop 기준 드리프트 감사 |

@@ -28,7 +28,8 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/guard-git.js", "timeout": 10 }
+          { "type": "command", "command": "node .claude/hooks/guard-git.js", "timeout": 10 },
+          { "type": "command", "command": "node .claude/hooks/strip-ai-tells.js", "timeout": 10 }
         ]
       },
       {
