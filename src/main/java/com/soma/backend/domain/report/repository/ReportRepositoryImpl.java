@@ -85,6 +85,11 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
     return queryReportCards(userId, status, false, pageable);
   }
 
+  @Override
+  public Page<ReportCardRow> findReportsWithProposals(UUID userId, Pageable pageable) {
+    return queryReportCards(userId, null, true, pageable);
+  }
+
   /**
    * 고객 리포트 카드 목록 공통 조회 — per-review. 소유자(rp.userId) 리포트에 달린 report_reviews를 1건당 1행으로
    * 편다(리포트당 리뷰 N개면 N행). {@code excludeRejected}면 REJECTED 리뷰 행을 제외한다(받은 제안 목록용).

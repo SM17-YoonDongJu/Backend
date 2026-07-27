@@ -168,6 +168,38 @@ class ReportControllerAuthTest {
   }
 
   @Test
+  @DisplayName("비로그인이면 GET /me/received-proposals는 401 LOGIN_REQUIRED")
+  void unauthenticatedReceivedProposalsReturns401() throws Exception {
+    mockMvc.perform(get("/me/received-proposals"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
+  }
+
+  @Test
+  @DisplayName("로그인 사용자는 GET /me/received-proposals 200 — reportListSchema로 직렬화하고 page(1-based) 전달")
+  void authenticatedReceivedProposalsReturns200() throws Exception {
+    ReportCardListResponse.Card card = new ReportCardListResponse.Card(
+        UUID.randomUUID(), "COUNSELING", "traffic", "교통사고 리포트",
+        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
+        1_000_000L, 2_000_000L, 1L,
+        LocalDateTime.of(2026, 7, 27, 12, 0), "김사정",
+        null, "후유장해");
+    given(reportQueryService.getReceivedProposals(any(), anyInt(), anyInt()))
+        .willReturn(new ReportCardListResponse(List.of(card), new Pagination(2, 10, 1, 1, false)));
+
+    mockMvc.perform(get("/me/received-proposals")
+            .param("page", "2")
+            .with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("200"))
+        .andExpect(jsonPath("$.data.list[0].report_no").value("20260727-2"))
+        .andExpect(jsonPath("$.data.list[0].adjuster_nickname").value("김사정"))
+        .andExpect(jsonPath("$.data.pagination.page").value(2));
+
+    then(reportQueryService).should().getReceivedProposals(any(), eq(2), eq(10));
+  }
+
+  @Test
   @DisplayName("비로그인이면 GET /reports/{id}는 401 LOGIN_REQUIRED")
   void unauthenticatedDetailReturns401() throws Exception {
     mockMvc.perform(get("/reports/{id}", UUID.randomUUID()))
