@@ -161,6 +161,11 @@ QA 단계에서 CRITICAL로 보는 항목은 다음과 같다.
 이 경계는 human-in-the-loop 원칙을 위한 것이다.
 AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 협업 표면에 반영하는 결정은 사용자가 통제한다.
 
+또한 저장소 히스토리·협업 표면에 남는 산출물(commit·PR·이슈)에는 **AI 생성 흔적을 남기지 않는다** —
+`Co-Authored-By: Claude` 트레일러나 `🤖 Generated with Claude Code` 푸터를 붙이지 않고,
+본문은 사람이 쓴 것처럼 자연스러운 한국어로 작성한다. 규칙은 CLAUDE.md Git Conventions,
+절차는 `git-workflow` 스킬(공통 0·1), 강제는 `strip-ai-tells.js` 훅이 담당한다.
+
 ---
 
 ## 8. Workspace As Execution Memory
