@@ -101,9 +101,26 @@ class ReportCommandServiceTest {
   }
 
   @Test
-  void createReport_throwsMissingRequiredField_whenProductIdNull() {
+  void createReport_succeeds_whenProductIdNull() {
+    given(reportRepository.nextCaseNoSequence(any())).willReturn(1);
+    given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+
     CreateReportRequest request = new CreateReportRequest(
-        null, AccidentType.MEDICAL_INDEMNITY, LocalDate.now(), List.of(), null, List.of(),
+        null, AccidentType.MEDICAL_INDEMNITY, LocalDate.now(), List.of("급성 충수염"), null, List.of(),
+        null, null, List.of(), null);
+
+    CreateReportResponse response = service.createReport(userId, request);
+
+    assertThat(response.status()).isEqualTo(ReportStatus.AWAITING_INSPECTION);
+    assertThat(response.reportId()).isNotNull();
+    verify(ocrJobOutboxPort, never()).enqueue(any());
+  }
+
+  @Test
+  void createReport_throwsMissingRequiredField_whenAccidentTypeNull() {
+    CreateReportRequest request = new CreateReportRequest(
+        UUID.randomUUID(), null, LocalDate.now(), List.of(), null, List.of(),
         null, null, List.of(), null);
 
     assertThatThrownBy(() -> service.createReport(userId, request))
