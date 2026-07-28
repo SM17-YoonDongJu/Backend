@@ -52,7 +52,7 @@ public class ReportCommandService {
   /** POST /reports — 사고 정보 입력 수신 → 저장 → OCR 트리거 발행. 202(비동기). */
   public CreateReportResponse createReport(UUID userId, CreateReportRequest request) {
 
-    if (request.productId() == null || request.accidentType() == null || request.accidentDate() == null) {
+    if (request.accidentType() == null || request.accidentDate() == null) {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
 
