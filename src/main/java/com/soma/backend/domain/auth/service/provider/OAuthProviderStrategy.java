@@ -7,7 +7,7 @@ package com.soma.backend.domain.auth.service.provider;
 public interface OAuthProviderStrategy {
 
   /**
-   * 이 전략이 담당하는 제공자 식별자(라우팅 키). 예: {@code "kakao"}, {@code "naver"}.
+   * 이 전략이 담당하는 제공자 식별자(라우팅 키). 예: {@code "kakao"}, {@code "naver"}, {@code "apple"}.
    */
   String provider();
 

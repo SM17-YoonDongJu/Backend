@@ -76,6 +76,19 @@ app:
     # 프론트가 콜백에 넘긴 redirect_uri를 그대로 토큰 교환에 쓸 때 허용할 오리진 목록(쉼표 구분).
     # 로컬은 8080(리버스 프록시)·3000(프론트 직접) 허용. 운영/프리뷰는 OAUTH_ALLOWED_REDIRECT_ORIGINS로 주입.
     allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:8080,http://localhost:3000}
+    # Apple(Web/Services ID) 소셜 로그인. 자격증명은 APPLE_* env로 주입하고 미설정 시 빈 값이라 로컬 기동에 지장 없다
+    # (파싱·서명은 첫 토큰 교환 시점에 지연 수행). URI·issuer는 Apple 고정값이라 기본값을 코드가 아닌 여기서 관리한다.
+    apple:
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      client-id: ${APPLE_CLIENT_ID:}
+      private-key: ${APPLE_PRIVATE_KEY:}
+      authorization-uri: https://appleid.apple.com/auth/authorize
+      token-uri: https://appleid.apple.com/auth/token
+      jwk-set-uri: https://appleid.apple.com/auth/keys
+      issuer: https://appleid.apple.com
+      redirect-uri: "{baseUrl}/login/oauth2/code/apple"
+      client-secret-ttl: 30m
   outbox:
     # 탈퇴 후처리(Redis 부수효과)를 처리하는 트랜잭션 아웃박스 poller 설정.
     enabled: ${OUTBOX_ENABLED:true}   # false면 poller 비활성화(테스트 등)

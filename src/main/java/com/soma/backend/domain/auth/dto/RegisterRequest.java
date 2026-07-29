@@ -11,7 +11,7 @@ import jakarta.validation.constraints.Size;
 /**
  * 소셜 회원가입 요청. 이메일은 수집하지 않는다.
  *
- * @param provider    소셜 제공자(kakao|naver) — 가입 티켓의 provider와 일치해야 한다
+ * @param provider    소셜 제공자(kakao|naver|apple) — 가입 티켓의 provider와 일치해야 한다
  * @param socialToken 콜백에서 발급된 가입 티켓(short-lived JWT)
  * @param nickname    이름(실명, 1~30자, users.nickname)
  * @param birthDate   생년월일(과거 날짜)
