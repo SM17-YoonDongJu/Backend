@@ -8,8 +8,6 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.security.oauth2.client.registration.ClientRegistration;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -21,8 +19,8 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
 /**
- * {@link OAuthClient}의 실제 HTTP 구현. {@link ClientRegistrationRepository}에서 제공자별
- * token-uri/user-info-uri/client-id/secret/redirect-uri를 읽어 수동으로 토큰을 교환한다.
+ * 소셜 제공자 공용 HTTP 코드교환기. 각 {@link OAuthProviderStrategy}가 조회한 제공자 설정을 받아
+ * form-POST 토큰 교환·user-info 조회·redirect_uri 허용목록 검증을 수행한다.
  *
  * <p>토큰 교환의 {@code redirect_uri}는 인가 요청과 정확히 일치해야 제공자가 토큰을 발급한다. 프론트가
  * 콜백에 {@code redirect_uri}를 넘기면 허용목록({@code app.oauth.allowed-redirect-origins}) 검증 후
@@ -30,25 +28,20 @@ import com.soma.backend.global.exception.ErrorCode;
  * {@code {baseUrl}}을 치환한 설정값을 fallback으로 쓴다.
  */
 @Component
-public class RestClientOAuthClient implements OAuthClient {
+public class OAuthTokenExchanger {
 
-  private static final String KAKAO = "kakao";
-  private static final String NAVER = "naver";
   private static final String BASE_URL_PLACEHOLDER = "{baseUrl}";
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
-  private final ClientRegistrationRepository clientRegistrationRepository;
   private final RestClient restClient;
   private final String baseUrl;
   private final List<String> allowedRedirectOrigins;
 
-  public RestClientOAuthClient(
-      ClientRegistrationRepository clientRegistrationRepository,
+  public OAuthTokenExchanger(
       @Value("${app.oauth.base-url:http://localhost:8080}") String baseUrl,
       @Value("${app.oauth.allowed-redirect-origins:http://localhost:8080,http://localhost:3000}")
           List<String> allowedRedirectOrigins) {
-    this.clientRegistrationRepository = clientRegistrationRepository;
     SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
     factory.setConnectTimeout(CONNECT_TIMEOUT);
     factory.setReadTimeout(READ_TIMEOUT);
@@ -57,41 +50,35 @@ public class RestClientOAuthClient implements OAuthClient {
     this.allowedRedirectOrigins = allowedRedirectOrigins;
   }
 
-  @Override
-  public OAuthProfile fetchProfile(String provider, String code, String state, String redirectUri) {
-    ClientRegistration registration = clientRegistrationRepository.findByRegistrationId(provider);
-    if (registration == null) {
-      throw new BusinessException(ErrorCode.UNSUPPORTED_PROVIDER);
-    }
-    String accessToken = exchangeToken(registration, code, state, redirectUri);
-    Map<String, Object> userInfo = fetchUserInfo(registration, accessToken);
-    return parseProfile(provider, userInfo);
-  }
-
-  private String exchangeToken(
-      ClientRegistration registration, String code, String state, String redirectUri) {
+  /**
+   * 인가코드를 토큰으로 교환한다. state가 non-blank일 때만 실어(네이버는 필수, 카카오는 여분 파라미터 무시)
+   * 두 제공자를 안전하게 처리하며, 토큰 응답 Map 전체를 그대로 반환한다.
+   */
+  public Map<String, Object> exchangeToken(
+      String tokenUri,
+      String clientId,
+      String clientSecret,
+      String code,
+      String state,
+      String redirectUri) {
     MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
     form.add("grant_type", "authorization_code");
-    form.add("client_id", registration.getClientId());
-    form.add("client_secret", registration.getClientSecret());
+    form.add("client_id", clientId);
+    form.add("client_secret", clientSecret);
     form.add("code", code);
-    form.add("redirect_uri", resolveRedirectUri(registration, redirectUri));
+    form.add("redirect_uri", redirectUri);
     // 네이버 토큰 교환은 state를 요구한다(인가 요청의 state와 일치해야 함). 카카오는 미사용이나
     // 여분 파라미터를 무시하므로, state가 있을 때만 실어 두 제공자 모두 안전하게 처리한다.
     if (state != null && !state.isBlank()) {
       form.add("state", state);
     }
-
-    Map<String, Object> tokenResponse = post(registration.getProviderDetails().getTokenUri(), form);
-    Object accessToken = tokenResponse.get("access_token");
-    if (accessToken == null) {
-      throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
-    }
-    return accessToken.toString();
+    return post(tokenUri, form);
   }
 
-  private Map<String, Object> fetchUserInfo(ClientRegistration registration, String accessToken) {
-    String userInfoUri = registration.getProviderDetails().getUserInfoEndpoint().getUri();
+  /**
+   * 액세스 토큰으로 user-info 엔드포인트를 조회한다(Bearer GET). null·오류는 EXTERNAL_API_ERROR.
+   */
+  public Map<String, Object> fetchUserInfo(String userInfoUri, String accessToken) {
     try {
       @SuppressWarnings("unchecked")
       Map<String, Object> body = restClient.get()
@@ -107,6 +94,23 @@ public class RestClientOAuthClient implements OAuthClient {
       // RestClientResponseException = HTTP 오류 응답, ResourceAccessException = 타임아웃·연결 실패·DNS 오류
       throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
     }
+  }
+
+  /**
+   * 토큰 교환에 쓸 redirect_uri를 결정한다. 프론트가 넘긴 값이 있으면 허용목록 검증 후 그대로 쓰고,
+   * 없으면 설정된 {@code redirect-uri}의 {@code {baseUrl}}를 {@code app.oauth.base-url}로 치환한다.
+   */
+  public String resolveRedirectUri(String configuredRedirectUri, String requestedRedirectUri) {
+    if (requestedRedirectUri != null && !requestedRedirectUri.isBlank()) {
+      if (!isAllowedRedirectUri(requestedRedirectUri)) {
+        throw new BusinessException(ErrorCode.INVALID_REQUEST);
+      }
+      return requestedRedirectUri;
+    }
+    if (configuredRedirectUri == null) {
+      return null;
+    }
+    return configuredRedirectUri.replace(BASE_URL_PLACEHOLDER, baseUrl);
   }
 
   private Map<String, Object> post(String uri, MultiValueMap<String, String> form) {
@@ -134,24 +138,6 @@ public class RestClientOAuthClient implements OAuthClient {
     }
   }
 
-  /**
-   * 토큰 교환에 쓸 redirect_uri를 결정한다. 프론트가 넘긴 값이 있으면 허용목록 검증 후 그대로 쓰고,
-   * 없으면 설정된 {@code redirect-uri}의 {@code {baseUrl}}를 {@code app.oauth.base-url}로 치환한다.
-   */
-  private String resolveRedirectUri(ClientRegistration registration, String requestedRedirectUri) {
-    if (requestedRedirectUri != null && !requestedRedirectUri.isBlank()) {
-      if (!isAllowedRedirectUri(requestedRedirectUri)) {
-        throw new BusinessException(ErrorCode.INVALID_REQUEST);
-      }
-      return requestedRedirectUri;
-    }
-    String configured = registration.getRedirectUri();
-    if (configured == null) {
-      return null;
-    }
-    return configured.replace(BASE_URL_PLACEHOLDER, baseUrl);
-  }
-
   private boolean isAllowedRedirectUri(String redirectUri) {
     try {
       URI uri = URI.create(redirectUri);
@@ -164,35 +150,5 @@ public class RestClientOAuthClient implements OAuthClient {
     } catch (IllegalArgumentException ex) {
       return false;
     }
-  }
-
-  private OAuthProfile parseProfile(String provider, Map<String, Object> userInfo) {
-    if (KAKAO.equalsIgnoreCase(provider)) {
-      return parseKakao(userInfo);
-    }
-    if (NAVER.equalsIgnoreCase(provider)) {
-      return parseNaver(userInfo);
-    }
-    throw new BusinessException(ErrorCode.UNSUPPORTED_PROVIDER);
-  }
-
-  private OAuthProfile parseKakao(Map<String, Object> userInfo) {
-    Object id = userInfo.get("id");
-    if (id == null) {
-      throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
-    }
-    return new OAuthProfile(KAKAO, id.toString());
-  }
-
-  private OAuthProfile parseNaver(Map<String, Object> userInfo) {
-    Object responseObj = userInfo.get("response");
-    if (!(responseObj instanceof Map<?, ?> response)) {
-      throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
-    }
-    Object id = response.get("id");
-    if (id == null) {
-      throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
-    }
-    return new OAuthProfile(NAVER, id.toString());
   }
 }

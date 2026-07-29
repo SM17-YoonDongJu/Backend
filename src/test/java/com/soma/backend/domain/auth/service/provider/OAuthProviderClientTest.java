@@ -20,10 +20,11 @@ import com.sun.net.httpserver.HttpServer;
 import com.soma.backend.global.exception.BusinessException;
 
 /**
- * {@link RestClientOAuthClient}의 토큰 교환 파라미터 검증. 로컬 스텁 서버로 토큰 요청 바디를 캡처해
- * state 포함/미포함과 redirect_uri 패스스루(허용목록 검증)를 외부 제공자 의존 없이 확인한다.
+ * 카카오/네이버 전략을 실제 {@link OAuthTokenExchanger}로 조립해 토큰 교환 파라미터를 검증한다.
+ * 로컬 스텁 서버로 토큰 요청 바디를 캡처해 state 포함/미포함, redirect_uri 패스스루(허용목록 검증),
+ * kakao {@code id}/naver {@code response.id} 파싱을 외부 제공자 의존 없이 확인한다.
  */
-class RestClientOAuthClientTest {
+class OAuthProviderClientTest {
 
   private HttpServer server;
   private String baseUrl;
@@ -50,9 +51,9 @@ class RestClientOAuthClientTest {
 
   @Test
   void naverTokenExchangeIncludesState() {
-    RestClientOAuthClient client = clientFor("naver", "/naver-me", "response");
+    OAuthProviderStrategy client = clientFor("naver", "/naver-me", "response");
 
-    OAuthProfile profile = client.fetchProfile("naver", "code123", "state456", null);
+    OAuthProfile profile = client.fetchProfile("code123", "state456", null);
 
     Assertions.assertThat(profile.provider()).isEqualTo("naver");
     Assertions.assertThat(profile.providerUserId()).isEqualTo("nid-1");
@@ -63,42 +64,43 @@ class RestClientOAuthClientTest {
 
   @Test
   void kakaoTokenExchangeIncludesState() {
-    RestClientOAuthClient client = clientFor("kakao", "/kakao-me", "id");
+    OAuthProviderStrategy client = clientFor("kakao", "/kakao-me", "id");
 
-    OAuthProfile profile = client.fetchProfile("kakao", "code123", "state789", null);
+    OAuthProfile profile = client.fetchProfile("code123", "state789", null);
 
+    Assertions.assertThat(profile.provider()).isEqualTo("kakao");
     Assertions.assertThat(profile.providerUserId()).isEqualTo("kid-1");
     Assertions.assertThat(capturedTokenBody).contains("state=state789");
   }
 
   @Test
   void tokenExchangeOmitsStateWhenAbsent() {
-    RestClientOAuthClient client = clientFor("kakao", "/kakao-me", "id");
+    OAuthProviderStrategy client = clientFor("kakao", "/kakao-me", "id");
 
-    client.fetchProfile("kakao", "code123", null, null);
+    client.fetchProfile("code123", null, null);
 
     Assertions.assertThat(capturedTokenBody).doesNotContain("state=");
   }
 
   @Test
   void usesProvidedRedirectUriWhenAllowed() {
-    RestClientOAuthClient client = clientFor("naver", "/naver-me", "response");
+    OAuthProviderStrategy client = clientFor("naver", "/naver-me", "response");
 
-    client.fetchProfile("naver", "code123", "state456", "http://localhost:8080/login/oauth2/code/naver");
+    client.fetchProfile("code123", "state456", "http://localhost:8080/login/oauth2/code/naver");
 
     Assertions.assertThat(capturedTokenBody).contains("redirect_uri=http%3A%2F%2Flocalhost%3A8080");
   }
 
   @Test
   void rejectsDisallowedRedirectUri() {
-    RestClientOAuthClient client = clientFor("naver", "/naver-me", "response");
+    OAuthProviderStrategy client = clientFor("naver", "/naver-me", "response");
 
     Assertions.assertThatThrownBy(() -> client.fetchProfile(
-            "naver", "code123", "state456", "http://evil.com/login/oauth2/code/naver"))
+            "code123", "state456", "http://evil.com/login/oauth2/code/naver"))
         .isInstanceOf(BusinessException.class);
   }
 
-  private RestClientOAuthClient clientFor(String provider, String userInfoPath, String userNameAttr) {
+  private OAuthProviderStrategy clientFor(String provider, String userInfoPath, String userNameAttr) {
     ClientRegistration registration = ClientRegistration.withRegistrationId(provider)
         .clientId(provider + "-id")
         .clientSecret(provider + "-secret")
@@ -111,8 +113,12 @@ class RestClientOAuthClientTest {
         .build();
     ClientRegistrationRepository repository =
         registrationId -> provider.equals(registrationId) ? registration : null;
-    return new RestClientOAuthClient(
-        repository, "http://localhost:3000", List.of("http://localhost:3000", "http://localhost:8080"));
+    OAuthTokenExchanger exchanger = new OAuthTokenExchanger(
+        "http://localhost:3000", List.of("http://localhost:3000", "http://localhost:8080"));
+    if ("kakao".equals(provider)) {
+      return new KakaoOAuthClient(repository, exchanger);
+    }
+    return new NaverOAuthClient(repository, exchanger);
   }
 
   private void respond(HttpExchange exchange, String json) throws IOException {
