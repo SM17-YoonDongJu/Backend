@@ -34,6 +34,12 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      # Apple(Web/Services ID): 콘솔 발급 4개 + refresh_token 암호화 키 1개(우리 생성). 값은 .env.prod에서 주입(미설정 시 apple 로그인만 비활성)
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID}
+      APPLE_KEY_ID: ${APPLE_KEY_ID}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
+      APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY}
       # OAuth redirect_uri {baseUrl} 치환값 = 백엔드 API 도메인
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://api.brbosang.com}
       # 프론트가 콜백에 넘긴 redirect_uri를 허용할 오리진 = 프론트 도메인(API 아님)
