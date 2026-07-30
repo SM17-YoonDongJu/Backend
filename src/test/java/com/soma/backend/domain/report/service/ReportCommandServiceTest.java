@@ -131,7 +131,9 @@ class ReportCommandServiceTest {
 
   @Test
   void decide_accepted_closesReportAndAcceptsReview() {
-    given(reportRepository.findById(reportId)).willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.COUNSELING)));
+    // 채택 대기(AWAITING_ADOPTION)에서 상담을 거치지 않고 바로 채택 → 리뷰 ACCEPTED·리포트 CLOSED
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION)));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
 
     ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "ACCEPTED");
@@ -182,9 +184,10 @@ class ReportCommandServiceTest {
   }
 
   @Test
-  void decide_invalidStateTransition_whenReportNotCounseling() {
+  void decide_invalidStateTransition_whenReportAwaitingInspection() {
+    // 검수 전(AWAITING_INSPECTION) 리포트는 채택 대상이 아니라 report.accept()에서 409
     given(reportRepository.findById(reportId))
-        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION)));
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_INSPECTION)));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
 
     assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
