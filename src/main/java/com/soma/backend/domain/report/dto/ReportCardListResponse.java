@@ -44,7 +44,7 @@ public record ReportCardListResponse(List<Card> list, Pagination pagination) {
           row.reportId(),
           ReportResponseSupport.customerStatus(row.status()),
           row.accidentType() == null ? null : row.accidentType().getValue(),
-          row.title(),
+          ReportResponseSupport.title(row.title()),
           row.createdAt(),
           row.caseNo(),
           row.claimedMinAmount(),

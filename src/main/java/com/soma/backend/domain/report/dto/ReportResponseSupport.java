@@ -6,11 +6,19 @@ import com.soma.backend.domain.report.entity.ReportStatus;
 
 /**
  * report 응답 DTO 공통 포맷 헬퍼. 프론트 계약 정합용 — 지역(text[])을 단일 문자열로 조인하고,
- * 리스트 응답 필드는 null 대신 빈 배열로 내린다.
+ * 리스트 응답 필드는 null 대신 빈 배열로, 제목은 미생성 시 기본 문구로 내린다.
  */
 final class ReportResponseSupport {
 
+  /** title은 AI 초안이 채우는 값이라 생성 전이면 null일 수 있다. 프론트 계약(non-null)용 기본 문구. */
+  static final String TITLE_PLACEHOLDER = "제목 없음";
+
   private ReportResponseSupport() {
+  }
+
+  /** 리포트 제목 계약 정합 — null/공백이면 {@link #TITLE_PLACEHOLDER}로 내린다(프론트 계약은 항상 non-null string). */
+  static String title(String title) {
+    return (title == null || title.isBlank()) ? TITLE_PLACEHOLDER : title;
   }
 
   /**

@@ -33,6 +33,9 @@ public class AdjusterHomeQueryService {
   private static final int DEFAULT_IN_PROGRESS_LIMIT = 5;
   private static final int MAX_IN_PROGRESS_LIMIT = 20;
 
+  /** title은 AI 초안이 채우는 값이라 생성 전이면 null일 수 있다. 프론트 계약(non-null)용 기본 문구. */
+  private static final String TITLE_PLACEHOLDER = "제목 없음";
+
   /** 검수 대기 '신규' 판정 잠정 규칙 — 접수 후 이 시간 이내면 신규로 본다(리더 확정 시 조정). */
   private static final long NEW_WINDOW_HOURS = 24L;
 
@@ -77,6 +80,11 @@ public class AdjusterHomeQueryService {
     return value == null ? 0L : value;
   }
 
+  /** 제목 계약 정합 — null/공백이면 기본 문구로 내린다(프론트 계약은 항상 non-null string). */
+  private String titleOrDefault(String title) {
+    return (title == null || title.isBlank()) ? TITLE_PLACEHOLDER : title;
+  }
+
   private Adjuster toAdjuster(UUID adjusterId, AdjusterIdentityRow identity) {
     String name = identity == null ? null : identity.name();
     String avatarUrl = identity == null ? null : identity.avatarUrl();
@@ -109,7 +117,7 @@ public class AdjusterHomeQueryService {
         row.reportId(),
         row.caseNo(),
         row.accidentType() == null ? null : row.accidentType().getValue(),
-        row.title(),
+        titleOrDefault(row.title()),
         reportStatus,
         reviewStatus,
         stageLabel(reportStatus, reviewStatus),
