@@ -1,5 +1,6 @@
 package com.soma.backend.domain.auth.service.provider.apple;
 
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.interfaces.ECPrivateKey;
@@ -32,6 +33,7 @@ import com.soma.backend.global.exception.ErrorCode;
 public class AppleClientSecretGenerator {
 
   private static final String EC_ALGORITHM = "EC";
+  private static final String PEM_MARKER = "PRIVATE KEY";
   private static final Duration EXPIRY_MARGIN = Duration.ofMinutes(1);
 
   private final AppleOAuthProperties properties;
@@ -87,17 +89,41 @@ public class AppleClientSecretGenerator {
     }
   }
 
+  /**
+   * .p8 개인키를 {@link ECPrivateKey}로 파싱한다. 운영 편의상 세 입력 형식을 모두 허용한다:
+   * (1) 원본 PEM 텍스트, (2) {@code base64 -i AuthKey.p8}처럼 .p8 파일 전체를 base64로 인코딩한 값
+   * (디코드하면 PEM 텍스트), (3) 헤더 없는 base64 본문(=DER의 base64). 어떤 형식이든 최종적으로
+   * PKCS#8 DER로 정규화해 파싱한다.
+   */
   private ECPrivateKey parsePrivateKey(String encodedKey) {
     try {
-      String normalized = encodedKey
+      String pem = encodedKey.trim();
+      // 형식 (2): PEM 마커가 안 보이면 파일 전체 base64일 수 있다. 한 번 디코드해 PEM 텍스트가 나오면 그걸 쓴다.
+      if (!pem.contains(PEM_MARKER)) {
+        String decoded = decodeBase64ToStringOrNull(pem);
+        if (decoded != null && decoded.contains(PEM_MARKER)) {
+          pem = decoded;
+        }
+      }
+      String body = pem
           .replace("-----BEGIN PRIVATE KEY-----", "")
           .replace("-----END PRIVATE KEY-----", "")
+          .replace("\\n", "")
+          .replace("\\r", "")
           .replaceAll("\\s", "");
-      byte[] der = Base64.getDecoder().decode(normalized);
+      byte[] der = Base64.getDecoder().decode(body);
       KeyFactory keyFactory = KeyFactory.getInstance(EC_ALGORITHM);
       return (ECPrivateKey) keyFactory.generatePrivate(new PKCS8EncodedKeySpec(der));
     } catch (GeneralSecurityException | IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
+    }
+  }
+
+  private String decodeBase64ToStringOrNull(String value) {
+    try {
+      return new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException ex) {
+      return null;
     }
   }
 

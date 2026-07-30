@@ -1,5 +1,6 @@
 package com.soma.backend.domain.auth.service.provider.apple;
 
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.ECPublicKey;
@@ -76,5 +77,27 @@ class AppleClientSecretGeneratorTest {
     String second = generator.currentSecret();
 
     Assertions.assertThat(second).isEqualTo(first);
+  }
+
+  @Test
+  void currentSecretAcceptsBase64EncodedP8File() throws Exception {
+    // `base64 -i AuthKey.p8` 형식(.p8 PEM 파일 전체를 base64로 인코딩한 값)도 정상 서명돼야 한다.
+    String pem = "-----BEGIN PRIVATE KEY-----\n"
+        + Base64.getEncoder().encodeToString(keyPair.getPrivate().getEncoded())
+        + "\n-----END PRIVATE KEY-----\n";
+    String base64OfP8File = Base64.getEncoder().encodeToString(pem.getBytes(StandardCharsets.UTF_8));
+
+    AppleOAuthProperties properties = new AppleOAuthProperties();
+    properties.setTeamId(TEAM_ID);
+    properties.setKeyId(KEY_ID);
+    properties.setClientId(CLIENT_ID);
+    properties.setIssuer(ISSUER);
+    properties.setPrivateKey(base64OfP8File);
+    properties.setClientSecretTtl(Duration.ofMinutes(30));
+    AppleClientSecretGenerator fileKeyGenerator = new AppleClientSecretGenerator(properties);
+
+    SignedJWT signedJwt = SignedJWT.parse(fileKeyGenerator.currentSecret());
+    Assertions.assertThat(signedJwt.verify(new ECDSAVerifier((ECPublicKey) keyPair.getPublic())))
+        .isTrue();
   }
 }
