@@ -21,6 +21,7 @@ public class AppleOAuthClient implements OAuthProviderStrategy {
 
   private static final String APPLE = "apple";
   private static final String ID_TOKEN = "id_token";
+  private static final String REFRESH_TOKEN = "refresh_token";
 
   private final AppleOAuthProperties properties;
   private final AppleClientSecretGenerator clientSecretGenerator;
@@ -59,6 +60,8 @@ public class AppleOAuthClient implements OAuthProviderStrategy {
       throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
     }
     String subject = idTokenVerifier.verifyAndGetSubject(idToken.toString());
-    return new OAuthProfile(APPLE, subject);
+    Object refreshToken = token.get(REFRESH_TOKEN);
+    // refresh_token은 탈퇴 시 Apple revoke에 필요하다(가입 갭 브릿지 후 암호화 저장). 평문이라 로깅 금지.
+    return new OAuthProfile(APPLE, subject, refreshToken == null ? null : refreshToken.toString());
   }
 }

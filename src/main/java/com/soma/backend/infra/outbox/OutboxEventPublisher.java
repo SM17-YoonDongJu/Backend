@@ -17,6 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class OutboxEventPublisher {
 
   public static final String EVENT_AUTH_CLEANUP = "AUTH_CLEANUP";
+  public static final String EVENT_APPLE_REVOKE = "APPLE_REVOKE";
   private static final String AGGREGATE_USER = "USER";
 
   private final OutboxEventRepository outboxEventRepository;
@@ -31,5 +32,17 @@ public class OutboxEventPublisher {
     String json = jsonMapper.writeValueAsString(payload);
     outboxEventRepository.save(
         OutboxEvent.of(AGGREGATE_USER, userId, EVENT_AUTH_CLEANUP, json, LocalDateTime.now()));
+  }
+
+  /**
+   * 탈퇴한 회원의 Apple refresh_token(암호문) revoke 이벤트를 적재한다. 호출자의 트랜잭션에 참여하므로
+   * 탈퇴 커밋이 성공한 경우에만 이벤트가 남고, 소비자가 복호화 후 Apple revoke를 재시도하며 처리한다.
+   * payload에는 암호문만 실어 평문이 아웃박스에 남지 않는다.
+   */
+  public void publishAppleRevoke(UUID userId, String encryptedRefreshToken) {
+    AppleRevokePayload payload = new AppleRevokePayload(encryptedRefreshToken);
+    String json = jsonMapper.writeValueAsString(payload);
+    outboxEventRepository.save(
+        OutboxEvent.of(AGGREGATE_USER, userId, EVENT_APPLE_REVOKE, json, LocalDateTime.now()));
   }
 }

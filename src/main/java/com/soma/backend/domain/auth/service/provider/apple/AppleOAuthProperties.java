@@ -65,6 +65,11 @@ public class AppleOAuthProperties {
   private String redirectUri;
 
   /**
+   * Apple 토큰 revoke 엔드포인트. 회원 탈퇴 시 저장해 둔 refresh_token을 무효화한다.
+   */
+  private String revokeUri;
+
+  /**
    * client_secret JWT의 유효기간(만료 = 발급 시각 + 이 값).
    */
   private Duration clientSecretTtl;

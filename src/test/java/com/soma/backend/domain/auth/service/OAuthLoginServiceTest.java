@@ -33,6 +33,8 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.crypto.AesGcmCipher;
+import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OAuthLoginService 단위 테스트")
@@ -55,6 +57,12 @@ class OAuthLoginServiceTest {
 
   @Mock
   private AuthTokenService authTokenService;
+
+  @Mock
+  private AesGcmCipher aesGcmCipher;
+
+  @Mock
+  private AppleRefreshStagingRepository appleRefreshStagingRepository;
 
   @Mock
   private HttpServletResponse response;
@@ -104,6 +112,27 @@ class OAuthLoginServiceTest {
     assertThat(result.signupTicket()).isEqualTo("ticket-jwt");
     assertThat(result.userId()).isNull();
     then(authTokenService).should(never()).issueTokens(any(), any(), anyString());
+    then(appleRefreshStagingRepository).should(never()).stage(anyString(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("Apple 신규 회원이면 refresh_token을 암호화해 스테이징하고 가입 티켓을 반환한다")
+  void handleCallback_appleNewUser_stagesEncryptedRefreshToken() {
+    // Given
+    OAuthProfile profile = new OAuthProfile("apple", "apple-1", "raw-refresh");
+    given(oAuthClient.fetchProfile("apple", "code", null, null)).willReturn(profile);
+    given(socialAccountRepository.findByProviderAndProviderUserId("apple", "apple-1"))
+        .willReturn(Optional.empty());
+    given(aesGcmCipher.encrypt("raw-refresh")).willReturn("enc-refresh");
+    given(signupTicketProvider.issue("apple", "apple-1")).willReturn("ticket-jwt");
+
+    // When
+    OAuthCallbackResponse result = oAuthLoginService.handleCallback(response, "apple", "code", null, null);
+
+    // Then
+    assertThat(result.isNewUser()).isTrue();
+    assertThat(result.signupTicket()).isEqualTo("ticket-jwt");
+    then(appleRefreshStagingRepository).should().stage("apple", "apple-1", "enc-refresh");
   }
 
   @Test
