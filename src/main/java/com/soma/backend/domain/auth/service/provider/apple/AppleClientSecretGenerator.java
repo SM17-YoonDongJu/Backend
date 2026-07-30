@@ -97,6 +97,9 @@ public class AppleClientSecretGenerator {
    */
   private ECPrivateKey parsePrivateKey(String encodedKey) {
     try {
+      if (encodedKey == null || encodedKey.isBlank()) {
+        throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
+      }
       String pem = encodedKey.trim();
       // 형식 (2): PEM 마커가 안 보이면 파일 전체 base64일 수 있다. 한 번 디코드해 PEM 텍스트가 나오면 그걸 쓴다.
       if (!pem.contains(PEM_MARKER)) {

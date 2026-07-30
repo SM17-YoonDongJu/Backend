@@ -2,7 +2,6 @@ package com.soma.backend.infra.redis;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.never;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -49,24 +48,22 @@ class AppleRefreshStagingRepositoryTest {
   }
 
   @Test
-  void consumeReturnsValueAndDeletes() {
+  void consumeReturnsValueViaGetAndDelete() {
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get(KEY)).willReturn("enc-token");
+    given(valueOperations.getAndDelete(KEY)).willReturn("enc-token");
 
     Optional<String> result = repository.consume("apple", "apple-1");
 
     Assertions.assertThat(result).contains("enc-token");
-    then(redisTemplate).should().delete(KEY);
   }
 
   @Test
-  void consumeAbsentReturnsEmptyAndSkipsDelete() {
+  void consumeAbsentReturnsEmpty() {
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get(KEY)).willReturn(null);
+    given(valueOperations.getAndDelete(KEY)).willReturn(null);
 
     Optional<String> result = repository.consume("apple", "apple-1");
 
     Assertions.assertThat(result).isEmpty();
-    then(redisTemplate).should(never()).delete(KEY);
   }
 }

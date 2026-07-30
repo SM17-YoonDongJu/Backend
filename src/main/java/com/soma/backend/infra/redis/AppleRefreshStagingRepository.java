@@ -40,16 +40,12 @@ public class AppleRefreshStagingRepository {
   }
 
   /**
-   * 스테이징된 암호문을 조회하고 삭제한다(get→del). 없으면 {@link Optional#empty()}.
+   * 스테이징된 암호문을 조회하고 삭제한다. Redis {@code GETDEL}로 조회·삭제를 원자적으로 수행한다
+   * (Redis 6.2+). 없으면 {@link Optional#empty()}.
    */
   public Optional<String> consume(String provider, String providerUserId) {
-    String redisKey = key(provider, providerUserId);
-    String value = redisTemplate.opsForValue().get(redisKey);
-    if (value == null) {
-      return Optional.empty();
-    }
-    redisTemplate.delete(redisKey);
-    return Optional.of(value);
+    return Optional.ofNullable(
+        redisTemplate.opsForValue().getAndDelete(key(provider, providerUserId)));
   }
 
   private String key(String provider, String providerUserId) {

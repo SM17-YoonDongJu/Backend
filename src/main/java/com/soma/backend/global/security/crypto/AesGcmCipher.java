@@ -39,9 +39,11 @@ public class AesGcmCipher {
   private final SecretKeySpec keySpec;
   private final SecureRandom secureRandom = new SecureRandom();
 
-  public AesGcmCipher(
-      @Value("${app.crypto.apple-token-key:ZGV2LWxvY2FsLWFwcGxlLXRva2VuLWVuYy1rZXkhISE=}")
-          String base64Key) {
+  public AesGcmCipher(@Value("${app.crypto.apple-token-key:}") String base64Key) {
+    if (base64Key == null || base64Key.isBlank()) {
+      throw new IllegalStateException(
+          "app.crypto.apple-token-key(APPLE_TOKEN_ENC_KEY)가 설정되지 않았습니다 — 운영은 필수");
+    }
     byte[] key = Base64.getDecoder().decode(base64Key);
     if (key.length != KEY_LENGTH_BYTES) {
       throw new IllegalStateException("app.crypto.apple-token-key는 base64 디코딩 시 32바이트(AES-256)여야 합니다");

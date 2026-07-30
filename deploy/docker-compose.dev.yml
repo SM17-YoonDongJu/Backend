@@ -37,7 +37,8 @@ services:
       APPLE_KEY_ID: ${APPLE_KEY_ID}
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
-      APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY}
+      # dev는 미설정 시 개발 전용 기본키로 기동한다(빈 값 주입 방지 — 빈 값은 기동 실패를 유발). 운영은 fail-fast.
+      APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY:-ZGV2LWxvY2FsLWFwcGxlLXRva2VuLWVuYy1rZXkhISE=}
       # OAuth redirect_uri {baseUrl} 치환값(프론트 인가요청·provider 콘솔 등록 redirect_uri와 일치해야 함)
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-http://localhost:8080}
       OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-http://localhost:8080,http://localhost:3000,https://brbosang.com}

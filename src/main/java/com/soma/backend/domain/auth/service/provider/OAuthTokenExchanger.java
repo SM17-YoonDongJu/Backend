@@ -107,8 +107,9 @@ public class OAuthTokenExchanger {
       }
       return requestedRedirectUri;
     }
-    if (configuredRedirectUri == null) {
-      return null;
+    if (configuredRedirectUri == null || configuredRedirectUri.isBlank()) {
+      // provider redirect-uri 설정 누락 — null을 폼에 실어 예측 불가 예외가 나기 전에 명확히 실패시킨다.
+      throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
     }
     return configuredRedirectUri.replace(BASE_URL_PLACEHOLDER, baseUrl);
   }

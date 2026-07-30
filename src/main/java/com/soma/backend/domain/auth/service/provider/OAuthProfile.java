@@ -19,4 +19,13 @@ public record OAuthProfile(String provider, String providerUserId,
   public OAuthProfile(String provider, String providerUserId) {
     this(provider, providerUserId, null);
   }
+
+  /**
+   * providerRefreshToken(평문 credential)이 로깅·예외 메시지에 노출되지 않도록 마스킹한다.
+   */
+  @Override
+  public String toString() {
+    return "OAuthProfile[provider=" + provider + ", providerUserId=" + providerUserId
+        + ", providerRefreshToken=" + (providerRefreshToken == null ? "null" : "***") + "]";
+  }
 }
