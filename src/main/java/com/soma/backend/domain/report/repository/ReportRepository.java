@@ -31,8 +31,13 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
       + "RETURNING seq", nativeQuery = true)
   int nextCaseNoSequence(@Param("day") LocalDate day);
 
+  /**
+   * 검수 대기 풀 카운트 — AWAITING_INSPECTION + AWAITING_ADOPTION.
+   * 홈 대시보드 검수 대기 풀({@code AdjusterHomeRepository#countPendingPool})·검수대기 목록과 동일한 풀 정의를 쓴다.
+   */
   @Query("SELECT COUNT(r) FROM Report r "
-      + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION")
+      + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
+      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION)")
   long countPending();
 
   /** 마이페이지 활동 집계 — 요청 사용자가 만든 리포트 총수(GET /users/me/activity-summary). */
@@ -57,9 +62,10 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
       + "AND r.createdAt <= :dueSoonThreshold")
   long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
 
-  /** 검수 대기(AWAITING_INSPECTION) 풀 중 지정 사고유형(사정사 전문분야 매칭)에 해당하는 건수. */
+  /** 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 지정 사고유형(사정사 전문분야 매칭)에 해당하는 건수. */
   @Query("SELECT COUNT(r) FROM Report r "
-      + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
+      + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
+      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
       + "AND r.accidentType IN :types")
   long countPendingByAccidentTypeIn(@Param("types") Collection<AccidentType> types);
 

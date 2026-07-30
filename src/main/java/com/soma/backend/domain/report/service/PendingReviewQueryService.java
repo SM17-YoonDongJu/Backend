@@ -66,8 +66,9 @@ public class PendingReviewQueryService {
   }
 
   /**
-   * 검수 대기 풀(AWAITING_INSPECTION) 중 요청 사정사의 전문분야(specialties)와 accident_type이 매칭되는 건수.
-   * specialties는 자유 텍스트라 accident_type별 대표 키워드 포함 여부로 매칭한다(전문분야 없거나 매칭 없으면 0).
+   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사의 전문분야(specialties)와
+   * accident_type이 매칭되는 건수. specialties는 자유 텍스트라 accident_type별 대표 키워드 포함 여부로
+   * 매칭한다(전문분야 없거나 매칭 없으면 0).
    */
   private long countSpecialtyMatch(UUID adjusterId) {
     List<String> specialties = adjusterProfileRepository.findByUserId(adjusterId)
