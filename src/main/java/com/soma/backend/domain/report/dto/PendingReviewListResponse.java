@@ -61,7 +61,7 @@ public record PendingReviewListResponse(List<Item> list, Pagination pagination) 
       return new Item(
           row.reportId(),
           row.caseNo(),
-          row.title(),
+          ReportResponseSupport.title(row.title()),
           row.accidentType() == null ? null : row.accidentType().getValue(),
           joinRegion(row.region()),
           row.status() == null ? null : row.status().name(),

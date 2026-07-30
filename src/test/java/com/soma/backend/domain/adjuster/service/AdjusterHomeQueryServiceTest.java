@@ -130,6 +130,21 @@ class AdjusterHomeQueryServiceTest {
   }
 
   @Test
+  @DisplayName("title이 null이면 기본 문구 '제목 없음'으로 내려 프론트 계약(non-null)을 보장한다")
+  void titleNullSafe() {
+    stubMinimal();
+    given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt()))
+        .willReturn(List.of(new InProgressCaseRow(
+            UUID.randomUUID(), "20260528-023", AccidentType.DISABILITY, null,
+            ReportStatus.AWAITING_INSPECTION, ReviewStatus.SENT)));
+
+    AdjusterHomeResponse.InProgressCases.Item item =
+        service.getHome(adjusterId, 5).inProgressCases().items().get(0);
+
+    assertThat(item.title()).isEqualTo("제목 없음");
+  }
+
+  @Test
   @DisplayName("COUNSELING 검수는 상담 중·진행률 90으로 파생된다")
   void counselingStage() {
     stubMinimal();

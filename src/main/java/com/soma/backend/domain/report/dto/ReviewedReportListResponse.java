@@ -53,7 +53,7 @@ public record ReviewedReportListResponse(
       return new Item(
           row.reportId(),
           row.caseNo(),
-          row.title(),
+          ReportResponseSupport.title(row.title()),
           row.accidentType() == null ? null : row.accidentType().getValue(),
           ReportResponseSupport.joinRegion(row.region()),
           row.status() == null ? null : row.status().name(),
