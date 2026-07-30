@@ -42,8 +42,10 @@ public class Report extends BaseEntity {
   static {
     ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_INSPECTION,
         EnumSet.of(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION, ReportStatus.NOT_SELECTED));
+    // 채택(제안 확정)은 상담 단계를 거치지 않고 AWAITING_ADOPTION → CLOSED로 바로 종결할 수 있다.
     ALLOWED_TRANSITIONS.put(ReportStatus.AWAITING_ADOPTION,
-        EnumSet.of(ReportStatus.AWAITING_ADOPTION, ReportStatus.COUNSELING, ReportStatus.NOT_SELECTED));
+        EnumSet.of(ReportStatus.AWAITING_ADOPTION, ReportStatus.COUNSELING, ReportStatus.NOT_SELECTED,
+            ReportStatus.CLOSED));
     ALLOWED_TRANSITIONS.put(ReportStatus.COUNSELING,
         EnumSet.of(ReportStatus.COUNSELING, ReportStatus.CLOSED, ReportStatus.AWAITING_ADOPTION));
     ALLOWED_TRANSITIONS.put(ReportStatus.CLOSED, EnumSet.of(ReportStatus.CLOSED));
@@ -140,15 +142,16 @@ public class Report extends BaseEntity {
   }
 
   /**
-   * 사용자가 제안(REPORT_REVIEWS)을 채택해 담당 사정사를 확정한다(design.md §6 decide).
-   * COUNSELING 상태에서만 허용 — 이미 CLOSED면 409 REPORT_ALREADY_CLOSED, 그 외 상태면
-   * 409 INVALID_STATE_TRANSITION(예: 아직 상담 전). 둘 다 상태 충돌이라 클라이언트가 code로 구분한다.
+   * 사용자가 제안(REPORT_REVIEWS)을 채택해 담당 사정사를 확정하고 리포트를 종결한다(design.md §6 decide).
+   * 채택 대기(AWAITING_ADOPTION)·상담 중(COUNSELING)에서 CLOSED로 전이한다 — 상담을 거치지 않고 바로
+   * 채택할 수 있다. 이미 CLOSED면 409 REPORT_ALREADY_CLOSED, 그 외(검수 전·미채택)면 409
+   * INVALID_STATE_TRANSITION. 둘 다 상태 충돌이라 클라이언트가 code로 구분한다.
    */
   public void accept(UUID adjusterId) {
     if (this.status == ReportStatus.CLOSED) {
       throw new BusinessException(ErrorCode.REPORT_ALREADY_CLOSED);
     }
-    if (this.status != ReportStatus.COUNSELING) {
+    if (this.status != ReportStatus.AWAITING_ADOPTION && this.status != ReportStatus.COUNSELING) {
       throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
     }
     this.adjusterId = adjusterId;

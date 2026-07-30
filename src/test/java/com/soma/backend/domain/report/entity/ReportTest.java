@@ -90,9 +90,9 @@ class ReportTest {
   }
 
   @Test
-  @DisplayName("사정사는 임의로 CLOSED로 건너뛸 수 없다(상태머신 우선, design.md §2.5)")
-  void adjusterCannotSkipToClosed() {
-    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+  @DisplayName("검수 단계(AWAITING_INSPECTION)에서는 임의로 CLOSED로 건너뛸 수 없다(상태머신 우선, design.md §2.5)")
+  void cannotSkipToClosedFromInspection() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
 
     assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.CLOSED))
         .isInstanceOf(BusinessException.class)
@@ -208,9 +208,21 @@ class ReportTest {
   }
 
   @Test
-  @DisplayName("accept: 아직 상담 전(COUNSELING 아님)이면 409 INVALID_STATE_TRANSITION")
-  void acceptBeforeCounselingRejected() {
+  @DisplayName("accept: 채택 대기(AWAITING_ADOPTION)면 상담을 거치지 않고 담당 사정사 확정·CLOSED로 바로 종결한다")
+  void acceptFromAwaitingAdoption() {
     Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+    UUID adjusterId = UUID.randomUUID();
+
+    report.accept(adjusterId);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.CLOSED);
+    assertThat(report.getAdjusterId()).isEqualTo(adjusterId);
+  }
+
+  @Test
+  @DisplayName("accept: 검수 전(AWAITING_INSPECTION)은 채택 대상이 아니라 409 INVALID_STATE_TRANSITION")
+  void acceptBeforeAdoptionRejected() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
 
     assertThatThrownBy(() -> report.accept(UUID.randomUUID()))
         .isInstanceOf(BusinessException.class)
