@@ -17,10 +17,14 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
 /**
  * 소셜 회원가입 유스케이스. 가입 티켓을 검증하고 users + social_accounts를 한 트랜잭션으로 생성한 뒤
  * access·refresh 쿠키를 발급한다.
+ *
+ * <p>Apple 가입이면 콜백에서 스테이징해 둔 refresh_token(암호문)을 소비해 SocialAccount에 옮긴다
+ * (탈퇴 revoke용). 스테이징 값은 이미 암호문이라 추가 암호화 없이 그대로 저장한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -30,6 +34,7 @@ public class AuthRegisterService {
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
   private final AuthTokenService authTokenService;
+  private final AppleRefreshStagingRepository appleRefreshStagingRepository;
 
   @Transactional
   public RegisterResponse register(HttpServletResponse response, RegisterRequest request) {
@@ -54,6 +59,8 @@ public class AuthRegisterService {
 
     SocialAccount account = SocialAccount.create(
         user.getId(), ticket.provider(), ticket.providerUserId());
+    appleRefreshStagingRepository.consume(ticket.provider(), ticket.providerUserId())
+        .ifPresent(account::linkRefreshToken);
     socialAccountRepository.save(account);
 
     authTokenService.issueTokens(response, user.getId(), role.name());

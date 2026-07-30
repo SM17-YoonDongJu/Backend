@@ -9,10 +9,12 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
 import java.time.LocalDate;
+import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -29,6 +31,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuthRegisterService 단위 테스트")
@@ -48,6 +51,9 @@ class AuthRegisterServiceTest {
 
   @Mock
   private AuthTokenService authTokenService;
+
+  @Mock
+  private AppleRefreshStagingRepository appleRefreshStagingRepository;
 
   @Mock
   private HttpServletResponse response;
@@ -95,6 +101,29 @@ class AuthRegisterServiceTest {
 
     // Then
     assertThat(result.role()).isEqualTo(Role.UNCERTIFICATED_ADJUSTER.name());
+  }
+
+  @Test
+  @DisplayName("Apple 가입이면 스테이징된 refresh_token(암호문)을 SocialAccount에 옮겨 저장한다")
+  void register_apple_movesStagedRefreshTokenToAccount() {
+    // Given
+    RegisterRequest appleRequest = new RegisterRequest(
+        "apple", "ticket", "홍길동", LocalDate.of(1990, 1, 1), PHONE, "남", "insured_person");
+    given(signupTicketProvider.parse("ticket"))
+        .willReturn(new SignupTicket("apple", "apple-1"));
+    given(socialAccountRepository.existsByProviderAndProviderUserId("apple", "apple-1"))
+        .willReturn(false);
+    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(false);
+    given(appleRefreshStagingRepository.consume("apple", "apple-1"))
+        .willReturn(Optional.of("enc-refresh"));
+
+    // When
+    authRegisterService.register(response, appleRequest);
+
+    // Then
+    ArgumentCaptor<SocialAccount> captor = ArgumentCaptor.forClass(SocialAccount.class);
+    then(socialAccountRepository).should().save(captor.capture());
+    assertThat(captor.getValue().getRefreshToken()).isEqualTo("enc-refresh");
   }
 
   @Test

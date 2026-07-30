@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.soma.backend.global.security.crypto.AesGcmCipher;
 import com.soma.backend.infra.redis.RefreshTokenRepository;
 import com.soma.backend.infra.redis.TokenBlacklistRepository;
 
@@ -31,6 +32,8 @@ public class OutboxProcessor {
   private final JsonMapper jsonMapper;
   private final RefreshTokenRepository refreshTokenRepository;
   private final TokenBlacklistRepository tokenBlacklistRepository;
+  private final AesGcmCipher aesGcmCipher;
+  private final AppleTokenRevoker appleTokenRevoker;
 
   @Value("${app.outbox.batch-size:50}")
   private int batchSize;
@@ -67,6 +70,7 @@ public class OutboxProcessor {
   private void handle(OutboxEvent event) {
     switch (event.getEventType()) {
       case OutboxEventPublisher.EVENT_AUTH_CLEANUP -> handleAuthCleanup(event.getPayload());
+      case OutboxEventPublisher.EVENT_APPLE_REVOKE -> handleAppleRevoke(event.getPayload());
       default -> throw new IllegalStateException("알 수 없는 아웃박스 이벤트 타입: " + event.getEventType());
     }
   }
@@ -75,5 +79,11 @@ public class OutboxProcessor {
     AuthCleanupPayload payload = jsonMapper.readValue(payloadJson, AuthCleanupPayload.class);
     refreshTokenRepository.delete(payload.userId());
     tokenBlacklistRepository.blacklist(payload.userId());
+  }
+
+  private void handleAppleRevoke(String payloadJson) {
+    AppleRevokePayload payload = jsonMapper.readValue(payloadJson, AppleRevokePayload.class);
+    // 복호화는 revoke 호출 직전에만 수행한다(평문 at-rest 0). 실패는 그대로 전파해 백오프 재시도한다.
+    appleTokenRevoker.revoke(aesGcmCipher.decrypt(payload.encryptedRefreshToken()));
   }
 }

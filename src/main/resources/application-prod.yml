@@ -1,6 +1,12 @@
 # 운영(prod) 프로파일. application.yml 기본값이 이미 운영 안전값(cookie.secure=true, docs 비공개,
 # management 9292 격리는 MANAGEMENT_SERVER_PORT로 주입)이라, 여기서는 "기본값과 달라야 하는 것"만 override 한다.
 # ⚠️ dev(application-dev.yml)의 개발 편의값(cookie.secure:false·docs.public:true·show-sql:true)을 절대 답습하지 않는다.
+
+# 운영은 Apple refresh_token 암호화 키를 반드시 주입한다 — 기본값 없음(미설정 시 AesGcmCipher가 기동을 실패시켜 fail-fast).
+app:
+  crypto:
+    apple-token-key: ${APPLE_TOKEN_ENC_KEY:}
+
 spring:
   jpa:
     hibernate:

@@ -68,6 +68,10 @@ app:
     # 운영/프리뷰 오리진은 CORS_ALLOWED_ORIGIN_PATTERNS로 주입(쉼표 구분).
     # 예: https://앱운영도메인,https://*.vercel.app
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000}
+  crypto:
+    # Apple refresh_token 저장용 AES-256-GCM 키(base64 32바이트). 로컬/테스트는 아래 dev 기본값으로 기동되며,
+    # 운영은 반드시 APPLE_TOKEN_ENC_KEY로 교체한다(키·평문은 로깅하지 않는다).
+    apple-token-key: ${APPLE_TOKEN_ENC_KEY:ZGV2LWxvY2FsLWFwcGxlLXRva2VuLWVuYy1rZXkhISE=}
   oauth:
     # 토큰 교환 시 provider(카카오·네이버)로 보내는 redirect_uri의 {baseUrl} 치환값.
     # 프론트가 인가요청에 사용한 redirect_uri와 정확히 일치해야 하고 provider 콘솔에 등록돼 있어야 한다.
@@ -76,6 +80,22 @@ app:
     # 프론트가 콜백에 넘긴 redirect_uri를 그대로 토큰 교환에 쓸 때 허용할 오리진 목록(쉼표 구분).
     # 로컬은 8080(리버스 프록시)·3000(프론트 직접) 허용. 운영/프리뷰는 OAUTH_ALLOWED_REDIRECT_ORIGINS로 주입.
     allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:8080,http://localhost:3000}
+    # Apple(Web/Services ID) 소셜 로그인. 자격증명은 APPLE_* env로 주입하고 미설정 시 빈 값이라 로컬 기동에 지장 없다
+    # (파싱·서명은 첫 토큰 교환 시점에 지연 수행). URI·issuer는 Apple 고정값이라 기본값을 코드가 아닌 여기서 관리한다.
+    apple:
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      client-id: ${APPLE_CLIENT_ID:}
+      private-key: ${APPLE_PRIVATE_KEY:}
+      authorization-uri: https://appleid.apple.com/auth/authorize
+      token-uri: https://appleid.apple.com/auth/token
+      jwk-set-uri: https://appleid.apple.com/auth/keys
+      issuer: https://appleid.apple.com
+      redirect-uri: "{baseUrl}/login/oauth2/code/apple"
+      revoke-uri: https://appleid.apple.com/auth/revoke
+      client-secret-ttl: 30m
+      # 콜백→가입 갭 동안 Apple refresh_token(암호문)을 브릿지하는 스테이징 TTL(ms). 가입 티켓(5분)보다 길게.
+      refresh-staging-ttl-ms: 600000
   outbox:
     # 탈퇴 후처리(Redis 부수효과)를 처리하는 트랜잭션 아웃박스 poller 설정.
     enabled: ${OUTBOX_ENABLED:true}   # false면 poller 비활성화(테스트 등)

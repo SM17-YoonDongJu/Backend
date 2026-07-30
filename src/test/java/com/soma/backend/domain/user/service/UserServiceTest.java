@@ -2,6 +2,8 @@ package com.soma.backend.domain.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -204,5 +206,43 @@ class UserServiceTest {
     then(socialAccountRepository).should().deleteByUserId(userId);
     then(outboxEventPublisher).should().publishAuthCleanup(userId);
     then(authTokenService).should().expireCookies(response);
+  }
+
+  @Test
+  @DisplayName("withdraw-Apple 계정이면 저장된 refresh_token(암호문)으로 revoke 이벤트를 링크 삭제 전에 적재한다")
+  void withdraw_appleAccount_publishesRevoke() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    User user = activeUser();
+    SocialAccount apple = mock(SocialAccount.class);
+    given(apple.getProvider()).willReturn("apple");
+    given(apple.getRefreshToken()).willReturn("enc-token");
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(apple));
+
+    // When
+    userService.withdraw(userId, response);
+
+    // Then
+    then(outboxEventPublisher).should().publishAppleRevoke(userId, "enc-token");
+    then(socialAccountRepository).should().deleteByUserId(userId);
+  }
+
+  @Test
+  @DisplayName("withdraw-Apple이 아닌 소셜 계정이면 revoke 이벤트를 적재하지 않는다")
+  void withdraw_nonApple_skipsRevoke() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    User user = activeUser();
+    SocialAccount kakao = mock(SocialAccount.class);
+    given(kakao.getProvider()).willReturn("kakao");
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(kakao));
+
+    // When
+    userService.withdraw(userId, response);
+
+    // Then
+    then(outboxEventPublisher).should(never()).publishAppleRevoke(any(), anyString());
   }
 }

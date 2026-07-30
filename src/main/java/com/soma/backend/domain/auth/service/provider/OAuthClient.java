@@ -11,7 +11,7 @@ public interface OAuthClient {
   /**
    * 인가코드로 토큰을 교환하고 사용자 프로필을 조회한다.
    *
-   * @param provider    kakao|naver (그 외는 400 UNSUPPORTED_PROVIDER)
+   * @param provider    kakao|naver|apple (그 외는 400 UNSUPPORTED_PROVIDER)
    * @param code        제공자 인가코드
    * @param state       CSRF 방지용 state(제공자에 따라 미사용, nullable)
    * @param redirectUri 프론트가 인가요청에 사용한 redirect_uri(허용목록 검증 후 토큰 교환에 사용, nullable)
