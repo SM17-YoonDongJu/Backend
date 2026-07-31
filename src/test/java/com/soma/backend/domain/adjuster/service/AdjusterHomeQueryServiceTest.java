@@ -29,17 +29,21 @@ import com.soma.backend.domain.adjuster.repository.InProgressCaseRow;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
+import com.soma.backend.domain.report.repository.ReportReviewRepository;
 
 /**
- * 사정사 홈 집계 유스케이스 단위 테스트. 누적 검수·상담·평점은 adjuster_profiles 비정규화에서 읽고,
- * 이번 달 완료만 report_reviews 실시간 집계임을 검증한다(+ limit clamp·단계 파생). 조회는 단일
- * AdjusterHomeRepository(QueryDSL 읽기 모델)로 위임한다.
+ * 사정사 홈 집계 유스케이스 단위 테스트. 상담·평점은 adjuster_profiles 비정규화에서 읽고, 완료(누적·이번 달)는
+ * report_reviews 실시간 집계(누적=전체 기간, 이번 달=당월)로 항상 '누적 ≥ 이번 달'임을 검증한다
+ * (+ limit clamp·단계 파생). 조회는 AdjusterHomeRepository(QueryDSL)·ReportReviewRepository로 위임한다.
  */
 @ExtendWith(MockitoExtension.class)
 class AdjusterHomeQueryServiceTest {
 
   @Mock
   private AdjusterHomeRepository adjusterHomeRepository;
+
+  @Mock
+  private ReportReviewRepository reportReviewRepository;
 
   @InjectMocks
   private AdjusterHomeQueryService service;
@@ -52,12 +56,13 @@ class AdjusterHomeQueryServiceTest {
   }
 
   @Test
-  @DisplayName("집계 조립: 대기 풀·신규·진행중·이번 달은 실시간, 누적·상담·평점은 adjuster_profiles")
+  @DisplayName("집계 조립: 대기 풀·신규·진행중·완료는 실시간(report_reviews), 상담·평점은 adjuster_profiles")
   void assemblesHome() {
     given(adjusterHomeRepository.countPendingPool()).willReturn(5L);
     given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(2L);
     given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
-        .willReturn(new AdjusterIdentityRow("김도현", "https://cdn/a.png", 240, 9, new BigDecimal("4.9"), 86));
+        .willReturn(new AdjusterIdentityRow("김도현", "https://cdn/a.png", 9, new BigDecimal("4.9"), 86));
+    given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(240L);
     given(adjusterHomeRepository.countCompletedBetween(eq(adjusterId), any(), any())).willReturn(14L);
     given(adjusterHomeRepository.countInProgress(adjusterId)).willReturn(2L);
     given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt()))
@@ -74,6 +79,7 @@ class AdjusterHomeQueryServiceTest {
     assertThat(summary.pendingNewCount()).isEqualTo(2L);
     assertThat(summary.inProgressCount()).isEqualTo(2L);
     assertThat(summary.monthlyCompletedCount()).isEqualTo(14L);
+    // 누적 완료 = report_reviews 전체 기간 카운트(240), 이번 달(14)은 그 부분집합.
     assertThat(summary.totalCompletedCount()).isEqualTo(240L);
     assertThat(summary.consultationConvertedCount()).isEqualTo(9L);
     assertThat(summary.rating().average()).isEqualTo(4.9);
@@ -87,17 +93,35 @@ class AdjusterHomeQueryServiceTest {
   }
 
   @Test
-  @DisplayName("비정규화 컬럼이 아직 null이면 누적·상담 0, 평점 average 0.0·후기 0으로 안전 처리")
+  @DisplayName("비정규화 상담·평점이 아직 null이면 상담 0, 평점 average 0.0·후기 0으로 안전 처리")
   void denormalizedNullSafe() {
     stubMinimal();
     given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt())).willReturn(List.of());
 
     AdjusterHomeResponse.Summary summary = service.getHome(adjusterId, 5).summary();
 
-    assertThat(summary.totalCompletedCount()).isZero();
     assertThat(summary.consultationConvertedCount()).isZero();
     assertThat(summary.rating().average()).isEqualTo(0.0);
     assertThat(summary.rating().reviewCount()).isZero();
+  }
+
+  @Test
+  @DisplayName("누적 완료는 report_reviews 전체 기간 카운트라 항상 이번 달(당월 부분집합) 이상이다")
+  void totalCompletedIsAllTimeReviewCount() {
+    given(adjusterHomeRepository.countPendingPool()).willReturn(0L);
+    given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(0L);
+    given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
+        .willReturn(new AdjusterIdentityRow("이름", null, null, null, null));
+    given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(13L);
+    given(adjusterHomeRepository.countCompletedBetween(eq(adjusterId), any(), any())).willReturn(10L);
+    given(adjusterHomeRepository.countInProgress(adjusterId)).willReturn(0L);
+    given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt())).willReturn(List.of());
+
+    AdjusterHomeResponse.Summary summary = service.getHome(adjusterId, 5).summary();
+
+    assertThat(summary.monthlyCompletedCount()).isEqualTo(10L);
+    assertThat(summary.totalCompletedCount()).isEqualTo(13L);
+    assertThat(summary.totalCompletedCount()).isGreaterThanOrEqualTo(summary.monthlyCompletedCount());
   }
 
   @Test
@@ -162,7 +186,8 @@ class AdjusterHomeQueryServiceTest {
     given(adjusterHomeRepository.countPendingPool()).willReturn(0L);
     given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(0L);
     given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
-        .willReturn(new AdjusterIdentityRow("이름", null, null, null, null, null));
+        .willReturn(new AdjusterIdentityRow("이름", null, null, null, null));
+    given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(0L);
     given(adjusterHomeRepository.countCompletedBetween(eq(adjusterId), any(), any())).willReturn(0L);
     given(adjusterHomeRepository.countInProgress(adjusterId)).willReturn(0L);
   }
