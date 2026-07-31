@@ -50,8 +50,9 @@ public class AdjusterHomeRepository {
   }
 
   /**
-   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사가 보류(report_holds)하지 않은 카운트.
-   * 보류를 누르면 홈·마이페이지·검수대기 요약의 '검수 대기' 수가 함께 줄도록 개인화한다(숫자 정합).
+   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사의 '내 대기 큐' 카운트 —
+   * 본인이 보류(report_holds)하지도, 이미 검수 진행(report_reviews SENT·COUNSELING)하지도 않은 건수다.
+   * 보류를 누르거나 내가 검수한 건은 홈·마이페이지·검수대기 요약의 '검수 대기' 수에서 함께 빠진다(숫자 정합).
    */
   public long countPendingPoolNotHeldBy(UUID adjusterId) {
     QReport rp = QReport.report;
@@ -59,12 +60,13 @@ public class AdjusterHomeRepository {
         .select(rp.count())
         .from(rp)
         .where(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
-            .and(notHeldBy(rp, adjusterId)))
+            .and(notHeldBy(rp, adjusterId))
+            .and(notInProgressReviewedBy(rp, adjusterId)))
         .fetchOne();
     return count == null ? 0L : count;
   }
 
-  /** 검수 대기 풀(보류 제외) 중 신규(threshold 이후 접수) 카운트. threshold는 서비스가 잠정 규칙으로 계산한다. */
+  /** 검수 대기 풀(보류·내 검수 제외) 중 신규(threshold 이후 접수) 카운트. threshold는 서비스가 잠정 규칙으로 계산한다. */
   public long countPendingPoolNewNotHeldBy(LocalDateTime newThreshold, UUID adjusterId) {
     QReport rp = QReport.report;
     Long count = queryFactory
@@ -72,7 +74,8 @@ public class AdjusterHomeRepository {
         .from(rp)
         .where(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
             .and(rp.createdAt.goe(newThreshold))
-            .and(notHeldBy(rp, adjusterId)))
+            .and(notHeldBy(rp, adjusterId))
+            .and(notInProgressReviewedBy(rp, adjusterId)))
         .fetchOne();
     return count == null ? 0L : count;
   }
@@ -82,6 +85,17 @@ public class AdjusterHomeRepository {
     QReportHold rh = QReportHold.reportHold;
     return JPAExpressions.selectOne().from(rh)
         .where(rh.reportId.eq(rp.id).and(rh.adjusterId.eq(adjusterId))).notExists();
+  }
+
+  /**
+   * 요청 사정사가 해당 리포트를 이미 검수 진행 중(report_reviews SENT·COUNSELING)이 아닌지(notExists) 술어.
+   * 내가 SENT 한 AWAITING_ADOPTION 건은 진행중으로 넘어갔으므로 검수 대기에서 뺀다(진행중∩검수대기=∅).
+   */
+  private BooleanExpression notInProgressReviewedBy(QReport rp, UUID adjusterId) {
+    QReportReview rv = QReportReview.reportReview;
+    return JPAExpressions.selectOne().from(rv)
+        .where(rv.reportId.eq(rp.id).and(rv.adjusterId.eq(adjusterId))
+            .and(rv.status.in(ReviewStatus.SENT, ReviewStatus.COUNSELING))).notExists();
   }
 
   /** 요청 사정사의 진행 중(미완료) 검수 카운트 — SENT·COUNSELING. */

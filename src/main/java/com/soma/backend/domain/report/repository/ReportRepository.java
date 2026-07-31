@@ -32,14 +32,18 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
   int nextCaseNoSequence(@Param("day") LocalDate day);
 
   /**
-   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사가 보류(report_holds)하지 않은 건수.
-   * 풀 정의는 홈 대시보드({@code AdjusterHomeRepository#countPendingPoolNotHeldBy})·검수대기 목록과 같고, 보류는 사정사별이라
-   * '내가 보류한 건'을 뺀 개인화 카운트다(보류 시 검수대기 -1). 홈 풀은 전역이라 여기와 값이 다를 수 있다.
+   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사의 '내 대기 큐' 카운트 —
+   * 본인이 보류(report_holds)하지도, 이미 검수 진행(report_reviews SENT·COUNSELING)하지도 않은 건수다.
+   * 내가 SENT 한 AWAITING_ADOPTION 건은 진행중으로 넘어갔으므로 검수 대기에서 뺀다(진행중∩검수대기=∅).
+   * 사정사별 개인화 카운트라 홈 풀(전역 정의)과 값이 다를 수 있다.
    */
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
       + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId)")
+      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId) "
+      + "AND NOT EXISTS (SELECT 1 FROM ReportReview rv WHERE rv.reportId = r.id AND rv.adjusterId = :adjusterId "
+      + "AND rv.status IN (com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
+      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING))")
   long countPendingNotHeldBy(@Param("adjusterId") UUID adjusterId);
 
   /** 마이페이지 활동 집계 — 요청 사용자가 만든 리포트 총수(GET /users/me/activity-summary). */
@@ -59,23 +63,29 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
   List<Report> findExpiredForNotSelection(
       @Param("sources") Collection<ReportStatus> sources, @Param("threshold") LocalDateTime threshold);
 
-  /** 마감 임박(AWAITING_INSPECTION·threshold 이전 접수) 중 요청 사정사가 보류하지 않은 건수. */
+  /** 마감 임박(AWAITING_INSPECTION·threshold 이전 접수) 중 본인이 보류·검수(SENT·COUNSELING)하지 않은 건수. */
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
       + "AND r.createdAt <= :dueSoonThreshold "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId)")
+      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId) "
+      + "AND NOT EXISTS (SELECT 1 FROM ReportReview rv WHERE rv.reportId = r.id AND rv.adjusterId = :adjusterId "
+      + "AND rv.status IN (com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
+      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING))")
   long countDueSoonNotHeldBy(
       @Param("dueSoonThreshold") LocalDateTime dueSoonThreshold, @Param("adjusterId") UUID adjusterId);
 
   /**
-   * 검수 대기 풀 중 지정 사고유형(사정사 전문분야 매칭)에 해당하고 요청 사정사가 보류하지 않은 건수.
-   * 요약의 '내 전문분야 매칭' 배지도 보류 제외 축과 맞춘다.
+   * 검수 대기 풀 중 지정 사고유형(사정사 전문분야 매칭)에 해당하고, 본인이 보류·검수(SENT·COUNSELING)하지
+   * 않은 건수. 요약의 '내 전문분야 매칭' 배지도 검수 대기와 같은 개인화 축(보류·내 검수 제외)에 맞춘다.
    */
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
       + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
       + "AND r.accidentType IN :types "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId)")
+      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId) "
+      + "AND NOT EXISTS (SELECT 1 FROM ReportReview rv WHERE rv.reportId = r.id AND rv.adjusterId = :adjusterId "
+      + "AND rv.status IN (com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
+      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING))")
   long countPendingByAccidentTypeInNotHeldBy(
       @Param("types") Collection<AccidentType> types, @Param("adjusterId") UUID adjusterId);
 

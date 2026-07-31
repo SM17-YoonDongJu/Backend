@@ -22,7 +22,9 @@ import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.HoldReason;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportHold;
+import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 
 /**
  * 검수대기 summary 카운트(countPendingNotHeldBy·countPendingByAccidentTypeInNotHeldBy·countDueSoonNotHeldBy)
@@ -69,6 +71,24 @@ class PendingReviewCountExecutionTest {
     flushAndClear();
 
     // 내 보류 1건 제외 → 2건. 보류는 사정사별이라 다른 사정사에겐 3건 그대로.
+    assertThat(reportRepository.countPendingNotHeldBy(adjuster)).isEqualTo(2L);
+    assertThat(reportRepository.countPendingNotHeldBy(UUID.randomUUID())).isEqualTo(3L);
+  }
+
+  @Test
+  @DisplayName("countPendingNotHeldBy — 본인이 검수 진행 중(SENT)인 리포트는 빠지고 거절(REJECTED)은 남는다")
+  void countPendingExcludesMyInProgressReview() {
+    UUID adjuster = UUID.randomUUID();
+    UUID sent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-1");
+    UUID rejected = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-2");
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "IR-3");
+    entityManager.persist(new ReportReview(sent, adjuster));   // 기본 status = SENT
+    ReportReview rejectedReview = new ReportReview(rejected, adjuster);
+    ReflectionTestUtils.setField(rejectedReview, "status", ReviewStatus.REJECTED);
+    entityManager.persist(rejectedReview);
+    flushAndClear();
+
+    // 내 SENT 건(IR-1) 제외 → 2건(REJECTED인 IR-2는 남음 + IR-3). 리뷰 없는 다른 사정사는 3건.
     assertThat(reportRepository.countPendingNotHeldBy(adjuster)).isEqualTo(2L);
     assertThat(reportRepository.countPendingNotHeldBy(UUID.randomUUID())).isEqualTo(3L);
   }

@@ -44,6 +44,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
     QUser us = QUser.user;
     QReportIssue ri = QReportIssue.reportIssue;
     QReportHold rh = QReportHold.reportHold;
+    QReportReview rv = QReportReview.reportReview;
 
     BooleanBuilder where = new BooleanBuilder();
     // 검수 대기 목록은 검수 단계(AWAITING_INSPECTION·AWAITING_ADOPTION, 상세 조회 노출 정책과 동일)만 노출한다.
@@ -52,6 +53,11 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
     // 요청 사정사가 보류(report_holds)한 리포트는 목록에서 숨긴다(보류 = 내 대기열에서 제외). count 쿼리도 같은 where라 함께 줄어든다.
     where.and(JPAExpressions.selectOne().from(rh)
         .where(rh.reportId.eq(rp.id).and(rh.adjusterId.eq(adjusterId))).notExists());
+    // 본인이 이미 검수 진행 중(SENT·COUNSELING)인 리포트도 숨긴다 — 내가 SENT 한 AWAITING_ADOPTION 건은
+    // 진행중으로 넘어갔으므로 검수 대기(아직 안 본 큐)에서 제외한다(진행중∩검수대기=∅).
+    where.and(JPAExpressions.selectOne().from(rv)
+        .where(rv.reportId.eq(rp.id).and(rv.adjusterId.eq(adjusterId))
+            .and(rv.status.in(ReviewStatus.SENT, ReviewStatus.COUNSELING))).notExists());
     if (status != null) {
       where.and(rp.status.eq(status));
     }
