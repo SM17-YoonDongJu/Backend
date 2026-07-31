@@ -56,8 +56,8 @@ public record AdjusterProfileResponse(
    * review_count로 평점 유무를 판별).
    *
    * <p>{@code pendingReviewCount}는 검수 대기 건수(파트너 헤더·인사말 "검수 대기 N건"용)로, = 홈 대시보드
-   * summary.pending_count (countPendingPool: AWAITING_INSPECTION + AWAITING_ADOPTION, BE #122)다 —
-   * 서비스가 계산해 넘긴다.
+   * summary.pending_count (countPendingPoolNotHeldBy: AWAITING_INSPECTION + AWAITING_ADOPTION 중 본인
+   * 보류 제외, BE #122)다 — 서비스가 계산해 넘긴다.
    */
   public static AdjusterProfileResponse from(
       AdjusterProfile profile, User user, List<AdjusterReviewRow> recent,

@@ -58,8 +58,8 @@ class AdjusterHomeQueryServiceTest {
   @Test
   @DisplayName("집계 조립: 대기 풀·신규·진행중·완료는 실시간(report_reviews), 상담·평점은 adjuster_profiles")
   void assemblesHome() {
-    given(adjusterHomeRepository.countPendingPool()).willReturn(5L);
-    given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(2L);
+    given(adjusterHomeRepository.countPendingPoolNotHeldBy(adjusterId)).willReturn(5L);
+    given(adjusterHomeRepository.countPendingPoolNewNotHeldBy(any(), eq(adjusterId))).willReturn(2L);
     given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
         .willReturn(new AdjusterIdentityRow("김도현", "https://cdn/a.png", 9, new BigDecimal("4.9"), 86));
     given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(240L);
@@ -108,8 +108,8 @@ class AdjusterHomeQueryServiceTest {
   @Test
   @DisplayName("누적 완료는 report_reviews 전체 기간 카운트라 항상 이번 달(당월 부분집합) 이상이다")
   void totalCompletedIsAllTimeReviewCount() {
-    given(adjusterHomeRepository.countPendingPool()).willReturn(0L);
-    given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(0L);
+    given(adjusterHomeRepository.countPendingPoolNotHeldBy(adjusterId)).willReturn(0L);
+    given(adjusterHomeRepository.countPendingPoolNewNotHeldBy(any(), eq(adjusterId))).willReturn(0L);
     given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
         .willReturn(new AdjusterIdentityRow("이름", null, null, null, null));
     given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(13L);
@@ -134,7 +134,7 @@ class AdjusterHomeQueryServiceTest {
     LocalDateTime after = LocalDateTime.now().minusHours(24);
 
     ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
-    verify(adjusterHomeRepository).countPendingPoolNew(captor.capture());
+    verify(adjusterHomeRepository).countPendingPoolNewNotHeldBy(captor.capture(), eq(adjusterId));
     assertThat(captor.getValue()).isBetween(before.minusSeconds(1), after.plusSeconds(1));
   }
 
@@ -183,8 +183,8 @@ class AdjusterHomeQueryServiceTest {
   }
 
   private void stubMinimal() {
-    given(adjusterHomeRepository.countPendingPool()).willReturn(0L);
-    given(adjusterHomeRepository.countPendingPoolNew(any())).willReturn(0L);
+    given(adjusterHomeRepository.countPendingPoolNotHeldBy(adjusterId)).willReturn(0L);
+    given(adjusterHomeRepository.countPendingPoolNewNotHeldBy(any(), eq(adjusterId))).willReturn(0L);
     given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
         .willReturn(new AdjusterIdentityRow("이름", null, null, null, null));
     given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(0L);

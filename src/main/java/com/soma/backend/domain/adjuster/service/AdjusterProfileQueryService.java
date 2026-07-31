@@ -34,7 +34,7 @@ import com.soma.backend.global.exception.ErrorCode;
  * 그대로 조회 키로 쓴다.
  *
  * <p>당월 검수완료·검수 대기 풀은 홈 대시보드와 동일 집계를 재사용한다
- * ({@code AdjusterHomeRepository.countCompletedBetween}·{@code countPendingPool}). 상담전환은
+ * ({@code AdjusterHomeRepository.countCompletedBetween}·{@code countPendingPoolNotHeldBy}). 상담전환은
  * status IN (COUNSELING, ACCEPTED)('상담 도달') 기준으로 집계한다.
  */
 @Service
@@ -83,9 +83,9 @@ public class AdjusterProfileQueryService {
         .findReviewRows(userId, PageRequest.of(0, RECENT_REVIEW_LIMIT))
         .getContent();
     long handledCaseCount = reportReviewRepository.countByAdjusterId(userId);
-    // 검수 대기 건수(파트너 헤더 "검수 대기 N건", BE #122) — 홈 대시보드 summary.pending_count와 동일 전역
-    // 집계(countPendingPool: AWAITING_INSPECTION + AWAITING_ADOPTION).
-    int pendingReviewCount = Math.toIntExact(adjusterHomeRepository.countPendingPool());
+    // 검수 대기 건수(파트너 헤더 "검수 대기 N건", BE #122) — 홈 대시보드 summary.pending_count와 동일하게
+    // 본인이 보류한 건을 제외한 검수 대기 풀(countPendingPoolNotHeldBy)로 센다(보류 시 검수 대기 -1).
+    int pendingReviewCount = Math.toIntExact(adjusterHomeRepository.countPendingPoolNotHeldBy(userId));
 
     return AdjusterProfileResponse.from(profile, user, recentReviews, handledCaseCount, pendingReviewCount);
   }

@@ -7,12 +7,15 @@ import java.util.UUID;
 import org.springframework.stereotype.Repository;
 
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.adjuster.entity.QAdjusterProfile;
 import com.soma.backend.domain.report.entity.QReport;
+import com.soma.backend.domain.report.entity.QReportHold;
 import com.soma.backend.domain.report.entity.QReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
@@ -46,27 +49,39 @@ public class AdjusterHomeRepository {
         .fetchOne();
   }
 
-  /** 검수 대기 풀 카운트(global) — AWAITING_INSPECTION + AWAITING_ADOPTION. */
-  public long countPendingPool() {
-    QReport rp = QReport.report;
-    Long count = queryFactory
-        .select(rp.count())
-        .from(rp)
-        .where(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION))
-        .fetchOne();
-    return count == null ? 0L : count;
-  }
-
-  /** 검수 대기 풀 중 신규(threshold 이후 접수) 카운트. threshold는 서비스가 잠정 규칙으로 계산한다. */
-  public long countPendingPoolNew(LocalDateTime newThreshold) {
+  /**
+   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사가 보류(report_holds)하지 않은 카운트.
+   * 보류를 누르면 홈·마이페이지·검수대기 요약의 '검수 대기' 수가 함께 줄도록 개인화한다(숫자 정합).
+   */
+  public long countPendingPoolNotHeldBy(UUID adjusterId) {
     QReport rp = QReport.report;
     Long count = queryFactory
         .select(rp.count())
         .from(rp)
         .where(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
-            .and(rp.createdAt.goe(newThreshold)))
+            .and(notHeldBy(rp, adjusterId)))
         .fetchOne();
     return count == null ? 0L : count;
+  }
+
+  /** 검수 대기 풀(보류 제외) 중 신규(threshold 이후 접수) 카운트. threshold는 서비스가 잠정 규칙으로 계산한다. */
+  public long countPendingPoolNewNotHeldBy(LocalDateTime newThreshold, UUID adjusterId) {
+    QReport rp = QReport.report;
+    Long count = queryFactory
+        .select(rp.count())
+        .from(rp)
+        .where(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
+            .and(rp.createdAt.goe(newThreshold))
+            .and(notHeldBy(rp, adjusterId)))
+        .fetchOne();
+    return count == null ? 0L : count;
+  }
+
+  /** 요청 사정사가 해당 리포트를 보류(report_holds)하지 않았는지(notExists) 술어 — 검수 대기 카운트를 개인화한다. */
+  private BooleanExpression notHeldBy(QReport rp, UUID adjusterId) {
+    QReportHold rh = QReportHold.reportHold;
+    return JPAExpressions.selectOne().from(rh)
+        .where(rh.reportId.eq(rp.id).and(rh.adjusterId.eq(adjusterId))).notExists();
   }
 
   /** 요청 사정사의 진행 중(미완료) 검수 카운트 — SENT·COUNSELING. */

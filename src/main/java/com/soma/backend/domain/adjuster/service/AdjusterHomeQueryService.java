@@ -50,9 +50,10 @@ public class AdjusterHomeQueryService {
     AdjusterIdentityRow identity = adjusterHomeRepository.findAdjusterIdentity(adjusterId);
     Adjuster adjuster = toAdjuster(adjusterId, identity);
 
-    long pendingCount = adjusterHomeRepository.countPendingPool();
-    long pendingNewCount =
-        adjusterHomeRepository.countPendingPoolNew(LocalDateTime.now().minusHours(NEW_WINDOW_HOURS));
+    // 검수 대기(전체·신규)는 요청 사정사가 보류한 건을 제외한다 — 보류를 누르면 홈의 검수 대기 수가 줄도록.
+    long pendingCount = adjusterHomeRepository.countPendingPoolNotHeldBy(adjusterId);
+    long pendingNewCount = adjusterHomeRepository.countPendingPoolNewNotHeldBy(
+        LocalDateTime.now().minusHours(NEW_WINDOW_HOURS), adjusterId);
 
     // 완료 집계는 둘 다 report_reviews 실시간 카운트다. 누적은 전체 기간(countByAdjusterId), 이번 달은 그중
     // 당월분(countCompletedBetween)이라 이번 달이 누적의 부분집합 → '누적 ≥ 이번 달'이 항상 성립한다. 비정규화
