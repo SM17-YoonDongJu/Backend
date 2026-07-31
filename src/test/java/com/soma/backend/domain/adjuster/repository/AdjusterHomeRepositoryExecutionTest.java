@@ -38,8 +38,8 @@ class AdjusterHomeRepositoryExecutionTest {
     UUID adjusterId = UUID.randomUUID();
     LocalDateTime now = LocalDateTime.now();
 
-    assertThat(adjusterHomeRepository.countPendingPool()).isZero();
-    assertThat(adjusterHomeRepository.countPendingPoolNew(now.minusHours(24))).isZero();
+    assertThat(adjusterHomeRepository.countPendingPoolNotHeldBy(adjusterId)).isZero();
+    assertThat(adjusterHomeRepository.countPendingPoolNewNotHeldBy(now.minusHours(24), adjusterId)).isZero();
     assertThat(adjusterHomeRepository.countInProgress(adjusterId)).isZero();
     assertThat(adjusterHomeRepository.countCompletedBetween(adjusterId, now.minusDays(30), now)).isZero();
   }

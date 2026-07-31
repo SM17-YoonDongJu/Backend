@@ -33,7 +33,7 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
 
   /**
    * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사가 보류(report_holds)하지 않은 건수.
-   * 풀 정의는 홈 대시보드({@code AdjusterHomeRepository#countPendingPool})·검수대기 목록과 같되, 보류는 사정사별이라
+   * 풀 정의는 홈 대시보드({@code AdjusterHomeRepository#countPendingPoolNotHeldBy})·검수대기 목록과 같고, 보류는 사정사별이라
    * '내가 보류한 건'을 뺀 개인화 카운트다(보류 시 검수대기 -1). 홈 풀은 전역이라 여기와 값이 다를 수 있다.
    */
   @Query("SELECT COUNT(r) FROM Report r "
