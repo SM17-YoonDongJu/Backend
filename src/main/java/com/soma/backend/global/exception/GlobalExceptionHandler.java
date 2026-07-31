@@ -11,6 +11,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -142,6 +144,28 @@ public class GlobalExceptionHandler {
     }
     String normalized = resourcePath.startsWith("/") ? resourcePath : "/" + resourcePath;
     return normalized.startsWith("/actuator");
+  }
+
+  /**
+   * 업로드 파일이 서블릿 멀티파트 한도(spring.servlet.multipart.max-file-size)를 초과하면 컨트롤러 진입 전
+   * MaxUploadSizeExceededException이 발생한다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 413 UPLOAD_FILE_TOO_LARGE로 매핑한다(요청 본문은 남기지 않는다).
+   */
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+    ErrorCode code = ErrorCode.UPLOAD_FILE_TOO_LARGE;
+    return ResponseEntity.status(code.getStatus()).body(ErrorResponse.of(code));
+  }
+
+  /**
+   * multipart 요청에 필수 파트(@RequestParam MultipartFile)가 없으면 스프링 MVC가
+   * MissingServletRequestPartException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 MISSING_REQUIRED_FIELD로 매핑한다.
+   */
+  @ExceptionHandler(MissingServletRequestPartException.class)
+  public ResponseEntity<ErrorResponse> handleMissingPart(MissingServletRequestPartException ex) {
+    return ResponseEntity.status(ErrorCode.MISSING_REQUIRED_FIELD.getStatus())
+        .body(ErrorResponse.of(ErrorCode.MISSING_REQUIRED_FIELD));
   }
 
   @ExceptionHandler(Exception.class)

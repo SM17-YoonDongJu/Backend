@@ -97,7 +97,10 @@ public enum ErrorCode {
   NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
 
   // Upload (도메인 특화)
-  UPLOAD_CONTENT_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "허용되지 않는 파일 형식입니다.");
+  UPLOAD_CONTENT_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "허용되지 않는 파일 형식입니다."),
+  UPLOAD_FILE_EMPTY(HttpStatus.BAD_REQUEST, "업로드 파일이 비어 있습니다."),
+  UPLOAD_FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "업로드 용량이 허용 범위를 초과했습니다."),
+  UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다.");
 
   private final HttpStatus status;
   private final String message;

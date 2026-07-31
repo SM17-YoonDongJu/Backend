@@ -65,12 +65,12 @@ class UploadPurposeTest {
   }
 
   @Test
-  @DisplayName("avatar는 이미지 MIME만 허용하고 PDF·비허용 이미지는 거부한다")
-  void allows_avatar_permitsOnlyImages() {
+  @DisplayName("avatar는 JPG·PNG만 허용하고 webp·PDF·비허용 이미지는 거부한다")
+  void allows_avatar_permitsOnlyJpgAndPng() {
     // When & Then
     assertThat(UploadPurpose.AVATAR.allows("image/jpeg")).isTrue();
     assertThat(UploadPurpose.AVATAR.allows("image/png")).isTrue();
-    assertThat(UploadPurpose.AVATAR.allows("image/webp")).isTrue();
+    assertThat(UploadPurpose.AVATAR.allows("image/webp")).isFalse();
     assertThat(UploadPurpose.AVATAR.allows("application/pdf")).isFalse();
     assertThat(UploadPurpose.AVATAR.allows("image/gif")).isFalse();
   }
@@ -84,7 +84,18 @@ class UploadPurposeTest {
     assertThat(UploadPurpose.LICENSE.allows("application/pdf")).isTrue();
     assertThat(UploadPurpose.REGISTRATION.allows("image/jpeg")).isTrue();
     assertThat(UploadPurpose.REPORT_DOCUMENT.allows("image/gif")).isFalse();
+    assertThat(UploadPurpose.REPORT_DOCUMENT.allows("image/webp")).isFalse();
     assertThat(UploadPurpose.LICENSE.allows("text/plain")).isFalse();
+  }
+
+  @Test
+  @DisplayName("maxSizeBytes는 avatar 5MB, 문서 용도(report_document·license·registration) 20MB를 반환한다")
+  void maxSizeBytes_returnsExpectedLimitPerPurpose() {
+    // When & Then
+    assertThat(UploadPurpose.AVATAR.maxSizeBytes()).isEqualTo(5L * 1024 * 1024);
+    assertThat(UploadPurpose.REPORT_DOCUMENT.maxSizeBytes()).isEqualTo(20L * 1024 * 1024);
+    assertThat(UploadPurpose.LICENSE.maxSizeBytes()).isEqualTo(20L * 1024 * 1024);
+    assertThat(UploadPurpose.REGISTRATION.maxSizeBytes()).isEqualTo(20L * 1024 * 1024);
   }
 
   @Test
