@@ -3,6 +3,7 @@ package com.soma.backend.domain.report.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -12,6 +13,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+
+import com.soma.backend.domain.report.entity.AccidentType;
 
 /**
  * QueryDSL 조회가 실제 PostgreSQL에서 SQL로 번역·실행되는지 검증한다(엔티티 조인·상관 서브쿼리·컨버터 projection).
@@ -27,10 +30,10 @@ class ReportQuerydslExecutionTest {
   private ReportReviewRepository reportReviewRepository;
 
   @Test
-  @DisplayName("findPendingReviewRows — users 엔티티 조인 + issueCount/held 상관 서브쿼리 SQL이 실행된다")
+  @DisplayName("findPendingReviewRows — users 조인 + 보류 제외(notExists) 서브쿼리 + 접수 최신순 SQL이 실행된다")
   void pendingReviewRowsExecutes() {
     Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
-        null, null, null, UUID.randomUUID(), PageRequest.of(0, 20));
+        null, null, null, UUID.randomUUID(), Set.of(), PageRequest.of(0, 20));
 
     assertThat(page).isNotNull();
     assertThat(page.getContent()).isEmpty();
@@ -38,10 +41,21 @@ class ReportQuerydslExecutionTest {
   }
 
   @Test
+  @DisplayName("findPendingReviewRows — 전문분야 매칭 accident_type 우선 정렬(CASE) SQL이 실행된다")
+  void pendingReviewRowsSpecialtySortExecutes() {
+    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
+        null, null, null, UUID.randomUUID(), Set.of(AccidentType.TRAFFIC, AccidentType.DISABILITY),
+        PageRequest.of(0, 20));
+
+    assertThat(page).isNotNull();
+    assertThat(page.getContent()).isEmpty();
+  }
+
+  @Test
   @DisplayName("findPendingReviewRows — region 필터가 users.region 배열 contains(array_contains)로 실행된다")
   void pendingReviewRowsRegionFilterExecutes() {
     Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
-        null, null, "서울", UUID.randomUUID(), PageRequest.of(0, 20));
+        null, null, "서울", UUID.randomUUID(), Set.of(), PageRequest.of(0, 20));
 
     assertThat(page).isNotNull();
     assertThat(page.getContent()).isEmpty();

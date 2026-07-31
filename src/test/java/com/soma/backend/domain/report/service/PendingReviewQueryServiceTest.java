@@ -3,12 +3,15 @@ package com.soma.backend.domain.report.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -54,15 +57,15 @@ class PendingReviewQueryServiceTest {
   private PendingReviewQueryService service;
 
   @Test
-  @DisplayName("summary는 pending/due-soon/in-progress 카운트를 반환하고 due-soon 기준은 now - 6일(SLA 7 - 여유 1)")
+  @DisplayName("summary는 보류 제외 pending/due-soon 카운트를 반환하고 due-soon 기준은 now - 6일(SLA 7 - 여유 1)")
   void summaryUsesSlaThreshold() {
     UUID adjusterId = UUID.randomUUID();
-    given(reportRepository.countPending()).willReturn(9L);
-    given(reportRepository.countDueSoon(any(LocalDateTime.class))).willReturn(3L);
+    given(reportRepository.countPendingNotHeldBy(adjusterId)).willReturn(9L);
+    given(reportRepository.countDueSoonNotHeldBy(any(LocalDateTime.class), eq(adjusterId))).willReturn(3L);
     given(reportReviewRepository.countInProgressByAdjusterId(adjusterId)).willReturn(4L);
     given(adjusterProfileRepository.findByUserId(adjusterId))
         .willReturn(Optional.of(adjusterProfile(List.of("교통사고"))));
-    given(reportRepository.countPendingByAccidentTypeIn(any())).willReturn(5L);
+    given(reportRepository.countPendingByAccidentTypeInNotHeldBy(any(), eq(adjusterId))).willReturn(5L);
 
     LocalDateTime before = LocalDateTime.now().minusDays(6);
     PendingReviewSummaryResponse summary = service.getSummary(adjusterId);
@@ -74,7 +77,7 @@ class PendingReviewQueryServiceTest {
     assertThat(summary.specialtyMatchCount()).isEqualTo(5L);
 
     ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
-    verify(reportRepository).countDueSoon(captor.capture());
+    verify(reportRepository).countDueSoonNotHeldBy(captor.capture(), eq(adjusterId));
     assertThat(captor.getValue()).isBetween(before, after);
   }
 
@@ -91,7 +94,7 @@ class PendingReviewQueryServiceTest {
     PendingReviewRow row = row(reportId, 1000L, 5000L, 8000L, 2L, true);
     Pageable pageable = PageRequest.of(0, 20);
     Page<PendingReviewRow> page = new PageImpl<>(List.of(row), pageable, 1);
-    given(reportRepository.findPendingReviewRows(null, null, null, reportId, pageable))
+    given(reportRepository.findPendingReviewRows(isNull(), isNull(), isNull(), eq(reportId), any(), eq(pageable)))
         .willReturn(page);
     given(reportReviewRepository.findAdjusterReviewStatuses(any(), any()))
         .willReturn(List.of(new ReportReviewStatusRow(reportId, ReviewStatus.SENT)));
@@ -118,7 +121,7 @@ class PendingReviewQueryServiceTest {
     UUID adjusterId = UUID.randomUUID();
     PendingReviewRow row = row(UUID.randomUUID(), null, null, null, null, null);
     Pageable pageable = PageRequest.of(0, 20);
-    given(reportRepository.findPendingReviewRows(null, null, null, adjusterId, pageable))
+    given(reportRepository.findPendingReviewRows(isNull(), isNull(), isNull(), eq(adjusterId), any(), eq(pageable)))
         .willReturn(new PageImpl<>(List.of(row), pageable, 1));
     given(reportReviewRepository.findAdjusterReviewStatuses(any(), any())).willReturn(List.of());
 
@@ -129,6 +132,26 @@ class PendingReviewQueryServiceTest {
     assertThat(item.issueCount()).isZero();
     assertThat(item.held()).isFalse();
     assertThat(item.reportReviewStatus()).isNull();
+  }
+
+  @Test
+  @DisplayName("목록 조회는 사정사 전문분야와 매칭되는 accident_type 집합을 정렬용으로 리포지토리에 넘긴다")
+  void listPassesSpecialtyTypesForSorting() {
+    UUID adjusterId = UUID.randomUUID();
+    Pageable pageable = PageRequest.of(0, 20);
+    given(adjusterProfileRepository.findByUserId(adjusterId))
+        .willReturn(Optional.of(adjusterProfile(List.of("교통사고", "장해"))));
+    given(reportRepository.findPendingReviewRows(
+        isNull(), isNull(), isNull(), eq(adjusterId), any(), eq(pageable)))
+        .willReturn(new PageImpl<>(List.of(), pageable, 0));
+
+    service.getPendingReviewList(null, null, null, adjusterId, pageable);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Set<AccidentType>> captor = ArgumentCaptor.forClass(Set.class);
+    verify(reportRepository).findPendingReviewRows(
+        isNull(), isNull(), isNull(), eq(adjusterId), captor.capture(), eq(pageable));
+    assertThat(captor.getValue()).containsExactlyInAnyOrder(AccidentType.TRAFFIC, AccidentType.DISABILITY);
   }
 
   @Test

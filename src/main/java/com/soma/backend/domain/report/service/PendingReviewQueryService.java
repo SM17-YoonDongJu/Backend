@@ -57,9 +57,11 @@ public class PendingReviewQueryService {
   private final AdjusterProfileRepository adjusterProfileRepository;
 
   public PendingReviewSummaryResponse getSummary(UUID adjusterId) {
-    long pendingCount = reportRepository.countPending();
+    // 검수대기 풀 카운트는 요청 사정사가 보류한 건을 제외한다(보류 = 내 대기열에서 제외). 마감임박·전문분야
+    // 매칭도 같은 풀의 부분집합이라 보류 제외 축을 맞춘다. inProgressCount는 내 검수 상태 축이라 보류와 무관.
+    long pendingCount = reportRepository.countPendingNotHeldBy(adjusterId);
     LocalDateTime dueSoonThreshold = LocalDateTime.now().minusDays(SLA_DAYS - DUE_SOON_WINDOW_DAYS);
-    long dueSoonCount = reportRepository.countDueSoon(dueSoonThreshold);
+    long dueSoonCount = reportRepository.countDueSoonNotHeldBy(dueSoonThreshold, adjusterId);
     long inProgressCount = reportReviewRepository.countInProgressByAdjusterId(adjusterId);
     long specialtyMatchCount = countSpecialtyMatch(adjusterId);
     return new PendingReviewSummaryResponse(pendingCount, dueSoonCount, inProgressCount, specialtyMatchCount);
@@ -71,14 +73,18 @@ public class PendingReviewQueryService {
    * 매칭한다(전문분야 없거나 매칭 없으면 0).
    */
   private long countSpecialtyMatch(UUID adjusterId) {
-    List<String> specialties = adjusterProfileRepository.findByUserId(adjusterId)
-        .map(AdjusterProfile::getSpecialties)
-        .orElse(null);
-    Set<AccidentType> matched = matchedAccidentTypes(specialties);
+    Set<AccidentType> matched = matchedAccidentTypes(loadSpecialties(adjusterId));
     if (matched.isEmpty()) {
       return 0L;
     }
-    return reportRepository.countPendingByAccidentTypeIn(matched);
+    return reportRepository.countPendingByAccidentTypeInNotHeldBy(matched, adjusterId);
+  }
+
+  /** 요청 사정사의 전문분야(자유 텍스트 리스트). 프로필이 없거나 미입력이면 null. */
+  private List<String> loadSpecialties(UUID adjusterId) {
+    return adjusterProfileRepository.findByUserId(adjusterId)
+        .map(AdjusterProfile::getSpecialties)
+        .orElse(null);
   }
 
   private Set<AccidentType> matchedAccidentTypes(List<String> specialties) {
@@ -98,8 +104,10 @@ public class PendingReviewQueryService {
       String status, String accidentType, String region, UUID adjusterId, Pageable pageable) {
     ReportStatus statusFilter = parseStatus(status);
     AccidentType accidentTypeFilter = parseAccidentType(accidentType);
-    Page<PendingReviewRow> rows =
-        reportRepository.findPendingReviewRows(statusFilter, accidentTypeFilter, region, adjusterId, pageable);
+    // 전문분야 우선 정렬: 요청 사정사의 전문분야와 매칭되는 accident_type을 상단에 올린다(그 안에서는 접수 최신순).
+    Set<AccidentType> specialtyTypes = matchedAccidentTypes(loadSpecialties(adjusterId));
+    Page<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
+        statusFilter, accidentTypeFilter, region, adjusterId, specialtyTypes, pageable);
     Map<UUID, String> reviewStatusByReportId = loadOwnReviewStatuses(adjusterId, rows);
     return PendingReviewListResponse.from(rows, reviewStatusByReportId);
   }

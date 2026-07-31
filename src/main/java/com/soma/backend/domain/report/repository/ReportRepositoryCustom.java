@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.repository;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -12,8 +13,13 @@ import com.soma.backend.domain.report.entity.ReportStatus;
 /** Report 동적 조회. native query 대신 QueryDSL로 작성한다(하네스 규칙). */
 public interface ReportRepositoryCustom {
 
+  /**
+   * 검수대기 목록(동적 필터 + 페이지네이션). 요청 사정사가 보류(report_holds)한 리포트는 제외하고,
+   * specialtyTypes(사정사 전문분야와 매칭되는 accident_type)에 해당하는 건을 상단에 올린 뒤 접수 최신순으로 정렬한다.
+   */
   Page<PendingReviewRow> findPendingReviewRows(
-      ReportStatus status, AccidentType accidentType, String region, UUID adjusterId, Pageable pageable);
+      ReportStatus status, AccidentType accidentType, String region, UUID adjusterId,
+      Set<AccidentType> specialtyTypes, Pageable pageable);
 
   /**
    * GET /reports 고객 리포트 목록(per-review). userId 소유 리포트에 달린 report_reviews를 1건당 1행으로
