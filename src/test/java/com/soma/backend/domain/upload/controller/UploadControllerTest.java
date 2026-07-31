@@ -1,14 +1,12 @@
 package com.soma.backend.domain.upload.controller;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.Duration;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -16,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -32,12 +30,13 @@ import com.soma.backend.global.security.RestAccessDeniedHandler;
 import com.soma.backend.global.security.RestAuthenticationEntryPoint;
 import com.soma.backend.global.security.SecurityConfig;
 import com.soma.backend.infra.redis.TokenBlacklistRepository;
-import com.soma.backend.infra.s3.PresignedUploadService;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /**
- * UploadController 슬라이스 테스트. 실제 UploadService·UploadPurpose·@Valid·GlobalExceptionHandler를
- * 시큐리티 체인과 함께 배선하고 S3 경계(PresignedUploadService)만 @MockitoBean으로 대체한다. purpose×
- * content_type 교차 검증, 미지 purpose 역직렬화, 필드 검증, 인증 경계, snake_case 응답 봉투를 검증한다.
+ * UploadController 슬라이스 테스트. 실제 UploadService·UploadPurpose 파싱·GlobalExceptionHandler를
+ * 시큐리티 체인과 함께 배선하고 S3 경계(S3UploadService)만 @MockitoBean으로 대체한다. multipart(file·purpose)
+ * 수신, purpose×content_type 교차 검증, 매직바이트 위장 탐지, 용량 초과, purpose 파싱(소문자 계약, 대문자·미지값
+ * 거부), 필수 파트 누락, 인증 경계, snake_case 응답 봉투를 검증한다.
  */
 @WebMvcTest(UploadController.class)
 @ActiveProfiles("test")
@@ -53,16 +52,17 @@ import com.soma.backend.infra.s3.PresignedUploadService;
 @DisplayName("UploadController 슬라이스 테스트")
 class UploadControllerTest {
 
-  private static final String UPLOAD_URL =
-      "https://test-bucket.s3.ap-northeast-2.amazonaws.com/avatars/uuid.png?X-Amz-Signature=abc";
   private static final String S3_URL =
       "https://test-bucket.s3.ap-northeast-2.amazonaws.com/avatars/uuid.png";
+  private static final byte[] PNG_BYTES = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+  private static final byte[] JPEG_BYTES = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x00};
+  private static final byte[] PDF_BYTES = {0x25, 0x50, 0x44, 0x46, 0x2D};
 
   @Autowired
   private MockMvc mockMvc;
 
   @MockitoBean
-  private PresignedUploadService presignedUploadService;
+  private S3UploadService s3UploadService;
 
   @MockitoBean
   private TokenBlacklistRepository tokenBlacklistRepository;
@@ -73,174 +73,179 @@ class UploadControllerTest {
         new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
   }
 
-  private void stubPresigner() {
-    given(presignedUploadService.presignPut(anyString(), anyString(), any(Duration.class)))
-        .willReturn(UPLOAD_URL);
-    given(presignedUploadService.objectUrl(anyString())).willReturn(S3_URL);
+  private MockMultipartFile filePart(String name, String contentType, byte[] bytes) {
+    return new MockMultipartFile("file", name, contentType, bytes);
   }
 
-  private static String body(String fileName, String contentType, String purpose) {
-    return "{\"file_name\":\"" + fileName + "\",\"content_type\":\"" + contentType
-        + "\",\"purpose\":\"" + purpose + "\"}";
+  private void stubObjectUrl() {
+    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
   }
 
   @Test
-  @DisplayName("POST /uploads-avatar+image/webp면 200과 snake_case 봉투(upload_url·s3_url)를 반환한다")
-  void createUploadUrl_avatarWebp_returns200WithSnakeCaseKeys() throws Exception {
+  @DisplayName("avatar + image/png면 200과 snake_case 봉투(s3_url)를 반환한다")
+  void upload_avatarPng_returns200WithSnakeCaseKeys() throws Exception {
     // Given
-    stubPresigner();
+    stubObjectUrl();
 
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("profile.webp", "image/webp", "avatar")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("profile.png", "image/png", PNG_BYTES))
+            .param("purpose", "avatar")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("200"))
-        .andExpect(jsonPath("$.data.upload_url").value(UPLOAD_URL))
         .andExpect(jsonPath("$.data.s3_url").value(S3_URL));
   }
 
   @Test
-  @DisplayName("POST /uploads-report_document+application/pdf면 200을 반환한다(문서는 PDF 허용)")
-  void createUploadUrl_reportDocumentPdf_returns200() throws Exception {
+  @DisplayName("report_document + application/pdf면 200을 반환한다(문서는 PDF 허용)")
+  void upload_reportDocumentPdf_returns200() throws Exception {
     // Given
-    stubPresigner();
+    stubObjectUrl();
 
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("diagnosis.pdf", "application/pdf", "report_document")))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.upload_url").value(UPLOAD_URL))
-        .andExpect(jsonPath("$.data.s3_url").value(S3_URL));
-  }
-
-  @Test
-  @DisplayName("POST /uploads-license+image/png면 200을 반환한다")
-  void createUploadUrl_licensePng_returns200() throws Exception {
-    // Given
-    stubPresigner();
-
-    // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("license.png", "image/png", "license")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("diagnosis.pdf", "application/pdf", PDF_BYTES))
+            .param("purpose", "report_document")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.s3_url").value(S3_URL));
   }
 
   @Test
-  @DisplayName("POST /uploads-registration+image/jpeg면 200을 반환한다")
-  void createUploadUrl_registrationJpeg_returns200() throws Exception {
+  @DisplayName("license + image/png면 200을 반환한다")
+  void upload_licensePng_returns200() throws Exception {
     // Given
-    stubPresigner();
+    stubObjectUrl();
 
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("registration.jpg", "image/jpeg", "registration")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("license.png", "image/png", PNG_BYTES))
+            .param("purpose", "license")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.s3_url").value(S3_URL));
   }
 
   @Test
-  @DisplayName("POST /uploads-avatar+application/pdf면 400 UPLOAD_CONTENT_TYPE_NOT_ALLOWED")
-  void createUploadUrl_avatarWithPdf_returns400() throws Exception {
+  @DisplayName("registration + image/jpeg면 200을 반환한다")
+  void upload_registrationJpeg_returns200() throws Exception {
+    // Given
+    stubObjectUrl();
+
+    // When & Then
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("registration.jpg", "image/jpeg", JPEG_BYTES))
+            .param("purpose", "registration")
+            .with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.s3_url").value(S3_URL));
+  }
+
+  @Test
+  @DisplayName("avatar + application/pdf면 400 UPLOAD_CONTENT_TYPE_NOT_ALLOWED")
+  void upload_avatarWithPdf_returns400() throws Exception {
     // When & Then — 실제 UploadService 화이트리스트가 거부한다
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("doc.pdf", "application/pdf", "avatar")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("doc.pdf", "application/pdf", PDF_BYTES))
+            .param("purpose", "avatar")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("UPLOAD_CONTENT_TYPE_NOT_ALLOWED"));
   }
 
   @Test
-  @DisplayName("POST /uploads-report_document+image/gif면 400 UPLOAD_CONTENT_TYPE_NOT_ALLOWED")
-  void createUploadUrl_reportDocumentWithGif_returns400() throws Exception {
+  @DisplayName("report_document + image/gif면 400 UPLOAD_CONTENT_TYPE_NOT_ALLOWED")
+  void upload_reportDocumentWithGif_returns400() throws Exception {
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("anim.gif", "image/gif", "report_document")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("anim.gif", "image/gif", new byte[]{0x47, 0x49, 0x46}))
+            .param("purpose", "report_document")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("UPLOAD_CONTENT_TYPE_NOT_ALLOWED"));
   }
 
   @Test
-  @DisplayName("POST /uploads-알 수 없는 purpose(passport)면 400 INVALID_REQUEST(@JsonCreator 역직렬화 실패)")
-  void createUploadUrl_unknownPurpose_returns400() throws Exception {
+  @DisplayName("선언은 image/png인데 실제 바이트가 PDF면 400 UPLOAD_CONTENT_TYPE_NOT_ALLOWED(위장 탐지)")
+  void upload_spoofedPng_returns400() throws Exception {
+    // When & Then — 매직바이트 재검증이 위장을 거부한다
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("fake.png", "image/png", PDF_BYTES))
+            .param("purpose", "avatar")
+            .with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("UPLOAD_CONTENT_TYPE_NOT_ALLOWED"));
+  }
+
+  @Test
+  @DisplayName("avatar 용량이 5MB를 초과하면 413 UPLOAD_FILE_TOO_LARGE")
+  void upload_avatarTooLarge_returns413() throws Exception {
+    // Given — 5MB + 1 바이트(선언 image/png). 용량 검증이 내용 검증보다 먼저 거부한다
+    byte[] tooLarge = new byte[5 * 1024 * 1024 + 1];
+
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("id.png", "image/png", "passport")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("huge.png", "image/png", tooLarge))
+            .param("purpose", "avatar")
+            .with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isPayloadTooLarge())
+        .andExpect(jsonPath("$.code").value("UPLOAD_FILE_TOO_LARGE"));
+  }
+
+  @Test
+  @DisplayName("알 수 없는 purpose(passport)면 400 INVALID_REQUEST(컨버터 변환 실패)")
+  void upload_unknownPurpose_returns400() throws Exception {
+    // When & Then
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("id.png", "image/png", PNG_BYTES))
+            .param("purpose", "passport")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
-  @DisplayName("POST /uploads-purpose가 대문자 AVATAR면 400 INVALID_REQUEST(대소문자 무시 안 함)")
-  void createUploadUrl_uppercasePurpose_returns400() throws Exception {
+  @DisplayName("purpose가 대문자 AVATAR면 400 INVALID_REQUEST(대소문자 무시 안 함)")
+  void upload_uppercasePurpose_returns400() throws Exception {
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("id.png", "image/png", "AVATAR")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("id.png", "image/png", PNG_BYTES))
+            .param("purpose", "AVATAR")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
-  @DisplayName("POST /uploads-file_name이 공백이면 400 BAD_REQUEST(@Valid)")
-  void createUploadUrl_blankFileName_returns400() throws Exception {
+  @DisplayName("purpose 파라미터가 누락되면 400 MISSING_REQUIRED_FIELD")
+  void upload_missingPurpose_returns400() throws Exception {
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("", "image/png", "avatar")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("a.png", "image/png", PNG_BYTES))
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+        .andExpect(jsonPath("$.code").value("MISSING_REQUIRED_FIELD"));
   }
 
   @Test
-  @DisplayName("POST /uploads-content_type이 공백이면 400 BAD_REQUEST(@Valid, 화이트리스트보다 먼저)")
-  void createUploadUrl_blankContentType_returns400() throws Exception {
+  @DisplayName("file 파트가 누락되면 400 MISSING_REQUIRED_FIELD")
+  void upload_missingFile_returns400() throws Exception {
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("a.png", "", "avatar")))
+    mockMvc.perform(multipart("/uploads")
+            .param("purpose", "avatar")
+            .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+        .andExpect(jsonPath("$.code").value("MISSING_REQUIRED_FIELD"));
   }
 
   @Test
-  @DisplayName("POST /uploads-purpose가 누락되면 400 BAD_REQUEST(@NotNull)")
-  void createUploadUrl_missingPurpose_returns400() throws Exception {
-    // Given — purpose 필드를 생략한 body
-    String bodyWithoutPurpose = "{\"file_name\":\"a.png\",\"content_type\":\"image/png\"}";
-
+  @DisplayName("미인증이면 401 LOGIN_REQUIRED")
+  void upload_noAuth_returns401() throws Exception {
     // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(bodyWithoutPurpose))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
-  }
-
-  @Test
-  @DisplayName("POST /uploads-비-JSON 본문이면 400 INVALID_REQUEST(HttpMessageNotReadable)")
-  void createUploadUrl_nonJsonBody_returns400() throws Exception {
-    // When & Then
-    mockMvc.perform(post("/uploads").with(authenticatedAs(UUID.randomUUID()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .content("not-json"))
-        .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
-  }
-
-  @Test
-  @DisplayName("POST /uploads-미인증이면 401 LOGIN_REQUIRED")
-  void createUploadUrl_noAuth_returns401() throws Exception {
-    // When & Then
-    mockMvc.perform(post("/uploads")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(body("a.png", "image/png", "avatar")))
+    mockMvc.perform(multipart("/uploads")
+            .file(filePart("a.png", "image/png", PNG_BYTES))
+            .param("purpose", "avatar"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
   }
