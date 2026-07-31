@@ -213,7 +213,7 @@ class AdjusterProfileQueryServiceTest {
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(adjusterReviewRepository.findReviewRows(eq(userId), any(Pageable.class))).willReturn(page);
     given(reportReviewRepository.countByAdjusterId(userId)).willReturn(9L);
-    given(adjusterHomeRepository.countPendingPool()).willReturn(7L);
+    given(adjusterHomeRepository.countPendingPoolNotHeldBy(userId)).willReturn(7L);
 
     AdjusterProfileResponse response = service.getProfile(userId);
 
