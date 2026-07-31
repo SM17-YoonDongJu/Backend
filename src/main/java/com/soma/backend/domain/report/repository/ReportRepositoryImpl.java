@@ -1,6 +1,8 @@
 package com.soma.backend.domain.report.repository;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -8,8 +10,11 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
 import com.querydsl.core.BooleanBuilder;
+import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.core.types.dsl.NumberExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
@@ -33,7 +38,8 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
 
   @Override
   public Page<PendingReviewRow> findPendingReviewRows(
-      ReportStatus status, AccidentType accidentType, String region, UUID adjusterId, Pageable pageable) {
+      ReportStatus status, AccidentType accidentType, String region, UUID adjusterId,
+      Set<AccidentType> specialtyTypes, Pageable pageable) {
     QReport rp = QReport.report;
     QUser us = QUser.user;
     QReportIssue ri = QReportIssue.reportIssue;
@@ -43,6 +49,9 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
     // 검수 대기 목록은 검수 단계(AWAITING_INSPECTION·AWAITING_ADOPTION, 상세 조회 노출 정책과 동일)만 노출한다.
     // CLOSED·COUNSELING·NOT_SELECTED가 목록에 새어 클릭 시 상세가 404 나던 불일치를 막는다.
     where.and(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION));
+    // 요청 사정사가 보류(report_holds)한 리포트는 목록에서 숨긴다(보류 = 내 대기열에서 제외). count 쿼리도 같은 where라 함께 줄어든다.
+    where.and(JPAExpressions.selectOne().from(rh)
+        .where(rh.reportId.eq(rp.id).and(rh.adjusterId.eq(adjusterId))).notExists());
     if (status != null) {
       where.and(rp.status.eq(status));
     }
@@ -59,13 +68,13 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
             rp.id, rp.caseNo, rp.title, rp.accidentType, us.region, rp.status,
             rp.claimedMinAmount, rp.claimedMaxAmount, rp.offeredAmount,
             JPAExpressions.select(ri.count()).from(ri).where(ri.reportId.eq(rp.id)),
-            JPAExpressions.selectOne().from(rh)
-                .where(rh.reportId.eq(rp.id).and(rh.adjusterId.eq(adjusterId))).exists(),
+            // 보류 건은 위 where에서 제외되므로 held는 항상 false다. FE 계약 유지를 위해 필드만 남긴다.
+            Expressions.constant(false),
             rp.createdAt))
         .from(rp)
         .join(us).on(us.id.eq(rp.userId))
         .where(where)
-        .orderBy(rp.createdAt.desc())
+        .orderBy(pendingReviewOrder(rp, specialtyTypes))
         .offset(pageable.getOffset())
         .limit(pageable.getPageSize())
         .fetch();
@@ -78,6 +87,21 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .fetchOne();
 
     return new PageImpl<>(content, pageable, total == null ? 0L : total);
+  }
+
+  /**
+   * 검수대기 정렬: 사정사 전문분야 매칭(specialtyTypes에 든 accident_type)을 상단에 올리고, 그 안에서는 접수
+   * 최신순(created_at desc)이다. 매칭 대상이 없으면 전문분야 정렬을 건너뛰고 접수 최신순만 적용한다.
+   */
+  private OrderSpecifier<?>[] pendingReviewOrder(QReport rp, Set<AccidentType> specialtyTypes) {
+    List<OrderSpecifier<?>> orders = new ArrayList<>();
+    if (specialtyTypes != null && !specialtyTypes.isEmpty()) {
+      NumberExpression<Integer> specialtyRank = new CaseBuilder()
+          .when(rp.accidentType.in(specialtyTypes)).then(0).otherwise(1);
+      orders.add(specialtyRank.asc());
+    }
+    orders.add(rp.createdAt.desc());
+    return orders.toArray(new OrderSpecifier[0]);
   }
 
   @Override

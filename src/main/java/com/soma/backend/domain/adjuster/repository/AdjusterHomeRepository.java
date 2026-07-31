@@ -37,7 +37,6 @@ public class AdjusterHomeRepository {
         .select(Projections.constructor(AdjusterIdentityRow.class,
             ap.name.coalesce(us.nickname),
             us.avatarUrl,
-            ap.casesReviewed,
             ap.completedConsultCount,
             ap.ratingMean,
             ap.reviewCount))

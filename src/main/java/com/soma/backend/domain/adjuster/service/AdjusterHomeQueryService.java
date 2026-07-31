@@ -18,11 +18,13 @@ import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.Summary;
 import com.soma.backend.domain.adjuster.repository.AdjusterHomeRepository;
 import com.soma.backend.domain.adjuster.repository.AdjusterIdentityRow;
 import com.soma.backend.domain.adjuster.repository.InProgressCaseRow;
+import com.soma.backend.domain.report.repository.ReportReviewRepository;
 
 /**
  * 사정사 홈 대시보드 집계 유스케이스(CQRS, 조회 전용). 검수 대기 풀 카운트(global)와 요청 사정사의
- * 진행 중·완료·상담·평점을 조합한다. 누적 검수·상담 전환·평점은 adjuster_profiles 비정규화 컬럼에서 읽고
- * (증가/집계 책임은 검수·상담·후기 write 로직), '이번 달 완료'만 월별 컬럼이 없어 report_reviews 실시간 집계다.
+ * 진행 중·완료·상담·평점을 조합한다. 상담 전환·평점은 adjuster_profiles 비정규화 컬럼에서 읽고
+ * (증가/집계 책임은 검수·상담·후기 write 로직), 완료(누적·이번 달)는 report_reviews 실시간 집계다 —
+ * 누적은 전체 기간, 이번 달은 그중 당월분이라 항상 '누적 ≥ 이번 달'이 성립한다(마이페이지 집계와 동일 소스).
  */
 @Service
 @RequiredArgsConstructor
@@ -40,6 +42,7 @@ public class AdjusterHomeQueryService {
   private static final long NEW_WINDOW_HOURS = 24L;
 
   private final AdjusterHomeRepository adjusterHomeRepository;
+  private final ReportReviewRepository reportReviewRepository;
 
   public AdjusterHomeResponse getHome(UUID adjusterId, int inProgressLimit) {
     int limit = clampLimit(inProgressLimit);
@@ -51,8 +54,11 @@ public class AdjusterHomeQueryService {
     long pendingNewCount =
         adjusterHomeRepository.countPendingPoolNew(LocalDateTime.now().minusHours(NEW_WINDOW_HOURS));
 
-    // 이번 달 완료만 월별 컬럼이 없어 실시간 집계(this month), 누적·상담은 adjuster_profiles 비정규화.
+    // 완료 집계는 둘 다 report_reviews 실시간 카운트다. 누적은 전체 기간(countByAdjusterId), 이번 달은 그중
+    // 당월분(countCompletedBetween)이라 이번 달이 누적의 부분집합 → '누적 ≥ 이번 달'이 항상 성립한다. 비정규화
+    // cases_reviewed(완료 write 미구현으로 정적)에 의존하지 않아 이중 계상 위험도 없다. 마이페이지 집계와 동일 소스.
     long monthlyCompletedCount = countMonthlyCompleted(adjusterId);
+    long totalCompletedCount = reportReviewRepository.countByAdjusterId(adjusterId);
     long inProgressCount = adjusterHomeRepository.countInProgress(adjusterId);
     InProgressCases inProgressCases = resolveInProgressCases(adjusterId, inProgressCount, limit);
 
@@ -61,7 +67,7 @@ public class AdjusterHomeQueryService {
         pendingNewCount,
         inProgressCount,
         monthlyCompletedCount,
-        nullSafe(identity == null ? null : identity.casesReviewed()),
+        totalCompletedCount,
         nullSafe(identity == null ? null : identity.completedConsultCount()),
         toRating(identity));
 

@@ -19,13 +19,16 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 
 import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.HoldReason;
 import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportHold;
 import com.soma.backend.domain.report.entity.ReportStatus;
 
 /**
- * 검수대기 summary 카운트(countPending·countPendingByAccidentTypeIn·countDueSoon) 실행 검증.
- * 검수 대기 풀은 AWAITING_INSPECTION + AWAITING_ADOPTION 두 상태이며(홈 대시보드 countPendingPool과 동일한 풀),
- * dueSoon(검수 SLA 임박)은 아직 검수를 받지 않은 AWAITING_INSPECTION만 대상임을 함께 고정한다.
+ * 검수대기 summary 카운트(countPendingNotHeldBy·countPendingByAccidentTypeInNotHeldBy·countDueSoonNotHeldBy)
+ * 실행 검증. 검수 대기 풀은 AWAITING_INSPECTION + AWAITING_ADOPTION 두 상태이며(홈 대시보드 countPendingPool과
+ * 같은 풀), dueSoon(검수 SLA 임박)은 아직 검수를 받지 않은 AWAITING_INSPECTION만 대상이고, 요청 사정사가
+ * 보류(report_holds)한 리포트는 각 카운트에서 빠짐을 함께 고정한다.
  * @Transactional로 각 테스트 종료 시 롤백돼 전역 카운트가 테스트 간 오염되지 않는다.
  */
 @SpringBootTest
@@ -39,7 +42,7 @@ class PendingReviewCountExecutionTest {
   private EntityManager entityManager;
 
   @Test
-  @DisplayName("countPending — 검수대기 풀은 AWAITING_INSPECTION + AWAITING_ADOPTION (그 외 상태 제외)")
+  @DisplayName("countPendingNotHeldBy — 검수대기 풀은 AWAITING_INSPECTION + AWAITING_ADOPTION (그 외 상태 제외)")
   void countPendingCountsBothPoolStatuses() {
     saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "PC-1");
     saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "PC-2");
@@ -51,7 +54,23 @@ class PendingReviewCountExecutionTest {
     saveReport(ReportStatus.NOT_SELECTED, AccidentType.OTHER, "PC-8"); // 제외
     flushAndClear();
 
-    assertThat(reportRepository.countPending()).isEqualTo(5L);
+    // 보류가 없으면 전역 풀 그대로 5건.
+    assertThat(reportRepository.countPendingNotHeldBy(UUID.randomUUID())).isEqualTo(5L);
+  }
+
+  @Test
+  @DisplayName("countPendingNotHeldBy — 요청 사정사가 보류한 리포트는 검수대기 카운트에서 빠진다(보류 시 -1)")
+  void countPendingExcludesHeldByRequestingAdjuster() {
+    UUID adjuster = UUID.randomUUID();
+    UUID held = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-1");
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-2");
+    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "HP-3");
+    entityManager.persist(new ReportHold(held, adjuster, HoldReason.SCHEDULE_CONFLICT, null));
+    flushAndClear();
+
+    // 내 보류 1건 제외 → 2건. 보류는 사정사별이라 다른 사정사에겐 3건 그대로.
+    assertThat(reportRepository.countPendingNotHeldBy(adjuster)).isEqualTo(2L);
+    assertThat(reportRepository.countPendingNotHeldBy(UUID.randomUUID())).isEqualTo(3L);
   }
 
   @Test
@@ -63,7 +82,8 @@ class PendingReviewCountExecutionTest {
     saveReport(ReportStatus.COUNSELING, AccidentType.TRAFFIC, "AT-4");         // 상태 제외
     flushAndClear();
 
-    assertThat(reportRepository.countPendingByAccidentTypeIn(Set.of(AccidentType.TRAFFIC))).isEqualTo(2L);
+    assertThat(reportRepository.countPendingByAccidentTypeInNotHeldBy(
+        Set.of(AccidentType.TRAFFIC), UUID.randomUUID())).isEqualTo(2L);
   }
 
   @Test
@@ -78,7 +98,7 @@ class PendingReviewCountExecutionTest {
     flushAndClear();
 
     LocalDateTime dueSoonThreshold = LocalDateTime.now().minusDays(6);
-    assertThat(reportRepository.countDueSoon(dueSoonThreshold)).isEqualTo(1L);
+    assertThat(reportRepository.countDueSoonNotHeldBy(dueSoonThreshold, UUID.randomUUID())).isEqualTo(1L);
   }
 
   // --- 시드 헬퍼 ---

@@ -32,13 +32,15 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
   int nextCaseNoSequence(@Param("day") LocalDate day);
 
   /**
-   * 검수 대기 풀 카운트 — AWAITING_INSPECTION + AWAITING_ADOPTION.
-   * 홈 대시보드 검수 대기 풀({@code AdjusterHomeRepository#countPendingPool})·검수대기 목록과 동일한 풀 정의를 쓴다.
+   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사가 보류(report_holds)하지 않은 건수.
+   * 풀 정의는 홈 대시보드({@code AdjusterHomeRepository#countPendingPool})·검수대기 목록과 같되, 보류는 사정사별이라
+   * '내가 보류한 건'을 뺀 개인화 카운트다(보류 시 검수대기 -1). 홈 풀은 전역이라 여기와 값이 다를 수 있다.
    */
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
-      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION)")
-  long countPending();
+      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
+      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId)")
+  long countPendingNotHeldBy(@Param("adjusterId") UUID adjusterId);
 
   /** 마이페이지 활동 집계 — 요청 사용자가 만든 리포트 총수(GET /users/me/activity-summary). */
   @Query("SELECT COUNT(r) FROM Report r WHERE r.userId = :userId")
@@ -57,17 +59,25 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
   List<Report> findExpiredForNotSelection(
       @Param("sources") Collection<ReportStatus> sources, @Param("threshold") LocalDateTime threshold);
 
+  /** 마감 임박(AWAITING_INSPECTION·threshold 이전 접수) 중 요청 사정사가 보류하지 않은 건수. */
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
-      + "AND r.createdAt <= :dueSoonThreshold")
-  long countDueSoon(@Param("dueSoonThreshold") LocalDateTime dueSoonThreshold);
+      + "AND r.createdAt <= :dueSoonThreshold "
+      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId)")
+  long countDueSoonNotHeldBy(
+      @Param("dueSoonThreshold") LocalDateTime dueSoonThreshold, @Param("adjusterId") UUID adjusterId);
 
-  /** 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 지정 사고유형(사정사 전문분야 매칭)에 해당하는 건수. */
+  /**
+   * 검수 대기 풀 중 지정 사고유형(사정사 전문분야 매칭)에 해당하고 요청 사정사가 보류하지 않은 건수.
+   * 요약의 '내 전문분야 매칭' 배지도 보류 제외 축과 맞춘다.
+   */
   @Query("SELECT COUNT(r) FROM Report r "
       + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
       + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
-      + "AND r.accidentType IN :types")
-  long countPendingByAccidentTypeIn(@Param("types") Collection<AccidentType> types);
+      + "AND r.accidentType IN :types "
+      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId)")
+  long countPendingByAccidentTypeInNotHeldBy(
+      @Param("types") Collection<AccidentType> types, @Param("adjusterId") UUID adjusterId);
 
   /*
    * 아직 엔티티로 모델링되지 않은 테이블을 조인하는 읽기 전용 projection이라 QueryDSL로 표현할 수 없다.
