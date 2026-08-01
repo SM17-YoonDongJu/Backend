@@ -1,0 +1,35 @@
+# 운영(prod) 프로파일. application.yml 기본값이 이미 운영 안전값(cookie.secure=true, docs 비공개,
+# management 9292 격리는 MANAGEMENT_SERVER_PORT로 주입)이라, 여기서는 "기본값과 달라야 하는 것"만 override 한다.
+# ⚠️ dev(application-dev.yml)의 개발 편의값(cookie.secure:false·docs.public:true·show-sql:true)을 절대 답습하지 않는다.
+
+# 운영은 Apple refresh_token 암호화 키를 반드시 주입한다 — 기본값 없음(미설정 시 AesGcmCipher가 기동을 실패시켜 fail-fast).
+app:
+  crypto:
+    apple-token-key: ${APPLE_TOKEN_ENC_KEY:}
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate      # 스키마 변경 금지 — 변경 주체는 Flyway뿐(update/create 금지 재확인)
+    show-sql: false           # 운영 SQL 로그 미출력
+  flyway:
+    validate-on-migrate: true # 적용된 마이그레이션 체크섬 검증
+    clean-disabled: true      # flyway clean(DROP 계열) 원천 차단 — 실사용자 데이터 보호
+    baseline-on-migrate: false
+
+management:
+  tracing:
+    sampling:
+      # 운영은 10%만 샘플링 — 부하·Tempo 저장량 관리. 필요 시 TRACING_SAMPLE_PROBABILITY env로 상향.
+      probability: ${TRACING_SAMPLE_PROBABILITY:0.1}
+
+logging:
+  # 콘솔·파일 로그를 구조화 JSON(logstash)으로 — Alloy→Loki 수집·traceId 상관.
+  # 트레이싱이 켜지면 Micrometer가 MDC에 traceId·spanId를 채우고 logstash 포맷이 자동으로 넣는다
+  # (커스터마이저로 중복 주입하면 "traceId already written"으로 in-span 로그가 유실됨 — 넣지 않는다).
+  structured:
+    format:
+      console: logstash
+      file: logstash
+  level:
+    com.soma.backend: INFO    # application.yml의 DEBUG를 운영에선 INFO로(성능·PII·로그량 관리)

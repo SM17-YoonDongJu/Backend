@@ -23,7 +23,7 @@ https://github.com/revfactory/harness 코드를 기반으로하여 우리 프로
 request.md
   -> backend-analyst
   -> design.md
-  -> backend/security/realtime developer
+  -> backend/security/realtime/infra developer
   -> summary.md
   -> qa-reviewer
   -> review-report.md
@@ -70,6 +70,7 @@ request.md
 | `backend-developer` | Controller, Service, Repository, 비즈니스 로직 |
 | `security-developer` | Spring Security, JWT, OAuth2, RBAC, Redis Refresh Token |
 | `realtime-developer` | WebSocket/STOMP, 채팅, presence, FCM 오프라인 푸시 |
+| `infra-developer` | 관측성(actuator)·JVM/GC·DB 풀·Kafka producer 배선·docker 하드닝·PII 로깅·smoke test |
 | `qa-reviewer` | 코드 리뷰, 테스트, 보안/컴플라이언스 검증 |
 
 역할을 분리한 이유는 다음과 같다.
@@ -160,6 +161,11 @@ QA 단계에서 CRITICAL로 보는 항목은 다음과 같다.
 이 경계는 human-in-the-loop 원칙을 위한 것이다.
 AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 협업 표면에 반영하는 결정은 사용자가 통제한다.
 
+또한 저장소 히스토리·협업 표면에 남는 산출물(commit·PR·이슈)에는 **AI 생성 흔적을 남기지 않는다** —
+`Co-Authored-By: Claude` 트레일러나 `🤖 Generated with Claude Code` 푸터를 붙이지 않고,
+본문은 사람이 쓴 것처럼 자연스러운 한국어로 작성한다. 규칙은 CLAUDE.md Git Conventions,
+절차는 `git-workflow` 스킬(공통 0·1), 강제는 `strip-ai-tells.js` 훅이 담당한다.
+
 ---
 
 ## 8. Workspace As Execution Memory
@@ -173,6 +179,7 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 - `_workspace/02_backend/summary.md`: 비즈니스 구현 요약
 - `_workspace/02_security/summary.md`: 보안 구현 요약
 - `_workspace/02_realtime/summary.md`: 실시간 기능 구현 요약
+- `_workspace/02_infra/summary.md`: 인프라·관측성·배포 하드닝 구현 요약
 - `_workspace/03_qa/review-report.md`: QA 결과
 
 중요한 원칙:
@@ -196,6 +203,7 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 - PostgreSQL + Flyway
 - `ddl-auto=validate`
 - Redis
+- Kafka (spring-kafka — OCR 트리거 producer + 트랜잭셔널 아웃박스 릴레이)
 - Firebase Admin SDK
 - S3 SDK
 - Jackson snake_case
@@ -208,5 +216,6 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 - 비즈니스 예외는 `BusinessException(ErrorCode)` 패턴을 따른다.
 - 응답 필드는 Jackson 설정을 이용해 snake_case로 직렬화한다.
 - 보안이 필요한 엔드포인트는 SecurityConfig 또는 `@PreAuthorize`로 명시한다.
+- 조회 쿼리는 native query(`nativeQuery = true`)를 쓰지 않는다. 동적 조회는 QueryDSL, 단순 조회·카운트는 Spring Data 파생 쿼리·JPQL로 작성한다. 엔티티로 매핑되지 않은 테이블을 조인하는 읽기 전용 projection 등 불가피한 경우만 사유 주석을 단 문서화된 예외로 허용한다.
 
 ---

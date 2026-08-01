@@ -1,0 +1,467 @@
+# dev EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
+# 사용: docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
+# CD는 backend만 bounce: ... up -d --no-deps backend
+# 인프라(redis/kafka)는 최초 1회 full up 후 restart 정책으로 상주한다.
+name: brbs
+
+services:
+  backend:
+    image: ${ECR_REGISTRY}/soma/backend:${BACKEND_TAG:-dev}
+    container_name: brbs-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      # actuator 관리 포트(9292): 호스트 전 인터페이스에 게시 (Prometheus 스크랩·운영자 접근)
+      - "9292:9292"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
+      JWT_SECRET: ${JWT_SECRET}
+      AWS_REGION: ${AWS_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      # Apple(Web/Services ID): 콘솔 발급 4개 + refresh_token 암호화 키 1개(우리 생성). 값은 .env.dev에서 주입(미설정 시 apple 로그인만 비활성)
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID}
+      APPLE_KEY_ID: ${APPLE_KEY_ID}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
+      # dev는 미설정 시 개발 전용 기본키로 기동한다(빈 값 주입 방지 — 빈 값은 기동 실패를 유발). 운영은 fail-fast.
+      APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY:-ZGV2LWxvY2FsLWFwcGxlLXRva2VuLWVuYy1rZXkhISE=}
+      # OAuth redirect_uri {baseUrl} 치환값(프론트 인가요청·provider 콘솔 등록 redirect_uri와 일치해야 함)
+      OAUTH_BASE_URL: ${OAUTH_BASE_URL:-http://localhost:8080}
+      OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-http://localhost:8080,http://localhost:3000,https://brbosang.com}
+      # 쿠키 인증 CORS 허용 오리진(쉼표 구분 패턴). 프론트 오리진을 반드시 포함
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:3000}
+      # cross-site HTTPS면 COOKIE_SECURE=true·COOKIE_SAME_SITE=None (평문 http면 false·Lax 유지)
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
+      AI_SERVICE_URL: ${AI_SERVICE_URL}
+      # actuator 관리 포트 분리: health·info·metrics·prometheus를 관리 포트(9292)로 격리해 앱 트래픽(8080)과 분리한다.
+      # Prometheus는 brbs-net에서 backend:9292 스크랩, 헬스체크는 컨테이너 내부 localhost:9292로 접근.
+      MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
+      # 분산 트레이싱: Tempo가 있는 dev에서만 켠다(prod은 스택 미배포라 미주입 → OFF). OTLP HTTP로 tempo:4318에 push.
+      TRACING_ENABLED: "true"
+      OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
+      # 샘플링(dev 전량=1.0). 운영 조정은 이 값만 교체.
+      TRACING_SAMPLE_PROBABILITY: ${TRACING_SAMPLE_PROBABILITY:-1.0}
+      TZ: Asia/Seoul
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Kafka 워커(report-job 소비 · LangGraph · RAG). HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  report:
+    image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-dev}
+    container_name: brbs-report
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SERVICE_NAME: report-worker
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
+      REDIS_URL: ${REDIS_URL}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
+      KAFKA_REPORT_JOB_TOPIC: ${KAFKA_REPORT_JOB_TOPIC}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP}
+      KAFKA_DLQ_SUFFIX: ${KAFKA_DLQ_SUFFIX:-.dlq}
+      KAFKA_MAX_RETRIES: ${KAFKA_MAX_RETRIES:-3}
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
+      TZ: Asia/Seoul
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). Kafka·S3 없음, Redis 필수.
+  chatbot:
+    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-dev}
+    container_name: brbs-chatbot
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SERVICE_NAME: chatbot
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
+      REDIS_URL: ${REDIS_URL}
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
+      TZ: Asia/Seoul
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: brbs-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: brbs-kafka
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9092:9092"
+      - "${BACKEND_PRIVATE_IP}:9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://${BACKEND_PRIVATE_IP}:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # 단일 브로커 → 내부 토픽 복제 계수 1 (apache 이미지는 기본값 3이라 명시 필요)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx1g"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: brbs-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: brbs-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # ── 관측성 스택 (Prometheus + Grafana + exporters, #88) ──
+  # t3 App 인스턴스 콜로케이트. 외부 미노출(127.0.0.1 바인딩) → SSM 포트포워드로 접근.
+  # 스크랩은 brbs-net 내부에서 컨테이너 이름으로 수행(backend·node-exporter·cadvisor는 포트 미게시).
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: brbs-prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      # Tempo metrics_generator가 span 메트릭(서비스 그래프)을 remote_write로 밀어넣게 수신 활성.
+      - "--web.enable-remote-write-receiver"
+      # exemplar 저장 — 메트릭 → 트레이스 점프(metric-to-trace)용.
+      - "--enable-feature=exemplar-storage"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    mem_limit: 512m
+    mem_reservation: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: brbs-grafana
+    restart: unless-stopped
+    ports:
+      # Grafana 기본 포트(EC2 loopback, 프론트 :3000과 무관). 외부 미노출 → SSM 포워드로 접근.
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # 알림(Discord) 웹훅 2개 — severity 라우팅(critical/warning 채널). provisioning/alerting 이 참조(시크릿).
+      # 미설정 시 기동 실패: "알림 없는 줄 모르고 운영"을 막는 의도된 가드(GRAFANA_ADMIN_PASSWORD와 동일 철학).
+      ALERT_WEBHOOK_URL_CRITICAL: ${ALERT_WEBHOOK_URL_CRITICAL:?set ALERT_WEBHOOK_URL_CRITICAL}
+      ALERT_WEBHOOK_URL_WARNING: ${ALERT_WEBHOOK_URL_WARNING:?set ALERT_WEBHOOK_URL_WARNING}
+      TZ: Asia/Seoul
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    mem_limit: 384m
+    mem_reservation: 128m
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q ok || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # 시스템 메트릭(CPU·메모리·디스크·네트워크). 스크랩은 내부망(node-exporter:9100) → 포트 미게시.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: brbs-node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # 컨테이너 메트릭. 스크랩은 내부망(cadvisor:8080) → 포트 미게시.
+  cadvisor:
+    # dev EC2의 Docker는 containerd 이미지 스토어(storage driver: overlayfs)를 쓰는데, 구버전(v0.49.1)은
+    # classic overlay2 전용 경로(image/…/layerdb)에서 RW 레이어를 찾다 실패해 컨테이너 등록 자체가
+    # 전멸했다("Failed to create existing container" → container_* 메트릭 no data). v0.55.x에서
+    # 이 이미지 스토어를 처리하도록 개선돼(실측: 레이어 에러 0·컨테이너 이름 라벨 정상), 버전 범프로 해소.
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    container_name: brbs-cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # ── 로그 집계 (Loki + Alloy) ──
+  # Loki: 로그 저장·검색. 조회 포트(3100)만 loopback 게시(SSM 포워드), push는 brbs-net 내부.
+  # ⚠️ 스택 추가로 t3 메모리 여유(대략 +640m)가 필요 — 배포 전 `free -m`/node-exporter 메모리 패널로 확인.
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: brbs-loki
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:3100"
+    command:
+      - "-config.file=/etc/loki/loki-config.yml"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    mem_limit: 256m
+    mem_reservation: 128m
+    healthcheck:
+      # grafana/loki 이미지는 alpine 기반(busybox wget). 이 스택은 아무도 service_healthy로 의존하지 않으므로
+      # 헬스체크 오탐이 나도 컨테이너는 계속 뜬다(비차단).
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Tempo: 트레이스 저장·조회. 조회 포트(3200)만 loopback. OTLP 리시버(4317/4318)는 brbs-net 내부만
+  # (backend가 tempo:4318로 push) → 호스트 미게시.
+  tempo:
+    image: grafana/tempo:2.7.1
+    container_name: brbs-tempo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3200:3200"
+    command:
+      - "-config.file=/etc/tempo/tempo-config.yml"
+    volumes:
+      - ./monitoring/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - tempo-data:/var/tempo
+    mem_limit: 256m
+    mem_reservation: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Alloy: Docker 데몬의 모든 컨테이너 stdout을 수집해 Loki로 push. docker.sock을 read-only로 마운트한다.
+  # ⚠️ docker.sock 권한: 이미지 기본 사용자로 못 읽으면 `user: root` 또는 `group_add: [docker]` 추가.
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: brbs-alloy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:12345:12345"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    mem_limit: 128m
+    mem_reservation: 64m
+    depends_on:
+      - loki
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+volumes:
+  redis-data:
+  kafka-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  tempo-data:
+  alloy-data:
+
+networks:
+  brbs-net:
+    driver: bridge

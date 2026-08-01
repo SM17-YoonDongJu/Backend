@@ -3,6 +3,7 @@ plugins {
 	id 'org.springframework.boot' version '4.0.6'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'checkstyle'
+	id 'com.diffplug.spotless' version '7.0.2'
 }
 
 group = 'com.soma'
@@ -14,8 +15,18 @@ java {
 	}
 }
 
+// build-info.properties(META-INF) 생성 → /actuator/info의 build 섹션(group·artifact·version·빌드시각)을 채운다.
+// 네이티브 Spring Boot 기능이라 별도 플러그인 불필요하고, .git 없이 도는 Docker 멀티스테이지 빌드에서도 동작한다.
+springBoot {
+	buildInfo()
+}
+
 repositories {
 	mavenCentral()
+}
+
+configurations {
+	mockitoAgent
 }
 
 dependencies {
@@ -24,6 +35,28 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 
+	// Observability (health check, metrics)
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	// 메트릭을 Prometheus 포맷으로 노출 (/actuator/prometheus) — Micrometer Prometheus registry
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+	// 분산 트레이싱 (Boot 4.0): Spring Observation(MVC·RestClient·JDBC·Kafka) → Micrometer Tracing → OTel 브리지
+	// → OTLP span export(→ Tempo). 세 조각이 모두 있어야 배선된다(starter-opentelemetry를 안 쓰므로 명시):
+	//  - spring-boot-micrometer-tracing-opentelemetry: 자동구성(OtlpTracingAutoConfiguration 등)
+	//  - micrometer-tracing-bridge-otel: OtelTracer·Slf4JBaggageEventListener 등 실제 브리지 클래스
+	//    (없으면 OpenTelemetryPropagationConfigurations가 NoClassDefFound로 컨텍스트 기동 실패)
+	//  - opentelemetry-exporter-otlp: OtlpHttpSpanExporter (없으면 @ConditionalOnClass로 exporter backoff)
+	// ⚠️ 위 브리지·exporter는 autoconfig 모듈이 transitive로 안 끌어온다(원래 starter가 제공하던 것).
+	// 엔드포인트 프로퍼티는 Boot 4.0에서 management.opentelemetry.tracing.export.otlp.endpoint로 리네임됨(application.yml).
+	implementation 'org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry'
+	implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+	implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+
+	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3'
+
+	// Kafka (OCR 트리거 producer)
+	implementation 'org.springframework.kafka:spring-kafka'
+
 	// Security & Auth
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
@@ -31,11 +64,21 @@ dependencies {
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
+	// .env 자동 로드 (로컬 개발 시 DB_USER/DB_PASSWORD 등 주입) — Boot 4 EnvironmentPostProcessor로 배선
+	implementation 'io.github.cdimascio:dotenv-java:3.0.0'
+
 	// Database
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'org.postgresql:postgresql'
+	implementation 'org.springframework.boot:spring-boot-flyway'
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'org.flywaydb:flyway-database-postgresql'
+
+	// QueryDSL (타입 안전 동적 쿼리) — Boot 4/Hibernate 7 = jakarta 분류자. 버전은 명시, jakarta-api는 Boot BOM 관리
+	implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
+	annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
+	annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+	annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
 
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
@@ -52,10 +95,16 @@ dependencies {
 
 	// Test
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// Mockito 5는 JDK 21+에서 self-attach가 막히므로 -javaagent로 명시 로딩(공식 권장)
+	mockitoAgent('org.mockito:mockito-core') {
+		transitive = false
+	}
 }
 
 checkstyle {
@@ -63,6 +112,29 @@ checkstyle {
 	configFile = file('config/checkstyle/checkstyle.xml')
 }
 
+// 형식 지정(자동 포맷) — checkstyle 규칙과 동일하게 맞춘다
+spotless {
+	java {
+		target 'src/**/*.java'
+		// import 그룹 순서: java → javax → org → net → com(외부) → 기타 → com.soma(자사)
+		importOrder('java', 'javax', 'org', 'net', 'com', '', 'com.soma')
+		removeUnusedImports()
+		leadingTabsToSpaces(2)
+		trimTrailingWhitespace()
+		endWithNewline()
+	}
+}
+
+// 컴파일 시 자동 포맷 적용
+tasks.named('compileJava') {
+	dependsOn 'spotlessApply'
+}
+
+tasks.named('compileTestJava') {
+	dependsOn 'spotlessApply'
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
+	jvmArgs "-javaagent:${configurations.mockitoAgent.singleFile}"
 }

@@ -1,11 +1,30 @@
 spring:
+  application:
+    name: brbs-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+    include:
+      - oauth
+  
   jackson:
     property-naming-strategy: SNAKE_CASE
+
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
+      file-size-threshold: 1MB
+
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:soma_db}
-    username: ${DB_USER:soma}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:brbs_dev}
+    username: ${DB_USER:postgres}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+  
   jpa:
     hibernate:
       ddl-auto: validate
@@ -14,31 +33,163 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
     open-in-view: false
+  
   flyway:
     enabled: true
     locations: classpath:db/migration
+  
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     security:
       protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+
+server:
+  port: 8080
+  compression:
+    enabled: true
+  tomcat:
+    # Tomcat 스레드풀·커넥터·요청 메트릭(tomcat_threads_*·tomcat_global_request_*)을 Micrometer가
+    # 수집하려면 MBean 레지스트리를 켜야 한다(기본 false). /actuator/prometheus로 노출된다.
+    mbeanregistry:
+      enabled: true
 
 jwt:
   secret: ${JWT_SECRET:localdevonlysecretkeyatleast32chars!!}
   access-token-expiry: 1800000    # 30분
   refresh-token-expiry: 1209600000 # 14일
 
+app:
+  cookie:
+    secure: ${COOKIE_SECURE:true}      # 운영 https 기본값. 로컬 http는 프로파일에서 false
+    # 프론트(Vercel)와 백엔드가 다른 사이트(cross-site)로 배포되면 쿠키가 XHR에 실리도록
+    # 운영에선 COOKIE_SAME_SITE=None + COOKIE_SECURE=true(https 필수)로 주입한다. 로컬은 Lax.
+    same-site: ${COOKIE_SAME_SITE:Lax}
+  cors:
+    # 쿠키 인증이라 와일드카드(*) 불가 → 패턴 목록으로 관리. 로컬 기본값만 채우고
+    # 운영/프리뷰 오리진은 CORS_ALLOWED_ORIGIN_PATTERNS로 주입(쉼표 구분).
+    # 예: https://앱운영도메인,https://*.vercel.app
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000}
+  crypto:
+    # Apple refresh_token 저장용 AES-256-GCM 키(base64 32바이트). 로컬/테스트는 아래 dev 기본값으로 기동되며,
+    # 운영은 반드시 APPLE_TOKEN_ENC_KEY로 교체한다(키·평문은 로깅하지 않는다).
+    apple-token-key: ${APPLE_TOKEN_ENC_KEY:ZGV2LWxvY2FsLWFwcGxlLXRva2VuLWVuYy1rZXkhISE=}
+  oauth:
+    # 토큰 교환 시 provider(카카오·네이버)로 보내는 redirect_uri의 {baseUrl} 치환값.
+    # 프론트가 인가요청에 사용한 redirect_uri와 정확히 일치해야 하고 provider 콘솔에 등록돼 있어야 한다.
+    # 로컬 기본값은 백엔드 자신(localhost:8080). 배포 환경은 OAUTH_BASE_URL로 주입.
+    base-url: ${OAUTH_BASE_URL:http://localhost:8080}
+    # 프론트가 콜백에 넘긴 redirect_uri를 그대로 토큰 교환에 쓸 때 허용할 오리진 목록(쉼표 구분).
+    # 로컬은 8080(리버스 프록시)·3000(프론트 직접) 허용. 운영/프리뷰는 OAUTH_ALLOWED_REDIRECT_ORIGINS로 주입.
+    allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:8080,http://localhost:3000}
+    # Apple(Web/Services ID) 소셜 로그인. 자격증명은 APPLE_* env로 주입하고 미설정 시 빈 값이라 로컬 기동에 지장 없다
+    # (파싱·서명은 첫 토큰 교환 시점에 지연 수행). URI·issuer는 Apple 고정값이라 기본값을 코드가 아닌 여기서 관리한다.
+    apple:
+      team-id: ${APPLE_TEAM_ID:}
+      key-id: ${APPLE_KEY_ID:}
+      client-id: ${APPLE_CLIENT_ID:}
+      private-key: ${APPLE_PRIVATE_KEY:}
+      authorization-uri: https://appleid.apple.com/auth/authorize
+      token-uri: https://appleid.apple.com/auth/token
+      jwk-set-uri: https://appleid.apple.com/auth/keys
+      issuer: https://appleid.apple.com
+      redirect-uri: "{baseUrl}/login/oauth2/code/apple"
+      revoke-uri: https://appleid.apple.com/auth/revoke
+      client-secret-ttl: 30m
+      # 콜백→가입 갭 동안 Apple refresh_token(암호문)을 브릿지하는 스테이징 TTL(ms). 가입 티켓(5분)보다 길게.
+      refresh-staging-ttl-ms: 600000
+  outbox:
+    # 탈퇴 후처리(Redis 부수효과)를 처리하는 트랜잭션 아웃박스 poller 설정.
+    enabled: ${OUTBOX_ENABLED:true}   # false면 poller 비활성화(테스트 등)
+    poll-interval-ms: 5000            # 폴링 주기(고정 지연)
+    batch-size: 50                    # 한 번에 잠가 처리할 이벤트 수
+    backoff-seconds: 30               # 실패 시 재시도 백오프 기준(재시도 횟수에 비례)
+
 aws:
-  s3:
-    bucket: ${S3_BUCKET:}
   region: ${AWS_REGION:ap-northeast-2}
-  credentials:
-    access-key: ${AWS_ACCESS_KEY:}
-    secret-key: ${AWS_SECRET_KEY:}
+  s3:
+    bucket: ${S3_BUCKET}
+  # credentials 제거: EC2 IAM Role 자동 인증 사용
+  # 로컬 개발 시엔 ~/.aws/credentials 사용
 
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000}
 
-server:
-  port: 8080
+management:
+  server:
+    # 기본 8080 = 메인 포트(로컬·테스트: 별도 관리 서버 미기동, actuator를 앱 포트에서 제공).
+    # dev/prod은 MANAGEMENT_SERVER_PORT=9292로 관리 포트를 분리해 actuator(health·info·metrics·prometheus)를
+    # 내부망 전용 포트로 격리한다(호스트/외부 미게시 → Prometheus는 내부망에서, 헬스체크는 컨테이너 내부에서 접근).
+    port: ${MANAGEMENT_SERVER_PORT:8080}
+  endpoints:
+    web:
+      exposure:
+        # health·info = 공개. 나머지(loggers·logfile·metrics·prometheus)는 dev/prod에서 관리 포트(9292)로
+        # 분리·격리(private subnet + 호스트 미게시 = 네트워크 보호), 메인 포트 폴백 시엔 인증 뒤에 둔다.
+        # env·configprops·heapdump·threaddump 등 민감 엔드포인트는 의도적으로 미노출(넓히지 말 것).
+        include: health,info,loggers,logfile,metrics,prometheus
+  endpoint:
+    health:
+      # 공개 프로브에는 UP/DOWN 요약만, 인증된 사용자에게만 상세(DB·Redis·디스크)를 노출 — 익명에 인프라 정보 유출 방지.
+      show-details: when-authorized
+      probes:
+        enabled: true          # liveness/readiness 프로브 → /actuator/health/{liveness,readiness}
+  metrics:
+    tags:
+      # 모든 메트릭에 붙는 공통 라벨. Grafana SpringBoot APM(12900)·JVM Micrometer(4701) 대시보드가
+      # application 라벨(label_values(application))로 대상을 선택한다 — 없으면 패널이 No data.
+      application: ${spring.application.name}
+  tracing:
+    # 기본 OFF. Tempo가 있는 환경(dev)에서만 compose가 TRACING_ENABLED=true로 켠다.
+    # → Tempo가 아직 없는 prod/기타 환경은 OTLP export를 시도하지 않아 연결실패 경고가 없다.
+    enabled: ${TRACING_ENABLED:false}
+    sampling:
+      # 샘플링 확률. 기본 1.0(dev = 전량). prod은 application-prod.yml에서 0.1(10%)로 낮춘다.
+      # 운영 중 조정은 TRACING_SAMPLE_PROBABILITY env로(재배포 없이 값만 교체).
+      probability: ${TRACING_SAMPLE_PROBABILITY:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # OTLP HTTP span export → Tempo. tracing.enabled=true인 환경에서 compose가 tempo:4318을 주입한다.
+          # ⚠️ Boot 4.0에서 프로퍼티가 이 이름으로 리네임됐다. 구 management.otlp.tracing.endpoint는
+          #    deprecated라 런타임 자동 매핑이 안 되고(properties-migrator 미포함), 이 값이 없으면
+          #    OtlpTracingConnectionDetails 빈이 안 생겨 span exporter가 조용히 backoff한다
+          #    (traceId는 로그에 찍히지만 Tempo 수신은 0). ← 이전에 트레이스가 안 뜨던 원인.
+          endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+  info:
+    env:
+      enabled: true            # 아래 info.* 커스텀 프로퍼티 노출
+    java:
+      enabled: true            # JVM 버전·벤더
+    os:
+      enabled: true            # OS 이름·버전·아키텍처
+    build:
+      enabled: true            # META-INF/build-info.properties (버전·빌드시각) — build.gradle buildInfo()
+
+# /actuator/info 커스텀 섹션 (management.info.env.enabled=true로 노출)
+info:
+  app:
+    name: ${spring.application.name}
+    description: 손해사정 매칭·검수 리포트 백엔드 API
+    environment: ${SPRING_PROFILES_ACTIVE:local}
+
+logging:
+  file:
+    # /actuator/logfile 엔드포인트가 읽는 경로. logback-spring.xml의 FILE appender(Boot file-appender include)가
+    # LOG_FILE로 참조한다. 파일 로깅은 dev·prod 프로파일에서만 활성(local·test는 파일 미생성 → 엔드포인트 404).
+    name: ${LOG_DIR:/app/logs}/app.log
+  logback:
+    rollingpolicy:
+      # Boot file-appender.xml이 참조하는 회전 정책. 기존 로그 보존값(일 10MB·14일·총 500MB)을 유지한다.
+      max-file-size: 10MB
+      max-history: 14
+      total-size-cap: 500MB
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.soma.backend: DEBUG

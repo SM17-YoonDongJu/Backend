@@ -1,69 +1,107 @@
 package com.soma.backend.global.exception;
 
+import org.springframework.http.HttpStatus;
+
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 
 @Getter
 @RequiredArgsConstructor
 public enum ErrorCode {
 
-    // 400 Bad Request — 요청 자체가 잘못됨
-    INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 형식이 올바르지 않습니다."),
-    VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "입력값 검증에 실패했습니다."),
-    MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, "필수 입력값이 누락되었습니다."),
-    UNSUPPORTED_OPERATION(HttpStatus.BAD_REQUEST, "지원하지 않는 동작입니다."),
+  // 400 Bad Request — 요청 자체가 잘못됨
+  // BAD_REQUEST: @Valid 바디 검증 실패 시 GlobalExceptionHandler가 내보내는 전역 400 code(필드 메시지는 동적).
+  BAD_REQUEST(HttpStatus.BAD_REQUEST, "요청이 올바르지 않습니다."),
+  INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 형식이 올바르지 않습니다."),
+  VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "입력값 검증에 실패했습니다."),
+  MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, "필수 입력값이 누락되었습니다."),
+  UNSUPPORTED_OPERATION(HttpStatus.BAD_REQUEST, "지원하지 않는 동작입니다."),
 
-    // 401 Unauthorized — 인증 실패
-    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
-    EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),
-    LOGIN_REQUIRED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
+  // 401 Unauthorized — 인증 실패
+  INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
+  EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),
+  LOGIN_REQUIRED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
 
-    // 403 Forbidden — 권한 없음
-    FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
+  // 403 Forbidden — 권한 없음
+  FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 
-    // 404 Not Found — 리소스 없음
-    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
-    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 게시물/리포트를 찾을 수 없습니다."),
-    SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "구독 정보를 찾을 수 없습니다."),
+  // 404 Not Found — 리소스 없음
+  // NOT_FOUND: 매핑되지 않은 경로(정적 리소스 미존재 등) 요청 시 GlobalExceptionHandler가 내보내는 범용 404.
+  NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
+  USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+  POST_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 게시물/리포트를 찾을 수 없습니다."),
+  SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "구독 정보를 찾을 수 없습니다."),
 
-    // 409 Conflict — 리소스 상태 충돌
-    DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "이미 존재하는 리소스입니다."),
+  // 405 Method Not Allowed — 지원하지 않는 HTTP 메서드
+  METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청 메서드입니다."),
 
-    // 422 Unprocessable Entity — 비즈니스 규칙 위반
-    PAYMENT_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "결제 처리에 실패했습니다."),
+  // 409 Conflict — 리소스 상태 충돌
+  DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "이미 존재하는 리소스입니다."),
+  // INVALID_STATE_TRANSITION: 현재 리소스 상태 때문에 요청이 충돌(예: 상담 중이 아닌 제안 채택). 검수 생명주기
+  //   전이 위반(Report.applyReviewTransition/applyReviewStart)도 이 code(409)로 통일한다.
+  INVALID_STATE_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서 처리할 수 없는 요청입니다."),
+  // CLOSED: 종료된 리소스(예: 비활성 상담방 메시지 전송)에 대한 요청. throw 배선은 채팅 구현 시 추가.
+  CLOSED(HttpStatus.CONFLICT, "이미 종료되어 처리할 수 없습니다."),
 
-    // 500 Internal Server Error — 서버 내부 오류
-    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
-    DATABASE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "데이터베이스 오류가 발생했습니다."),
-    EXTERNAL_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "외부 API 연동에 실패했습니다."),
+  // 422 Unprocessable Content — 비즈니스 규칙 위반
+  PAYMENT_FAILED(HttpStatus.UNPROCESSABLE_CONTENT, "결제 처리에 실패했습니다."),
 
-    // 503 Service Unavailable — 일시적 서비스 불가
-    SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "서비스를 일시적으로 이용할 수 없습니다."),
+  // 500 Internal Server Error — 서버 내부 오류
+  INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
+  DATABASE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "데이터베이스 오류가 발생했습니다."),
+  EXTERNAL_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "외부 API 연동에 실패했습니다."),
 
-    // Auth (도메인 특화)
-    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰을 찾을 수 없습니다."),
+  // 503 Service Unavailable — 일시적 서비스 불가
+  SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "서비스를 일시적으로 이용할 수 없습니다."),
 
-    // Adjuster (도메인 특화)
-    ADJUSTER_NOT_FOUND(HttpStatus.NOT_FOUND, "손해사정사를 찾을 수 없습니다."),
+  // Auth (도메인 특화)
+  REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰을 찾을 수 없습니다."),
+  UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 소셜 로그인 제공자입니다."),
 
-    // Report (도메인 특화)
-    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트를 찾을 수 없습니다."),
+  // Adjuster (도메인 특화)
+  ADJUSTER_NOT_FOUND(HttpStatus.NOT_FOUND, "손해사정사를 찾을 수 없습니다."),
 
-    // Matching (도메인 특화)
-    MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),
-    MATCHING_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 진행 중인 매칭이 있습니다."),
+  // Report (도메인 특화)
+  REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트를 찾을 수 없습니다."),
+  REPORT_ISSUE_NOT_FOUND(HttpStatus.NOT_FOUND, "리포트 쟁점을 찾을 수 없습니다."),
+  // INVALID_STATUS_TRANSITION: 미사용 예약 code. 검수 생명주기 전이 위반은 INVALID_STATE_TRANSITION(409)로 응답한다.
+  INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "허용되지 않는 상태 전이입니다."),
+  PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "제안을 찾을 수 없습니다."),
+  REPORT_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종결된 리포트입니다."),
+  CLAIM_DETAILS_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "청구 상세 유형이 사고 유형과 일치하지 않습니다."),
 
-    // Chat (도메인 특화)
-    CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "채팅방을 찾을 수 없습니다."),
-    CHAT_NOT_A_MEMBER(HttpStatus.FORBIDDEN, "채팅방 멤버가 아닙니다."),
-    CHAT_ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 채팅방 멤버입니다."),
-    CHAT_DUPLICATE_DIRECT_ROOM(HttpStatus.CONFLICT, "이미 존재하는 1:1 채팅방입니다."),
-    CHAT_DIRECT_JOIN_FORBIDDEN(HttpStatus.FORBIDDEN, "1:1 채팅방에는 입장할 수 없습니다."),
-    CHAT_INVALID_MEMBER_COUNT(HttpStatus.BAD_REQUEST, "채팅방 멤버 구성이 올바르지 않습니다."),
-    CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "메시지 내용이 비어 있습니다."),
-    CHAT_WS_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "WebSocket 인증에 실패했습니다.");
+  // Matching (도메인 특화)
+  MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),
+  MATCHING_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 진행 중인 매칭이 있습니다."),
 
-    private final HttpStatus status;
-    private final String message;
+  // Chat (도메인 특화)
+  CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "채팅방을 찾을 수 없습니다."),
+  CHAT_NOT_A_MEMBER(HttpStatus.FORBIDDEN, "채팅방 멤버가 아닙니다."),
+  CHAT_ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 채팅방 멤버입니다."),
+  CHAT_DUPLICATE_DIRECT_ROOM(HttpStatus.CONFLICT, "이미 존재하는 1:1 채팅방입니다."),
+  CHAT_DIRECT_JOIN_FORBIDDEN(HttpStatus.FORBIDDEN, "1:1 채팅방에는 입장할 수 없습니다."),
+  CHAT_INVALID_MEMBER_COUNT(HttpStatus.BAD_REQUEST, "채팅방 멤버 구성이 올바르지 않습니다."),
+  CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "메시지 내용이 비어 있습니다."),
+  CHAT_ROOM_CLOSED(HttpStatus.CONFLICT, "종료된 채팅방에는 메시지를 보낼 수 없습니다."),
+  CHAT_NOT_ROOM_OWNER(HttpStatus.FORBIDDEN, "채팅방 소유자만 상담을 결정할 수 있습니다."),
+  CHAT_CONSULTATION_UNAVAILABLE(HttpStatus.CONFLICT, "상담 결정을 진행할 수 없는 채팅방입니다."),
+  CHAT_ATTACHMENT_EMPTY(HttpStatus.BAD_REQUEST, "첨부 파일이 비어 있습니다."),
+  CHAT_ATTACHMENT_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "허용되지 않는 첨부 형식입니다."),
+  CHAT_ATTACHMENT_TOO_LARGE(HttpStatus.BAD_REQUEST, "첨부 용량이 허용 범위를 초과했습니다."),
+  CHAT_ATTACHMENT_KEY_MISMATCH(HttpStatus.BAD_REQUEST, "첨부 키가 채팅방과 일치하지 않습니다."),
+  CHAT_ATTACHMENT_TOO_MANY(HttpStatus.BAD_REQUEST, "첨부 개수가 허용 범위를 초과했습니다."),
+  CHAT_ATTACHMENT_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "첨부 파일 업로드에 실패했습니다."),
+  CHAT_WS_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "WebSocket 인증에 실패했습니다."),
+
+  // Notification (도메인 특화)
+  NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
+
+  // Upload (도메인 특화)
+  UPLOAD_CONTENT_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "허용되지 않는 파일 형식입니다."),
+  UPLOAD_FILE_EMPTY(HttpStatus.BAD_REQUEST, "업로드 파일이 비어 있습니다."),
+  UPLOAD_FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "업로드 용량이 허용 범위를 초과했습니다."),
+  UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다.");
+
+  private final HttpStatus status;
+  private final String message;
 }

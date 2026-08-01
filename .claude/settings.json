@@ -3,8 +3,12 @@
     "allow": [
       "Write(.claude/agents/*)",
       "Edit(.claude/agents/*)",
-      "Write(.claude/skills/*)",
-      "Edit(.claude/skills/*)",
+      "Write(.claude/skills/**)",
+      "Edit(.claude/skills/**)",
+      "Write(.claude/references/**)",
+      "Edit(.claude/references/**)",
+      "Edit(.claude/harness.md)",
+      "Edit(CLAUDE.md)",
       "Write(_workspace/**)",
       "Edit(_workspace/**)",
       "Write(src/**)",
@@ -17,6 +21,31 @@
       "Bash(./gradlew test)",
       "Bash(git status:*)",
       "Bash(git diff:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/guard-git.js", "timeout": 10 },
+          { "type": "command", "command": "node .claude/hooks/strip-ai-tells.js", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/guard-paths.js", "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/warn-native-query.js", "timeout": 10 }
+        ]
+      }
     ]
   }
 }

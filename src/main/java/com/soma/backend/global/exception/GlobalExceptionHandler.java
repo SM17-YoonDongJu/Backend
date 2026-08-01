@@ -1,36 +1,177 @@
 package com.soma.backend.global.exception;
 
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException e) {
-        ErrorCode code = e.getErrorCode();
-        return ResponseEntity.status(code.getStatus()).body(ErrorResponse.of(code));
-    }
+  @ExceptionHandler(BusinessException.class)
+  public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException ex) {
+    ErrorCode code = ex.getErrorCode();
+    return ResponseEntity.status(code.getStatus()).body(ErrorResponse.of(code));
+  }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
-                .findFirst()
-                .orElse(ErrorCode.VALIDATION_ERROR.getMessage());
-        return ResponseEntity.badRequest()
-                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST, "BAD_REQUEST", message));
-    }
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException ex) {
+    String message = ex.getBindingResult().getFieldErrors().stream()
+        .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+        .findFirst()
+        .orElse(ErrorCode.BAD_REQUEST.getMessage());
+    return ResponseEntity.badRequest()
+        .body(ErrorResponse.of(ErrorCode.BAD_REQUEST, message));
+  }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleException(Exception e) {
-        log.error("Unhandled exception", e);
-        return ResponseEntity.internalServerError()
-                .body(ErrorResponse.of(ErrorCode.INTERNAL_SERVER_ERROR));
+  /**
+   * 미인증 상태로 메서드 시큐리티(@PreAuthorize) 대상 메서드에 진입하면 인증 공급자가
+   * AuthenticationCredentialsNotFoundException(그 상위 AuthenticationException)을 던진다.
+   * 필터체인이 permitAll이라 여기까지 전파되므로, 아래 catch-all(Exception → 500)에
+   * 삼켜지지 않도록 401 LOGIN_REQUIRED로 매핑한다.
+   */
+  @ExceptionHandler(AuthenticationException.class)
+  public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex) {
+    return ResponseEntity.status(ErrorCode.LOGIN_REQUIRED.getStatus())
+        .body(ErrorResponse.of(ErrorCode.LOGIN_REQUIRED));
+  }
+
+  /**
+   * 인증됐으나 role이 맞지 않으면 메서드 시큐리티(@PreAuthorize)가 컨트롤러 호출 중
+   * AccessDeniedException(그 하위 AuthorizationDeniedException)으로 거부하므로,
+   * 아래 catch-all(Exception → 500)에 삼켜지지 않도록 여기서 403 FORBIDDEN으로 매핑한다.
+   */
+  @ExceptionHandler(AccessDeniedException.class)
+  public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
+    return ResponseEntity.status(ErrorCode.FORBIDDEN.getStatus())
+        .body(ErrorResponse.of(ErrorCode.FORBIDDEN));
+  }
+
+  /**
+   * 요청 바디가 없거나(필수 {@code @RequestBody}) JSON 파싱이 불가능하면 스프링 MVC가
+   * HttpMessageNotReadableException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 INVALID_REQUEST로 매핑한다.
+   */
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex) {
+    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus())
+        .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
+  }
+
+  /**
+   * 경로변수·쿼리 파라미터의 타입 변환이 실패하면(예: UUID 경로변수에 비-UUID 전달) 스프링 MVC가
+   * MethodArgumentTypeMismatchException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 INVALID_REQUEST로 매핑한다.
+   */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus())
+        .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
+  }
+
+  /**
+   * 필수 쿼리 파라미터({@code @RequestParam})가 누락되면(예: OAuth 콜백 code 누락) 스프링 MVC가
+   * MissingServletRequestParameterException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 MISSING_REQUIRED_FIELD로 매핑한다.
+   */
+  @ExceptionHandler(MissingServletRequestParameterException.class)
+  public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex) {
+    return ResponseEntity.status(ErrorCode.MISSING_REQUIRED_FIELD.getStatus())
+        .body(ErrorResponse.of(ErrorCode.MISSING_REQUIRED_FIELD));
+  }
+
+  /**
+   * 매핑된 경로를 지원하지 않는 HTTP 메서드로 호출하면(예: POST 전용 /auth/reissue를 GET 호출) 스프링 MVC가
+   * HttpRequestMethodNotSupportedException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 405 METHOD_NOT_ALLOWED로 매핑한다.
+   */
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+    return ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getStatus())
+        .body(ErrorResponse.of(ErrorCode.METHOD_NOT_ALLOWED));
+  }
+
+  /**
+   * UNIQUE 제약 위반 등 DB 무결성 충돌을 409로 변환한다. 선검사(existsBy*)와 커밋 사이의 동시성 경쟁으로
+   * 커밋 시점에 터지는 중복(예: 전화번호)을 500이 아닌 {@code DUPLICATE_RESOURCE}로 응답한다.
+   */
+  @ExceptionHandler(DataIntegrityViolationException.class)
+  public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+    log.warn("데이터 무결성 위반(유니크 제약 등), 409로 변환", ex);
+    ErrorCode code = ErrorCode.DUPLICATE_RESOURCE;
+    return ResponseEntity.status(code.getStatus()).body(ErrorResponse.of(code));
+  }
+
+  /**
+   * 매핑되지 않은 경로(정적 리소스 미존재 포함) 요청은 스프링 MVC가 NoResourceFoundException을 던진다.
+   * (예: actuator를 관리 포트 9292로 분리한 뒤 헬스체커가 8080의 /actuator/health/readiness를 호출)
+   * 아래 catch-all(Exception → 500)에 삼켜지면 404가 500으로 둔갑해 5xx 지표·ERROR 로그를 오염시키므로,
+   * 여기서 404 NOT_FOUND로 매핑하고 ERROR 로깅하지 않는다.
+   *
+   * <p>단, {@code /actuator/**}(헬스체크 프로브)는 조용히 두되, 그 외 매핑 없는 경로 요청은
+   * 프론트↔백엔드 계약 불일치(경로 오타·미구현 엔드포인트)일 수 있으므로 WARN으로 남겨
+   * Loki에서 추적 가능하게 한다. 요청 본문·헤더는 남기지 않고 메서드·경로만 기록한다(PII 안전).
+   */
+  @ExceptionHandler(NoResourceFoundException.class)
+  public ResponseEntity<ErrorResponse> handleNoResourceFound(NoResourceFoundException ex) {
+    if (!isProbePath(ex.getResourcePath())) {
+      log.warn("매핑되지 않은 경로 요청(404): {} {}", ex.getHttpMethod(), ex.getResourcePath());
     }
+    return ResponseEntity.status(ErrorCode.NOT_FOUND.getStatus())
+        .body(ErrorResponse.of(ErrorCode.NOT_FOUND));
+  }
+
+  /**
+   * actuator 경로(헬스체크 프로브)면 true — 프로브가 내는 404는 주기적 노이즈라 로그로 남기지 않는다.
+   * resourcePath는 선행 슬래시가 없을 수 있어 정규화 후 판별한다.
+   */
+  private static boolean isProbePath(String resourcePath) {
+    if (resourcePath == null) {
+      return false;
+    }
+    String normalized = resourcePath.startsWith("/") ? resourcePath : "/" + resourcePath;
+    return normalized.startsWith("/actuator");
+  }
+
+  /**
+   * 업로드 파일이 서블릿 멀티파트 한도(spring.servlet.multipart.max-file-size)를 초과하면 컨트롤러 진입 전
+   * MaxUploadSizeExceededException이 발생한다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 413 UPLOAD_FILE_TOO_LARGE로 매핑한다(요청 본문은 남기지 않는다).
+   */
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+    ErrorCode code = ErrorCode.UPLOAD_FILE_TOO_LARGE;
+    return ResponseEntity.status(code.getStatus()).body(ErrorResponse.of(code));
+  }
+
+  /**
+   * multipart 요청에 필수 파트(@RequestParam MultipartFile)가 없으면 스프링 MVC가
+   * MissingServletRequestPartException을 던진다. 아래 catch-all(Exception → 500)에 삼켜지지 않도록
+   * 400 MISSING_REQUIRED_FIELD로 매핑한다.
+   */
+  @ExceptionHandler(MissingServletRequestPartException.class)
+  public ResponseEntity<ErrorResponse> handleMissingPart(MissingServletRequestPartException ex) {
+    return ResponseEntity.status(ErrorCode.MISSING_REQUIRED_FIELD.getStatus())
+        .body(ErrorResponse.of(ErrorCode.MISSING_REQUIRED_FIELD));
+  }
+
+  @ExceptionHandler(Exception.class)
+  public ResponseEntity<ErrorResponse> handleException(Exception ex) {
+    log.error("Unhandled exception", ex);
+    return ResponseEntity.internalServerError()
+        .body(ErrorResponse.of(ErrorCode.INTERNAL_SERVER_ERROR));
+  }
 }

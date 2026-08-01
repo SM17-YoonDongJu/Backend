@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PII 로깅 정책 (docs/logging-pii-policy.md 참조):
+  - 요청/응답 본문(body), 헤더(Authorization), SQL 바인드 파라미터를 로그로 남기지 않는다.
+  - 주민등록번호·연락처·의료정보(진단서)·결제정보·토큰은 절대 평문 로깅 금지.
+
+  로그 출력 형식:
+  - local·test: 사람이 읽는 평문 콘솔.
+  - dev·prod: 구조화 JSON(logstash). 형식은 application-{dev,prod}.yml의 logging.structured.format.*로 주입한다.
+    Boot 4 네이티브 구조화 로깅이라 별도 인코더 의존성 없이 MDC(traceId·spanId)까지 자동 포함된다
+    → Alloy가 stdout을 Loki로 수집하고, traceId로 Tempo 트레이스와 상관(correlation)한다.
+  - 파일 appender(FILE)는 dev·prod에서만 활성(local·test는 /app/logs 부재로 컨텍스트 기동이 깨진다, #91).
+    회전 정책은 application.yml의 logging.logback.rollingpolicy.*로 관리한다.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- PII 유출 위험 로거 강제 억제 (application.yml 설정과 이중 안전장치) -->
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.orm.jdbc.bind" level="WARN"/>
+    <logger name="org.hibernate.type.descriptor.sql" level="WARN"/>
+
+    <!-- local·test·default: 평문 콘솔 (구조화 format 미설정 → 사람이 읽는 패턴) -->
+    <springProfile name="local,test,default">
+        <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- dev·prod: 구조화 JSON 콘솔 + 파일.
+         ⚠️ Boot 4는 평문용(console-appender.xml)과 구조화용(structured-*-appender.xml) 인클루드가 분리돼 있다.
+         구조화 인클루드는 StructuredLogEncoder + ${*_LOG_STRUCTURED_FORMAT}를 써서 logging.structured.format.*
+         (dev·prod yml의 logstash)를 실제로 반영한다. 평문 인클루드를 쓰면 포맷 설정이 무시된다. -->
+    <springProfile name="dev,prod">
+        <include resource="org/springframework/boot/logging/logback/structured-console-appender.xml"/>
+        <include resource="org/springframework/boot/logging/logback/structured-file-appender.xml"/>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+</configuration>

@@ -1,7 +1,15 @@
 HELP.md
 .env
+.env.*
+!.env.example
+!.env.*.example
 .gradle
 build/
+
+### Runtime logs / dumps ###
+logs/
+*.hprof
+*.log
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
@@ -40,3 +48,11 @@ out/
 ### Claude Code ###
 .claude/settings.local.json
 _workspace/
+
+### Local docs / drafts (velog, manual-test 등, 추적 안 함) ###
+docs/
+
+### Local scratch / dumps (추적 안 함) ###
+/db/
+/paseo.json
+*.stackdump

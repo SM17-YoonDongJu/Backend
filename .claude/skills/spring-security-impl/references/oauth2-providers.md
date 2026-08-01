@@ -1,13 +1,16 @@
 # OAuth2 Provider 구현 가이드 (카카오·네이버)
 
-OAuth2 소셜 로그인은 **미구현** 상태. 이 패턴으로 구현한다.
-기존 패키지 구조 `domain/auth/` 아래에 구현한다.
+OAuth2 소셜 로그인은 **구현 완료** 상태. Spring `oauth2Login` 필터를 쓰지 않고, 프론트가 받은 인가코드를 백엔드가 수동 REST로 교환한다. **기존 코드와 다른 방식으로 구현하지 않는다.** 패키지: `domain/auth/`.
+
+핵심 원칙:
+- **인증 전송은 HttpOnly 쿠키.** 토큰을 쿼리 파라미터로 프론트에 리다이렉트하지 않는다.
+- **scope는 `id`만.** 프로필·이메일 동의를 받지 않으므로 providerUserId만 정규화한다(이름·생년월일·전화번호는 회원가입 단계에서 수집).
 
 ---
 
 ## 1. application-oauth.yml 설정
 
-`src/main/resources/application-oauth.yml` (이미 존재, 값만 채울 것)
+`ClientRegistrationRepository`가 이 값을 읽어 `RestClientOAuthClient`가 수동 교환에 사용한다. `redirect-uri`의 `{baseUrl}`은 `app.oauth.base-url`(기본 `http://localhost:8080`)로 치환되며, 프론트가 인가 요청에 쓴 redirect_uri와 정확히 일치해야 제공자가 토큰을 발급한다.
 
 ```yaml
 spring:
@@ -15,243 +18,138 @@ spring:
     oauth2:
       client:
         registration:
+          # id(providerUserId)만 사용하므로 scope 키를 두지 않는다 — id는 동의 없이도 user-info에 포함된다.
           kakao:
             client-id: ${KAKAO_CLIENT_ID}
             client-secret: ${KAKAO_CLIENT_SECRET}
-            redirect-uri: "{baseUrl}/api/v1/auth/oauth2/callback/{registrationId}"
+            redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
             authorization-grant-type: authorization_code
             client-authentication-method: client_secret_post
-            scope:
-              - profile_nickname
-              - account_email
           naver:
             client-id: ${NAVER_CLIENT_ID}
             client-secret: ${NAVER_CLIENT_SECRET}
-            redirect-uri: "{baseUrl}/api/v1/auth/oauth2/callback/{registrationId}"
+            redirect-uri: "{baseUrl}/login/oauth2/code/naver"
             authorization-grant-type: authorization_code
-            scope:
-              - name
-              - email
         provider:
           kakao:
-            authorization-uri: https://kauth.kakao.com/oauth/authorize
             token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
           naver:
-            authorization-uri: https://nid.naver.com/oauth2.0/authorize
             token-uri: https://nid.naver.com/oauth2.0/token
             user-info-uri: https://openapi.naver.com/v1/nid/me
             user-name-attribute: response
 ```
 
----
-
-## 2. OAuth2UserInfo 인터페이스 (`domain/auth/oauth2/`)
-
-각 Provider 응답을 정규화하는 인터페이스.
-
-```java
-public interface OAuth2UserInfo {
-    String getProviderId();     // 소셜 고유 ID
-    String getProvider();       // "kakao" | "naver"
-    String getNickname();
-    String getEmail();          // nullable — 카카오는 선택 동의
-}
-```
-
-### KakaoOAuth2UserInfo
-
-```java
-// 카카오 응답 구조:
-// { id: 12345, kakao_account: { profile: { nickname: "..." }, email: "..." } }
-public class KakaoOAuth2UserInfo implements OAuth2UserInfo {
-
-    private final Map<String, Object> attributes;
-
-    @Override
-    public String getProviderId() {
-        return String.valueOf(attributes.get("id"));
-    }
-
-    @Override
-    public String getProvider() { return "kakao"; }
-
-    @Override
-    public String getNickname() {
-        Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
-        Map<String, Object> profile = (Map<String, Object>) kakaoAccount.get("profile");
-        return (String) profile.get("nickname");
-    }
-
-    @Override
-    public String getEmail() {
-        Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
-        return (String) kakaoAccount.getOrDefault("email", null);
-    }
-}
-```
-
-### NaverOAuth2UserInfo
-
-```java
-// 네이버 응답 구조:
-// { resultcode: "00", message: "success", response: { id: "...", name: "...", email: "..." } }
-public class NaverOAuth2UserInfo implements OAuth2UserInfo {
-
-    private final Map<String, Object> attributes;
-
-    @Override
-    public String getProviderId() {
-        Map<String, Object> response = (Map<String, Object>) attributes.get("response");
-        return (String) response.get("id");
-    }
-
-    @Override
-    public String getProvider() { return "naver"; }
-
-    @Override
-    public String getNickname() {
-        Map<String, Object> response = (Map<String, Object>) attributes.get("response");
-        return (String) response.get("name");
-    }
-
-    @Override
-    public String getEmail() {
-        Map<String, Object> response = (Map<String, Object>) attributes.get("response");
-        return (String) response.get("email");
-    }
-}
-```
+> `authorization-uri`는 프론트가 인가 요청에 쓰므로 백엔드 교환에는 불필요하다. 백엔드는 `token-uri`·`user-info-uri`·client 자격증명·redirect-uri만 사용한다.
 
 ---
 
-## 3. CustomOAuth2UserService (`domain/auth/oauth2/CustomOAuth2UserService.java`)
+## 2. OAuthClient — 수동 코드교환 (`domain/auth/service/provider/`)
+
+`OAuthClient` 인터페이스와 `RestClientOAuthClient` 구현이 code → access_token → user-info를 수동으로 교환한다.
 
 ```java
-@Service
-@RequiredArgsConstructor
-public class CustomOAuth2UserService extends DefaultOAuth2UserService {
-
-    private final UserRepository userRepository;
-    private final SocialAccountRepository socialAccountRepository;
-
-    @Override
-    public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        OAuth2User oAuth2User = super.loadUser(userRequest);
-        String registrationId = userRequest.getClientRegistration().getRegistrationId();
-
-        OAuth2UserInfo userInfo = switch (registrationId) {
-            case "kakao" -> new KakaoOAuth2UserInfo(oAuth2User.getAttributes());
-            case "naver" -> new NaverOAuth2UserInfo(oAuth2User.getAttributes());
-            default -> throw new BusinessException(ErrorCode.INVALID_REQUEST);
-        };
-
-        // SOCIAL_ACCOUNTS 테이블 기준으로 기존 사용자 조회
-        User user = socialAccountRepository
-            .findByProviderAndProviderUserId(userInfo.getProvider(), userInfo.getProviderId())
-            .map(SocialAccount::getUser)
-            .orElseGet(() -> createUser(userInfo));
-
-        return new CustomOAuth2User(user, oAuth2User.getAttributes());
-    }
-
-    @Transactional
-    private User createUser(OAuth2UserInfo userInfo) {
-        User user = User.builder()
-            .nickname(userInfo.getNickname())
-            .email(userInfo.getEmail())
-            .role(Role.USER)
-            .status(UserStatus.ACTIVE)
-            .build();
-        userRepository.save(user);
-
-        SocialAccount socialAccount = SocialAccount.builder()
-            .user(user)
-            .provider(userInfo.getProvider())
-            .providerUserId(userInfo.getProviderId())
-            .build();
-        socialAccountRepository.save(socialAccount);
-
-        return user;
-    }
+public interface OAuthClient {
+    OAuthProfile fetchProfile(String provider, String code, String state);
 }
+
+// 정규화된 프로필 — id만 담는다(이메일·닉네임 미수집)
+public record OAuthProfile(String provider, String providerUserId) {}
 ```
 
----
-
-## 4. OAuth2AuthenticationSuccessHandler (`domain/auth/oauth2/`)
-
-로그인 성공 후 JWT 발급 → 프론트엔드로 리다이렉트.
+`RestClientOAuthClient` 요지:
+- `ClientRegistrationRepository.findByRegistrationId(provider)` → 없으면 `UNSUPPORTED_PROVIDER`
+- **connect 3s / read 5s** 타임아웃(`SimpleClientHttpRequestFactory`)
+- `POST token-uri`(form: grant_type·client_id·client_secret·code·redirect_uri) → `access_token` 없으면 `EXTERNAL_API_ERROR`
+- `GET user-info-uri`(Authorization: Bearer) → Map 파싱
+- 예외 매핑: 토큰 교환 4xx → `INVALID_REQUEST`(잘못된 인가코드 등), 그 외 HTTP 오류·타임아웃(`ResourceAccessException`) → `EXTERNAL_API_ERROR`
 
 ```java
-@Component
-@RequiredArgsConstructor
-public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
-
-    private final JwtProvider jwtProvider;
-    private final RefreshTokenRepository refreshTokenRepository;
-
-    @Value("${oauth2.redirect-uri}")
-    private String redirectUri;
-
-    @Override
-    public void onAuthenticationSuccess(HttpServletRequest request,
-                                        HttpServletResponse response,
-                                        Authentication authentication) throws IOException {
-        CustomOAuth2User oAuth2User = (CustomOAuth2User) authentication.getPrincipal();
-        UUID userId = oAuth2User.getUserId();
-        String role = oAuth2User.getRole();
-
-        String accessToken = jwtProvider.generateAccessToken(userId, role);
-        String refreshToken = jwtProvider.generateRefreshToken(userId);
-        refreshTokenRepository.save(userId, refreshToken, /* ttl */ 1209600000L);
-
-        // 프론트엔드 리다이렉트 — 토큰을 쿼리 파라미터로 전달
-        String targetUrl = UriComponentsBuilder.fromUriString(redirectUri)
-            .queryParam("access_token", accessToken)
-            .queryParam("refresh_token", refreshToken)
-            .build().toUriString();
-
-        getRedirectStrategy().sendRedirect(request, response, targetUrl);
-    }
-}
+// 카카오: { id: 12345, ... }              → providerUserId = id
+// 네이버: { response: { id: "...", ... } } → providerUserId = response.id
+private OAuthProfile parseKakao(Map<String, Object> body) { /* body.get("id") */ }
+private OAuthProfile parseNaver(Map<String, Object> body) { /* body.get("response").get("id") */ }
 ```
+
+> 응답에서 `id`가 없으면 `EXTERNAL_API_ERROR`. 트랜잭션 밖에서 호출한다(외부 HTTP 지연이 DB 커넥션을 점유하지 않도록).
 
 ---
 
-## 5. SecurityConfig OAuth2 설정 추가
+## 3. 콜백 유스케이스 (`OAuthLoginService`)
 
-기존 `SecurityConfig.java`에 OAuth2 설정 추가:
-
-```java
-.oauth2Login(oauth2 -> oauth2
-    .userInfoEndpoint(info ->
-        info.userService(customOAuth2UserService))
-    .successHandler(oAuth2AuthenticationSuccessHandler))
 ```
+handleCallback(response, provider, code, state):
+  1. profile = oAuthClient.fetchProfile(provider, code, state)   // 트랜잭션 밖
+  2. socialAccountRepository.findByProviderAndProviderUserId(provider, providerUserId)
+       존재 → user 조회(없으면 USER_NOT_FOUND) → issueTokens(쿠키) → existingUser(userId)
+       없음 → signupTicketProvider.issue(provider, providerUserId) → newUser(ticket)
+```
+
+`OAuthCallbackResponse(userId, isNewUser, signupTicket)`:
+- 기존 회원: `existingUser(userId)` → `isNewUser=false`, 쿠키 발급됨
+- 신규 회원: `newUser(ticket)` → `isNewUser=true`, 쿠키 없음, `signupTicket` 반환
 
 ---
 
-## 6. 추가 필요 환경변수 (`.env.example`)
+## 4. 회원가입 (`AuthRegisterService`, `POST /auth/register`)
+
+가입 티켓(단기 5분 JWT, `purpose="signup"`)으로 프로필을 채워 가입한다. **이메일 미수집.**
+
+```
+register(response, RegisterRequest):
+  1. ticket = signupTicketProvider.parse(socialToken)       // 서명·만료·purpose 검증 실패 시 INVALID_TOKEN
+  2. ticket.provider == request.provider 아니면 INVALID_TOKEN
+  3. SocialAccount(provider+providerUserId)·phoneNumber 중복 → DUPLICATE_RESOURCE
+  4. Role = UserType.from(userType).toRole()
+  5. User.create(nickname, birthDate, phoneNumber, role) + SocialAccount.create(...) 한 트랜잭션 저장
+  6. issueTokens(쿠키) → RegisterResponse(userId, nickname, role)
+```
+
+`RegisterRequest`(snake_case, 검증): `provider`, `social_token`, `nickname`(1~30자, 실명), `birth_date`(과거), `phone_number`(`^01[0-9]-?\d{3,4}-?\d{4}$`, unique), `user_type`(`insured_person|adjuster`).
+
+---
+
+## 5. SecurityConfig — oauth2Login 없음
+
+Spring `oauth2Login`을 **추가하지 않는다.** 모든 인증 진입점은 `/auth/**`(permitAll)로 노출된 REST 컨트롤러이고, 쿠키는 `AuthTokenService`가 부착한다. SecurityConfig 상세는 `SKILL.md`의 "SecurityConfig 기본 구조" 참조.
+
+---
+
+## 6. 환경변수 (`.env.example`)
 
 ```
 KAKAO_CLIENT_ID=
 KAKAO_CLIENT_SECRET=
 NAVER_CLIENT_ID=
 NAVER_CLIENT_SECRET=
-OAUTH2_REDIRECT_URI=http://localhost:3000/oauth2/callback
+# app.oauth.base-url — redirect-uri {baseUrl} 치환용 (기본 http://localhost:8080)
 ```
 
 ---
 
-## 7. 구현 체크리스트
+## 7. 에러 코드
 
-- [ ] `application-oauth.yml` 카카오·네이버 provider 설정
-- [ ] `OAuth2UserInfo` 인터페이스
-- [ ] `KakaoOAuth2UserInfo`, `NaverOAuth2UserInfo`
-- [ ] `CustomOAuth2User` (OAuth2User + userId/role 보유)
-- [ ] `CustomOAuth2UserService` — SOCIAL_ACCOUNTS 기반 사용자 조회·생성
-- [ ] `OAuth2AuthenticationSuccessHandler` — JWT 발급 후 리다이렉트
-- [ ] `SecurityConfig`에 `.oauth2Login()` 추가
-- [ ] `SocialAccountRepository` (`provider` + `provider_user_id` 복합 조회)
+| 상황 | ErrorCode | HTTP |
+|------|-----------|------|
+| 미지원 provider | `UNSUPPORTED_PROVIDER` | 400 |
+| 잘못된 인가코드(토큰 교환 4xx) | `INVALID_REQUEST` | 400 |
+| 제공자 응답 오류·타임아웃·id 누락 | `EXTERNAL_API_ERROR` | 500 |
+| 가입 티켓 위조·만료·purpose 불일치·provider 불일치 | `INVALID_TOKEN` | 401 |
+| 소셜계정·전화번호 중복 | `DUPLICATE_RESOURCE` | 409 |
+| 소셜계정은 있으나 user 없음 | `USER_NOT_FOUND` | 404 |
+
+> HTTP 상태는 각 `ErrorCode` enum 정의를 기준으로 확인할 것.
+
+---
+
+## 8. 구현 체크리스트
+
+- [x] `application-oauth.yml` 카카오·네이버 registration/provider 설정 (scope는 최소)
+- [x] `OAuthClient` + `RestClientOAuthClient` — 수동 코드교환, 타임아웃, 예외 매핑
+- [x] `OAuthProfile` — providerUserId만 정규화
+- [x] `OAuthLoginService` — SocialAccount 기반 로그인/가입 분기
+- [x] `SignupTicketProvider` — 단기 가입 티켓 발급·검증
+- [x] `AuthRegisterService` — 티켓 검증 + User/SocialAccount 생성 + 쿠키 발급
+- [x] `AuthController` — `/auth/oauth2/{provider}/callback`, `/auth/register`, `/auth/logout`, `/auth/reissue`
+- [x] `SocialAccountRepository` — `provider` + `provider_user_id` 복합 조회

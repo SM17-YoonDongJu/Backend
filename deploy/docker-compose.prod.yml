@@ -1,0 +1,220 @@
+# prod EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
+# 사용: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+# CD(main push)는 backend만 bounce: ... up -d --no-deps backend
+# 인프라(redis/kafka)는 최초 1회 full up 후 restart 정책으로 상주한다.
+# dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시 · kafka-ui 미포함.
+name: brbs
+
+services:
+  backend:
+    image: ${ECR_REGISTRY}/soma/backend:${BACKEND_TAG:-prod}
+    container_name: brbs-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      # actuator 관리 포트(9292)를 ALB 헬스체크용으로 호스트 게시.
+      # ⚠️ 인스턴스 SG에서 ALB SG로부터의 9292 인바운드만 허용할 것(외부 직접 노출 금지).
+      - "9292:9292"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
+      JWT_SECRET: ${JWT_SECRET}
+      AWS_REGION: ${AWS_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      # Apple(Web/Services ID): 콘솔 발급 4개 + refresh_token 암호화 키 1개(우리 생성). 값은 .env.prod에서 주입(미설정 시 apple 로그인만 비활성)
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID}
+      APPLE_KEY_ID: ${APPLE_KEY_ID}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
+      APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY}
+      # OAuth redirect_uri {baseUrl} 치환값 = 백엔드 API 도메인
+      OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://api.brbosang.com}
+      # 프론트가 콜백에 넘긴 redirect_uri를 허용할 오리진 = 프론트 도메인(API 아님)
+      OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-https://brbosang.com,https://www.brbosang.com}
+      # 쿠키 인증 CORS 허용 오리진 = 프론트 도메인(쿠키 인증이라 * 불가)
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-https://brbosang.com,https://www.brbosang.com}
+      # prod는 HTTPS. 프론트(brbosang.com)·API(api.brbosang.com)는 same-site라 SameSite=Lax로 충분(None 불필요)
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
+      AI_SERVICE_URL: ${AI_SERVICE_URL}
+      # actuator 관리 포트 분리(9292). health·metrics·prometheus를 관리 포트로 격리
+      MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
+      TZ: Asia/Seoul
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Kafka 워커(report-job 소비 · LangGraph · RAG). AI 레포가 이미지 배포. HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  # ⚠️ AI_BASE_URL(GPU 인스턴스) 연결 전에는 기동 실패할 수 있음 — backend는 --no-deps라 독립.
+  report:
+    image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-prod}
+    container_name: brbs-report
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SERVICE_NAME: report-worker
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
+      REDIS_URL: ${REDIS_URL}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
+      KAFKA_REPORT_JOB_TOPIC: ${KAFKA_REPORT_JOB_TOPIC}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP}
+      KAFKA_DLQ_SUFFIX: ${KAFKA_DLQ_SUFFIX:-.dlq}
+      KAFKA_MAX_RETRIES: ${KAFKA_MAX_RETRIES:-3}
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
+      TZ: Asia/Seoul
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). Kafka·S3 없음, Redis 필수.
+  chatbot:
+    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-prod}
+    container_name: brbs-chatbot
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SERVICE_NAME: chatbot
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
+      REDIS_URL: ${REDIS_URL}
+      AI_BASE_URL: ${AI_BASE_URL}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
+      TZ: Asia/Seoul
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: brbs-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: brbs-kafka
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9092:9092"
+      - "${BACKEND_PRIVATE_IP}:9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://${BACKEND_PRIVATE_IP}:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # 단일 브로커 → 내부 토픽 복제 계수 1 (apache 이미지는 기본값 3이라 명시 필요)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx1g"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+volumes:
+  redis-data:
+  kafka-data:
+
+networks:
+  brbs-net:
+    driver: bridge

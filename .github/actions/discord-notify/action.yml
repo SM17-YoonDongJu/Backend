@@ -1,0 +1,134 @@
+name: 'Discord Notify'
+description: 'Send status notification to Discord'
+inputs:
+  webhook:
+    description: 'Discord webhook URL'
+    required: true
+  status:
+    description: 'success | failure | cancelled'
+    required: true
+  title:
+    description: 'Notification title'
+    required: true
+  service:
+    description: 'Service name'
+    required: false
+    default: 'backend'
+  environment:
+    description: 'Environment (dev, prod)'
+    required: false
+    default: 'dev'
+  image_tag:
+    description: 'Docker image tag'
+    required: false
+    default: ''
+  failed_step:
+    description: 'Failed step name'
+    required: false
+    default: ''
+  duration:
+    description: 'Job duration'
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Send Discord notification
+      shell: bash
+      env:
+        WEBHOOK: ${{ inputs.webhook }}
+        STATUS: ${{ inputs.status }}
+        TITLE: ${{ inputs.title }}
+        SERVICE: ${{ inputs.service }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        IMAGE_TAG: ${{ inputs.image_tag }}
+        FAILED_STEP: ${{ inputs.failed_step }}
+        DURATION: ${{ inputs.duration }}
+        REPO: ${{ github.repository }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        BRANCH: ${{ github.ref_name }}
+        SHA: ${{ github.sha }}
+        ACTOR: ${{ github.actor }}
+        COMMIT_MSG: ${{ github.event.head_commit.message }}
+        WORKFLOW: ${{ github.workflow }}
+        WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+      run: |
+        if [ -z "$WEBHOOK" ]; then
+          echo "::warning::Discord webhook 미설정 — 알림을 건너뜁니다."
+          exit 0
+        fi
+
+        case "$STATUS" in
+          success)
+            COLOR=3066993
+            EMOJI="✅"
+            ;;
+          failure)
+            COLOR=15158332
+            EMOJI="❌"
+            ;;
+          cancelled)
+            COLOR=9807270
+            EMOJI="⚠️"
+            ;;
+          *)
+            COLOR=3447003
+            EMOJI="ℹ️"
+            ;;
+        esac
+        
+        SHORT_SHA=$(echo "$SHA" | cut -c1-7)
+        COMMIT_TITLE=$(echo "$COMMIT_MSG" | head -1 | sed 's/"/\\"/g' | cut -c1-100)
+        if [ -z "$COMMIT_TITLE" ]; then
+          COMMIT_TITLE="(커밋 메시지 없음)"
+        fi
+        
+        FIELDS='[
+          {"name": "서비스", "value": "'"$SERVICE"'", "inline": true},
+          {"name": "환경", "value": "'"$ENVIRONMENT"'", "inline": true},
+          {"name": "브랜치", "value": "'"$BRANCH"'", "inline": true},
+          {"name": "커밋", "value": "[`'"$SHORT_SHA"'`]('"$COMMIT_URL"')", "inline": true},
+          {"name": "작업자", "value": "'"$ACTOR"'", "inline": true}'
+        
+        if [ -n "$IMAGE_TAG" ]; then
+          FIELDS="$FIELDS"',
+          {"name": "이미지 태그", "value": "`'"$IMAGE_TAG"'`", "inline": true}'
+        fi
+        
+        if [ -n "$DURATION" ]; then
+          FIELDS="$FIELDS"',
+          {"name": "소요 시간", "value": "'"$DURATION"'", "inline": true}'
+        fi
+        
+        if [ -n "$FAILED_STEP" ]; then
+          FIELDS="$FIELDS"',
+          {"name": "실패 스텝", "value": "`'"$FAILED_STEP"'`", "inline": true}'
+        fi
+        
+        FIELDS="$FIELDS"',
+          {"name": "커밋 메시지", "value": "'"$COMMIT_TITLE"'", "inline": false},
+          {"name": "상세 로그", "value": "['"$WORKFLOW"' 실행 결과]('"$WORKFLOW_URL"')", "inline": false}
+        ]'
+        
+        JSON=$(cat <<END
+        {
+          "embeds": [{
+            "title": "$EMOJI $TITLE",
+            "color": $COLOR,
+            "fields": $FIELDS,
+            "footer": {
+              "text": "$REPO_NAME"
+            },
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+          }]
+        }
+        END
+        )
+        
+        RESPONSE=$(curl -s -w "\n%{http_code}" -H "Content-Type: application/json" -d "$JSON" "$WEBHOOK" || true)
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        
+        if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "200" ]; then
+          echo "::warning::Discord 알림 실패 (HTTP $HTTP_CODE)"
+        fi
