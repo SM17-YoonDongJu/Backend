@@ -48,7 +48,7 @@ class UserClaimJsonbRoundtripTest {
     // 네이티브 INSERT는 스키마의 NOT NULL(status·created_at 등)·default 유무에 취약하므로,
     // User.create로 저장해 JPA 매핑·Auditing이 값을 채우게 한다(test·default 프로파일 스키마 모두 정합).
     User user = userRepository.save(
-        User.create("테스트유저", LocalDate.of(2000, 1, 1), "", null, Role.USER));
+        User.create("테스트유저", LocalDate.of(2000, 1, 1), "", null, Role.USER, null));
     UUID userId = user.getId();
 
     ClaimDetails details = new MedicalIndemnityDetails(

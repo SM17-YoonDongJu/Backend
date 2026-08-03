@@ -63,6 +63,7 @@ public class User extends BaseEntity {
   @Column(name = "gender", nullable = false, length = 10)
   private String gender;
 
+  /** 활동/거주 지역. 가입 시 선택 입력이며 이후 {@link #updateProfile}로 수정한다. 미입력은 null(빈 배열 아님). */
   @JdbcTypeCode(SqlTypes.ARRAY)
   @Column(name = "region", columnDefinition = "text[]")
   private List<String> region;
@@ -74,11 +75,17 @@ public class User extends BaseEntity {
   private String avatarUrl;
 
   /**
-   * 소셜 로그인 신규 가입 시 사용하는 정적 팩터리. 이름·생년월일·성별·전화번호를 받고
-   * 상태는 ACTIVE로 시작한다.
+   * 소셜 로그인 신규 가입 시 사용하는 정적 팩터리. 이름·생년월일·성별·전화번호·지역을 받고
+   * 상태는 ACTIVE로 시작한다. 지역은 선택 입력이며 비어 있으면 빈 배열 대신 {@code null}로
+   * 정규화한다(탈퇴 시 region을 null로 파기하는 규약과 동일한 "미입력=null" 상태만 갖는다).
    */
   public static User create(
-      String nickname, LocalDate birthDate, String gender, String phoneNumber, Role role) {
+      String nickname,
+      LocalDate birthDate,
+      String gender,
+      String phoneNumber,
+      Role role,
+      @Nullable List<String> region) {
     User user = new User();
     user.nickname = nickname;
     user.birthDate = birthDate;
@@ -86,6 +93,7 @@ public class User extends BaseEntity {
     user.phoneNumber = phoneNumber;
     user.role = role;
     user.status = UserStatus.ACTIVE;
+    user.region = (region == null || region.isEmpty()) ? null : List.copyOf(region);
     return user;
   }
 

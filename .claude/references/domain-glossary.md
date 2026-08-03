@@ -187,6 +187,24 @@ NOT_SELECTED         ← 미채택. 접수 후 1주일 내 상담 완료(CLOSED)
 | 토큰 갱신 | POST | `/auth/refresh` |
 | 로그아웃 | POST | `/auth/logout` |
 
+#### `POST /auth/register` 요청 필드
+
+JSON 키는 Jackson 전역 SNAKE_CASE 적용 결과다(`RegisterRequest`).
+
+| JSON 키 | 타입 | 필수 | 저장 위치 | 설명 |
+|---------|------|------|-----------|------|
+| `provider` | string | Y | `social_accounts.provider` | `kakao`\|`naver`\|`apple`. 가입 티켓의 provider와 일치해야 한다 |
+| `social_token` | string | Y | - | 콜백에서 발급된 가입 티켓(short-lived JWT) |
+| `name` | string | Y | `users.nickname` | **이름(실명)**, 1~30자. 정식 키 |
+| `nickname` | string | N | `users.nickname` | `name`의 구 계약 별칭(`@JsonAlias`). 하위호환 전용이며 신규 클라이언트는 사용 금지. `name`과 **동시 전송 금지**(중복 시 JSON에서 나중에 온 값이 이긴다) |
+| `birth_date` | string(ISO date) | Y | `users.birth_date` | 과거 날짜 |
+| `phone_number` | string | Y | `users.phone_number` | `^01[0-9]-?\d{3,4}-?\d{4}$`, UNIQUE |
+| `gender` | string | Y | `users.gender` | 10자 이하. 빈 문자열 허용 |
+| `region` | string | N | `users.region` (`text[]`) | 활동/거주 지역, 100자 이하. 복수 지역은 `·`로 연결한 **단일 문자열**(`"서울·경기"`)로 보내고 서버가 `RegionFormat.toList`로 배열 변환한다. 미전송·빈 문자열·`·`뿐이면 빈 배열이 아니라 **NULL**로 저장 |
+| `user_type` | string | Y | `users.role` | `insured_person`\|`adjuster` → Role 매핑 |
+
+> **응답의 `nickname` 키는 요청과 비대칭이다.** `RegisterResponse`는 기존 계약 유지를 위해 `nickname`으로 내려준다(요청 정식 키는 `name`). 응답까지 `name`으로 통일하는 것은 브레이킹 체인지라 FE 합의 후 별도 이슈로 처리한다.
+
 ### user 도메인
 | 기능 | Method | Path |
 |------|--------|------|
