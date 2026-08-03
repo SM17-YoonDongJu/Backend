@@ -1,5 +1,7 @@
 package com.soma.backend.domain.auth.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +16,7 @@ import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.entity.Role;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
+import com.soma.backend.global.common.RegionFormat;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
@@ -53,8 +56,12 @@ public class AuthRegisterService {
 
     Role role = UserType.from(request.userType()).toRole();
 
+    // 지역은 프론트 계약상 "서울·경기" 형태의 단일 문자열이라 저장용 text[]로 되돌린다.
+    // 미입력이면 빈 리스트가 되고, User.create가 이를 null로 정규화한다(빈 배열을 만들지 않는다).
+    List<String> region = RegionFormat.toList(request.region());
+
     User user = User.create(
-        request.nickname(), request.birthDate(), request.gender(), request.phoneNumber(), role);
+        request.name(), request.birthDate(), request.gender(), request.phoneNumber(), role, region);
     userRepository.save(user);
 
     SocialAccount account = SocialAccount.create(

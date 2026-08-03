@@ -52,9 +52,9 @@ class ChatMessageRepositoryImplTest {
 
   @BeforeEach
   void setUp() {
-    User customer = userRepository.save(User.create("고객", LocalDate.of(1990, 1, 1), "F", null, Role.USER));
+    User customer = userRepository.save(User.create("고객", LocalDate.of(1990, 1, 1), "F", null, Role.USER, null));
     User adjuster = userRepository.save(
-        User.create("사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
     ChatRoom room =
         ChatRoomFixture.build(customer.getId(), adjuster.getId(), null, null, ChatRoomStatus.ACTIVE);
     roomId = chatRoomRepository.save(room).getId();
@@ -160,9 +160,9 @@ class ChatMessageRepositoryImplTest {
   @Test
   @DisplayName("다른 방의 메시지는 조회되지 않는다")
   void findByCursor_scopesToRoom() {
-    User otherCustomer = userRepository.save(User.create("타객", LocalDate.of(1990, 1, 1), "F", null, Role.USER));
+    User otherCustomer = userRepository.save(User.create("타객", LocalDate.of(1990, 1, 1), "F", null, Role.USER, null));
     User otherAdjuster = userRepository.save(
-        User.create("타사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("타사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
     ChatRoom otherRoom =
         ChatRoomFixture.build(otherCustomer.getId(), otherAdjuster.getId(), null, null, ChatRoomStatus.ACTIVE);
     UUID otherRoomId = chatRoomRepository.save(otherRoom).getId();

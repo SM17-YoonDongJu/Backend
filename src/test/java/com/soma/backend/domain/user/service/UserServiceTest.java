@@ -59,7 +59,7 @@ class UserServiceTest {
   private HttpServletResponse response;
 
   private User activeUser() {
-    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", Role.USER);
+    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", Role.USER, null);
   }
 
   @Test

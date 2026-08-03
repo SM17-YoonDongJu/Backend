@@ -61,9 +61,9 @@ class ChatRoomRepositoryImplTest {
 
   @BeforeEach
   void setUp() {
-    customer = userRepository.save(User.create("고객", LocalDate.of(1990, 1, 1), "F", null, Role.USER));
+    customer = userRepository.save(User.create("고객", LocalDate.of(1990, 1, 1), "F", null, Role.USER, null));
     adjuster = userRepository.save(
-        User.create("사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
   }
 
   private ChatRoom persistRoom(User user, User adjusterUser, UUID reportId, UUID reportReviewId) {
@@ -84,9 +84,9 @@ class ChatRoomRepositoryImplTest {
   @Test
   @DisplayName("내가 참여한 방만 반환한다(타인의 방은 제외)")
   void findMyRoomRows_returnsOnlyMyRooms() {
-    User otherCustomer = userRepository.save(User.create("타인", LocalDate.of(1990, 1, 1), "F", null, Role.USER));
+    User otherCustomer = userRepository.save(User.create("타인", LocalDate.of(1990, 1, 1), "F", null, Role.USER, null));
     User otherAdjuster = userRepository.save(
-        User.create("타사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("타사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
     ChatRoom myRoom = persistRoom(customer, adjuster, null, null);
     persistRoom(otherCustomer, otherAdjuster, null, null);
 
@@ -99,11 +99,11 @@ class ChatRoomRepositoryImplTest {
   @DisplayName("정렬은 last_message_at DESC NULLS LAST — 최신 활동방이 먼저, 메시지 없는 방은 마지막")
   void findMyRoomRows_ordersByLastMessageAtDescNullsLast() {
     User adjusterA = userRepository.save(
-        User.create("사정사A", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("사정사A", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
     User adjusterB = userRepository.save(
-        User.create("사정사B", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("사정사B", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
     User adjusterC = userRepository.save(
-        User.create("사정사C", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("사정사C", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
 
     ChatRoom olderActivity = persistRoom(customer, adjusterA, null, null);
     ReflectionTestUtils.setField(olderActivity, "lastMessageAt", LocalDateTime.of(2026, 1, 1, 0, 0));
@@ -133,7 +133,7 @@ class ChatRoomRepositoryImplTest {
     ChatRoom pipelineRoom = persistRoom(customer, adjuster, report.getId(), review.getId());
 
     User searchAdjuster = userRepository.save(
-        User.create("검색사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER));
+        User.create("검색사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
     ChatRoom searchRoom = persistRoom(customer, searchAdjuster, null, null);
 
     List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId());

@@ -234,7 +234,7 @@ class CustomerReportDetailExecutionTest {
 
   private UUID saveAdjuster(String nickname, Integer career) {
     UUID adjusterId = userRepository.save(
-        User.create(nickname, LocalDate.of(1985, 3, 3), "M", null, Role.CERTIFICATED_ADJUSTER)).getId();
+        User.create(nickname, LocalDate.of(1985, 3, 3), "M", null, Role.CERTIFICATED_ADJUSTER, null)).getId();
     AdjusterProfile profile = BeanUtils.instantiateClass(AdjusterProfile.class);
     ReflectionTestUtils.setField(profile, "userId", adjusterId);
     ReflectionTestUtils.setField(profile, "career", career);
