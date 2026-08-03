@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAttachment;
@@ -53,11 +54,13 @@ public record ReviewWorkspaceResponse(
 
   public static ReviewWorkspaceResponse from(
       Report report, ReviewContextRow context, List<String> region, ClaimDetails claimDetails,
-      List<ReportIssue> aiIssues, ReportReview review, List<ReportAttachment> attachments) {
+      List<ReportIssue> aiIssues, ReportReview review, List<ReportAttachment> attachments,
+      UnaryOperator<String> urlResolver) {
     boolean started = review != null;
     String regionText = ReportResponseSupport.joinRegion(region);
     List<IssueItem> issues = mergeIssues(aiIssues, review);
-    List<AttachmentItem> attachmentItems = attachments.stream().map(AttachmentItem::from).toList();
+    List<AttachmentItem> attachmentItems =
+        attachments.stream().map(attachment -> AttachmentItem.from(attachment, urlResolver)).toList();
     Estimate aiEstimate = new Estimate(report.getClaimedMinAmount(), report.getClaimedMaxAmount());
     Estimate adjusterEstimate =
         started ? new Estimate(review.getEstimateMinAmount(), review.getEstimateMaxAmount()) : null;
@@ -208,12 +211,12 @@ public record ReviewWorkspaceResponse(
       LocalDate issuedAt,
       String aiSummary) {
 
-    public static AttachmentItem from(ReportAttachment attachment) {
+    public static AttachmentItem from(ReportAttachment attachment, UnaryOperator<String> urlResolver) {
       return new AttachmentItem(
           attachment.getId(),
           attachment.getName(),
           attachment.getMimeType(),
-          attachment.getUrl(),
+          urlResolver.apply(attachment.getUrl()),
           attachment.getReportType(),
           attachment.getPageCount(),
           attachment.getIssuedBy(),

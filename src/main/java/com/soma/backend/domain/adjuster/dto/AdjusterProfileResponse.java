@@ -3,6 +3,7 @@ package com.soma.backend.domain.adjuster.dto;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
@@ -61,7 +62,7 @@ public record AdjusterProfileResponse(
    */
   public static AdjusterProfileResponse from(
       AdjusterProfile profile, User user, List<AdjusterReviewRow> recent,
-      long handledCaseCount, int pendingReviewCount) {
+      long handledCaseCount, int pendingReviewCount, UnaryOperator<String> urlResolver) {
     Integer rawReviewCount = profile.getReviewCount();
     int reviewCount = rawReviewCount == null ? 0 : rawReviewCount;
     double averageRating = resolveAverageRating(rawReviewCount, profile);
@@ -70,7 +71,7 @@ public record AdjusterProfileResponse(
         profile.getUserId(),
         user.getNickname(),
         orEmpty(profile.getHeadline()),
-        user.getAvatarUrl(),
+        urlResolver.apply(user.getAvatarUrl()),
         RegionFormat.toSingle(profile.getActivityRegion()),
         orEmpty(profile.getIntroduction()),
         profile.getSpecialties() == null ? List.of() : profile.getSpecialties(),

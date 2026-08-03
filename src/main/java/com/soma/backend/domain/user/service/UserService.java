@@ -19,6 +19,7 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /**
  * 내 정보 조회·수정·탈퇴 유스케이스.
@@ -36,13 +37,15 @@ public class UserService {
   private final SocialAccountRepository socialAccountRepository;
   private final AuthTokenService authTokenService;
   private final OutboxEventPublisher outboxEventPublisher;
+  private final S3UploadService s3UploadService;
 
   /**
    * 내 정보를 조회한다. 존재하지 않거나 이미 탈퇴한 계정이면 {@code USER_NOT_FOUND}.
    */
   @Transactional(readOnly = true)
   public UserMeResponse getMe(UUID userId) {
-    return UserMeResponse.from(findActiveUser(userId), resolveSocialProvider(userId));
+    return UserMeResponse.from(
+        findActiveUser(userId), resolveSocialProvider(userId), s3UploadService::presignedGetUrl);
   }
 
   /**
@@ -63,7 +66,7 @@ public class UserService {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
     user.updateProfile(newPhone, request.region(), request.avatarUrl());
-    return UserMeResponse.from(user, resolveSocialProvider(userId));
+    return UserMeResponse.from(user, resolveSocialProvider(userId), s3UploadService::presignedGetUrl);
   }
 
   /**

@@ -3,6 +3,7 @@ package com.soma.backend.domain.user.dto;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
@@ -26,7 +27,8 @@ public record UserMeResponse(
     @Nullable String socialProvider,
     LocalDateTime createdAt) {
 
-  public static UserMeResponse from(User user, @Nullable String socialProvider) {
+  public static UserMeResponse from(
+      User user, @Nullable String socialProvider, UnaryOperator<String> urlResolver) {
     return new UserMeResponse(
         user.getId(),
         user.getNickname(),
@@ -34,7 +36,7 @@ public record UserMeResponse(
         user.getRole().name(),
         user.getGender(),
         user.getRegion(),
-        user.getAvatarUrl(),
+        urlResolver.apply(user.getAvatarUrl()),
         socialProvider,
         user.getCreatedAt());
   }

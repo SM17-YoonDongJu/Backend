@@ -26,6 +26,7 @@ import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /** 채팅방 목록·단건 상세(설계서 §4 ①) 단위 테스트. me 기준 상대방 결정·unread null 방어를 검증한다. */
 @ExtendWith(MockitoExtension.class)
@@ -33,6 +34,9 @@ class ChatRoomQueryServiceTest {
 
   @Mock
   private ChatRoomRepository chatRoomRepository;
+
+  @Mock
+  private S3UploadService s3UploadService;
 
   @InjectMocks
   private ChatRoomQueryService service;
@@ -47,6 +51,7 @@ class ChatRoomQueryServiceTest {
         "20260520-017", AccidentType.TRAFFIC, me, adjusterId, "고객닉네임", "사정사닉네임", "고객아바타", "사정사아바타",
         "마지막 메시지", LocalDateTime.now(), 3L, null);
     given(chatRoomRepository.findMyRoomRows(me)).willReturn(List.of(row));
+    given(s3UploadService.presignedGetUrl("사정사아바타")).willReturn("사정사아바타");
 
     ChatRoomListResponse response = service.listMyRooms(me);
 

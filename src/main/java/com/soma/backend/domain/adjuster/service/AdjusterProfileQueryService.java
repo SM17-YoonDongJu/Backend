@@ -24,6 +24,7 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /**
  * 손해사정사 마이페이지/프로필 조회 유스케이스(GET /adjusters/me/mypage, GET /adjusters/me/profile).
@@ -50,6 +51,7 @@ public class AdjusterProfileQueryService {
   private final AdjusterHomeRepository adjusterHomeRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final AdjusterReviewRepository adjusterReviewRepository;
+  private final S3UploadService s3UploadService;
 
   /** 마이페이지 4개 섹션(프로필·통계·당월 활동·자격) 집계 조회. */
   public AdjusterMyPageResponse getMyPage(UUID userId) {
@@ -71,7 +73,8 @@ public class AdjusterProfileQueryService {
         reportReviewRepository.countReachedConsultationByAdjusterIdBetween(userId, monthFrom, monthTo);
 
     return AdjusterMyPageResponse.from(
-        profile, user, totalCompleted, conversionRate, monthlyCompleted, monthlyConsultConverted);
+        profile, user, totalCompleted, conversionRate, monthlyCompleted, monthlyConsultConverted,
+        s3UploadService::presignedGetUrl);
   }
 
   /** 프로필 수정 화면 초기값용 flat 프로필 조회(누적 통계 + 최근 후기 2건). */
@@ -87,7 +90,9 @@ public class AdjusterProfileQueryService {
     // 본인이 보류한 건을 제외한 검수 대기 풀(countPendingPoolNotHeldBy)로 센다(보류 시 검수 대기 -1).
     int pendingReviewCount = Math.toIntExact(adjusterHomeRepository.countPendingPoolNotHeldBy(userId));
 
-    return AdjusterProfileResponse.from(profile, user, recentReviews, handledCaseCount, pendingReviewCount);
+    return AdjusterProfileResponse.from(
+        profile, user, recentReviews, handledCaseCount, pendingReviewCount,
+        s3UploadService::presignedGetUrl);
   }
 
   /**
@@ -103,7 +108,8 @@ public class AdjusterProfileQueryService {
         .getContent();
     long handledCaseCount = reportReviewRepository.countByAdjusterId(adjusterId);
 
-    return AdjusterDetailResponse.from(profile, user, recentReviews, handledCaseCount);
+    return AdjusterDetailResponse.from(
+        profile, user, recentReviews, handledCaseCount, s3UploadService::presignedGetUrl);
   }
 
   private AdjusterProfile findProfile(UUID userId) {

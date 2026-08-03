@@ -39,6 +39,7 @@ import com.soma.backend.domain.report.repository.ReviewContextRow;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /** 검수 화면 워크스페이스 집계 조회 단위 테스트: 작업본 유무에 따른 resolved 전환과 쟁점 병합을 검증한다. */
 @ExtendWith(MockitoExtension.class)
@@ -54,6 +55,8 @@ class ReviewWorkspaceQueryServiceTest {
   private ReportAttachmentRepository reportAttachmentRepository;
   @Mock
   private UserClaimRepository userClaimRepository;
+  @Mock
+  private S3UploadService s3UploadService;
 
   @InjectMocks
   private ReviewWorkspaceQueryService service;
