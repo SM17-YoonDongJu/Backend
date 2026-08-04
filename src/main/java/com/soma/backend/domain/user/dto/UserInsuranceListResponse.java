@@ -3,6 +3,7 @@ package com.soma.backend.domain.user.dto;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
@@ -29,7 +30,7 @@ public record UserInsuranceListResponse(List<Item> list) {
       List<String> coverages,
       @Nullable String policyFileUrl) {
 
-    public static Item from(UserInsurance insurance) {
+    public static Item from(UserInsurance insurance, UnaryOperator<String> urlResolver) {
       return new Item(
           insurance.getId(),
           insurance.getInsurerName(),
@@ -37,11 +38,17 @@ public record UserInsuranceListResponse(List<Item> list) {
           insurance.getPolicyNo(),
           insurance.getEnrolledAt(),
           insurance.getCoverages() == null ? List.of() : insurance.getCoverages(),
-          insurance.getPolicyFileUrl());
+          urlResolver.apply(insurance.getPolicyFileUrl()));
     }
   }
 
-  public static UserInsuranceListResponse from(List<UserInsurance> insurances) {
-    return new UserInsuranceListResponse(insurances.stream().map(Item::from).toList());
+  /**
+   * @param urlResolver 저장된 {@code policy_file_url}(private S3 객체)을 단기 presigned GET URL로 치환하는
+   *                    함수(보통 {@code S3UploadService::presignedGetUrl}). 미등록(null)·외부 URL은 그대로 통과한다.
+   */
+  public static UserInsuranceListResponse from(
+      List<UserInsurance> insurances, UnaryOperator<String> urlResolver) {
+    return new UserInsuranceListResponse(
+        insurances.stream().map(insurance -> Item.from(insurance, urlResolver)).toList());
   }
 }

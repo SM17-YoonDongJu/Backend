@@ -26,6 +26,7 @@ import com.soma.backend.domain.adjuster.repository.AdjusterListCondition;
 import com.soma.backend.domain.adjuster.repository.AdjusterListMetaRow;
 import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
 import com.soma.backend.domain.user.entity.Role;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /**
  * 사정사 목록/검색 유스케이스 단위 테스트. 리포지토리를 목으로 두고 서비스 자체 로직만 검증한다
@@ -39,6 +40,9 @@ class AdjusterListQueryServiceTest {
 
   @Mock
   private AdjusterProfileRepository adjusterProfileRepository;
+
+  @Mock
+  private S3UploadService s3UploadService;
 
   @Captor
   private ArgumentCaptor<Pageable> pageableCaptor;
@@ -131,6 +135,7 @@ class AdjusterListQueryServiceTest {
         .willReturn(new PageImpl<>(List.of(row), Pageable.ofSize(12), 1));
     given(adjusterProfileRepository.findAdjusterListMeta())
         .willReturn(new AdjusterListMetaRow(1L, 4.5, 30L, 7));
+    given(s3UploadService.presignedGetUrl("https://cdn/a.png")).willReturn("https://cdn/a.png");
 
     AdjusterListResponse result =
         adjusterListQueryService.getAdjusters(null, null, null, null, 1, 12);

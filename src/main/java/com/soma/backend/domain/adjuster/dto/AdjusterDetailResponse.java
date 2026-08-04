@@ -3,6 +3,7 @@ package com.soma.backend.domain.adjuster.dto;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
@@ -77,7 +78,8 @@ public record AdjusterDetailResponse(
    * {@code verified}는 자격 인증 사정사 여부로, RBAC 권한(Role.CERTIFICATED_ADJUSTER)을 진실의 원천으로 쓴다.
    */
   public static AdjusterDetailResponse from(
-      AdjusterProfile profile, User user, List<AdjusterReviewRow> recent, long handledCaseCount) {
+      AdjusterProfile profile, User user, List<AdjusterReviewRow> recent, long handledCaseCount,
+      UnaryOperator<String> urlResolver) {
     Integer rawReviewCount = profile.getReviewCount();
     int reviewCount = rawReviewCount == null ? 0 : rawReviewCount;
     double averageRating = resolveAverageRating(rawReviewCount, profile);
@@ -85,7 +87,7 @@ public record AdjusterDetailResponse(
     return new AdjusterDetailResponse(
         profile.getUserId(),
         user.getNickname(),
-        user.getAvatarUrl(),
+        urlResolver.apply(user.getAvatarUrl()),
         profile.getHeadline() == null ? "" : profile.getHeadline(),
         RegionFormat.toSingle(profile.getActivityRegion()),
         profile.getIntroduction() == null ? "" : profile.getIntroduction(),
