@@ -1,8 +1,10 @@
 package com.soma.backend.domain.auth.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -16,6 +18,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -29,6 +32,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import jakarta.servlet.http.HttpServletResponse;
 
 import com.soma.backend.domain.auth.dto.OAuthCallbackResponse;
+import com.soma.backend.domain.auth.dto.RegisterRequest;
 import com.soma.backend.domain.auth.dto.RegisterResponse;
 import com.soma.backend.domain.auth.service.AuthLogoutService;
 import com.soma.backend.domain.auth.service.AuthRegisterService;
@@ -82,6 +86,23 @@ class AuthControllerTest {
         .maxAge(maxAge)
         .build();
     response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+  }
+
+  /**
+   * register 요청 바디를 만든다. 케이스마다 달라지는 이름·지역 필드만 {@code nameAndRegion}으로 받고
+   * (각 필드는 뒤에 쉼표를 포함한 조각으로 전달), 나머지 필수 필드는 공통값으로 채운다.
+   */
+  private String registerBody(String nameAndRegion) {
+    return "{\"provider\":\"kakao\",\"social_token\":\"ticket\"," + nameAndRegion
+        + "\"birth_date\":\"1990-01-01\",\"phone_number\":\"010-1234-5678\","
+        + "\"gender\":\"남\",\"user_type\":\"insured_person\"}";
+  }
+
+  /** 컨트롤러가 서비스로 넘긴 요청 DTO를 캡처한다(역직렬화 결과 = API 계약 검증용). */
+  private RegisterRequest capturedRegisterRequest() {
+    ArgumentCaptor<RegisterRequest> captor = ArgumentCaptor.forClass(RegisterRequest.class);
+    then(authRegisterService).should().register(any(HttpServletResponse.class), captor.capture());
+    return captor.getValue();
   }
 
   @Test
@@ -141,20 +162,82 @@ class AuthControllerTest {
       return new RegisterResponse(userId, "nickname", "USER");
     }).given(authRegisterService).register(any(HttpServletResponse.class), any());
 
-    String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
-
     // When & Then
     mockMvc.perform(post("/auth/register")
             .contentType(MediaType.APPLICATION_JSON)
-            .content(body))
+            .content(registerBody("\"name\":\"홍길동\",\"region\":\"서울·경기\",")))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.status").value("201"))
         .andExpect(jsonPath("$.message").value("회원가입이 완료되었습니다."))
         .andExpect(jsonPath("$.data.user_id").value(userId.toString()))
         .andExpect(jsonPath("$.data.role").value("USER"))
         .andExpect(cookie().exists(CookieProvider.ACCESS_TOKEN_COOKIE));
+
+    RegisterRequest captured = capturedRegisterRequest();
+    assertThat(captured.name()).isEqualTo("홍길동");
+    assertThat(captured.region()).isEqualTo("서울·경기");
+  }
+
+  @Test
+  @DisplayName("register-구 클라이언트가 nickname 키만 보내도 별칭으로 수용해 201을 반환한다")
+  void register_legacyNicknameKey_isAcceptedAsAlias() throws Exception {
+    // Given
+    given(authRegisterService.register(any(HttpServletResponse.class), any()))
+        .willReturn(new RegisterResponse(UUID.randomUUID(), "홍길동", "USER"));
+
+    // When & Then
+    mockMvc.perform(post("/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(registerBody("\"nickname\":\"홍길동\",")))
+        .andExpect(status().isCreated());
+
+    assertThat(capturedRegisterRequest().name()).isEqualTo("홍길동");
+  }
+
+  @Test
+  @DisplayName("register-name과 nickname을 동시에 보내면 JSON에서 나중에 온 값이 이긴다(동시 전송 금지 계약)")
+  void register_bothNameAndNickname_lastOneWins() throws Exception {
+    // Given
+    given(authRegisterService.register(any(HttpServletResponse.class), any()))
+        .willReturn(new RegisterResponse(UUID.randomUUID(), "홍길동", "USER"));
+
+    // When & Then
+    mockMvc.perform(post("/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(registerBody("\"name\":\"이름A\",\"nickname\":\"이름B\",")))
+        .andExpect(status().isCreated());
+
+    assertThat(capturedRegisterRequest().name()).isEqualTo("이름B");
+  }
+
+  @Test
+  @DisplayName("register-region을 보내지 않아도 201이며 region은 null로 전달된다")
+  void register_withoutRegion_passesNull() throws Exception {
+    // Given
+    given(authRegisterService.register(any(HttpServletResponse.class), any()))
+        .willReturn(new RegisterResponse(UUID.randomUUID(), "홍길동", "USER"));
+
+    // When & Then
+    mockMvc.perform(post("/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(registerBody("\"name\":\"홍길동\",")))
+        .andExpect(status().isCreated());
+
+    assertThat(capturedRegisterRequest().region()).isNull();
+  }
+
+  @Test
+  @DisplayName("register-region이 100자를 넘으면 400 BAD_REQUEST")
+  void register_regionTooLong_returns400() throws Exception {
+    // Given
+    String longRegion = "서".repeat(101);
+
+    // When & Then
+    mockMvc.perform(post("/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(registerBody("\"name\":\"홍길동\",\"region\":\"" + longRegion + "\",")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
   }
 
   @Test
@@ -164,14 +247,10 @@ class AuthControllerTest {
     willThrow(new BusinessException(ErrorCode.DUPLICATE_RESOURCE))
         .given(authRegisterService).register(any(HttpServletResponse.class), any());
 
-    String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
-
     // When & Then
     mockMvc.perform(post("/auth/register")
             .contentType(MediaType.APPLICATION_JSON)
-            .content(body))
+            .content(registerBody("\"name\":\"홍길동\",\"region\":\"서울\",")))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("DUPLICATE_RESOURCE"));
   }
@@ -183,14 +262,10 @@ class AuthControllerTest {
     willThrow(new BusinessException(ErrorCode.INVALID_TOKEN))
         .given(authRegisterService).register(any(HttpServletResponse.class), any());
 
-    String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"홍길동\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
-
     // When & Then
     mockMvc.perform(post("/auth/register")
             .contentType(MediaType.APPLICATION_JSON)
-            .content(body))
+            .content(registerBody("\"name\":\"홍길동\",\"region\":\"서울\",")))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("INVALID_TOKEN"));
   }
@@ -198,15 +273,21 @@ class AuthControllerTest {
   @Test
   @DisplayName("register-@Valid 실패(빈 이름)면 400 BAD_REQUEST")
   void register_validationFail_returns400() throws Exception {
-    // Given
-    String body = "{\"provider\":\"kakao\",\"social_token\":\"ticket\","
-        + "\"nickname\":\"\",\"birth_date\":\"1990-01-01\","
-        + "\"phone_number\":\"010-1234-5678\",\"gender\":\"남\",\"user_type\":\"insured_person\"}";
-
     // When & Then
     mockMvc.perform(post("/auth/register")
             .contentType(MediaType.APPLICATION_JSON)
-            .content(body))
+            .content(registerBody("\"name\":\"\",")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+  }
+
+  @Test
+  @DisplayName("register-name·nickname을 모두 보내지 않으면 400 BAD_REQUEST")
+  void register_missingNameAndNickname_returns400() throws Exception {
+    // When & Then
+    mockMvc.perform(post("/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(registerBody("")))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
   }

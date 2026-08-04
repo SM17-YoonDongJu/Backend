@@ -2,6 +2,7 @@ package com.soma.backend.domain.adjuster.dto;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
@@ -38,7 +39,7 @@ public record AdjusterListResponse(
       int completedConsultCount,
       String activityRegion) {
 
-    public static Item from(AdjusterCardRow row) {
+    public static Item from(AdjusterCardRow row, UnaryOperator<String> urlResolver) {
       int reviewCount = row.reviewCount() == null ? 0 : row.reviewCount();
       double averageRating = reviewCount == 0 || row.ratingMean() == null
           ? 0.0
@@ -46,7 +47,7 @@ public record AdjusterListResponse(
       return new Item(
           row.adjusterId(),
           row.nickname(),
-          row.avatarUrl(),
+          urlResolver.apply(row.avatarUrl()),
           row.role() == Role.CERTIFICATED_ADJUSTER,
           row.specialties() == null ? List.of() : row.specialties(),
           row.headline() == null ? "" : row.headline(),
@@ -75,8 +76,10 @@ public record AdjusterListResponse(
       int averageCareer) {
   }
 
-  public static AdjusterListResponse from(Page<AdjusterCardRow> page, int pageNumber, AdjusterListMetaRow meta) {
-    List<Item> items = page.getContent().stream().map(Item::from).toList();
+  public static AdjusterListResponse from(
+      Page<AdjusterCardRow> page, int pageNumber, AdjusterListMetaRow meta,
+      UnaryOperator<String> urlResolver) {
+    List<Item> items = page.getContent().stream().map(row -> Item.from(row, urlResolver)).toList();
     Pagination pagination = new Pagination(
         pageNumber, page.getSize(), page.getTotalElements(), page.getTotalPages(), page.hasNext());
     Meta metaBlock = new Meta(

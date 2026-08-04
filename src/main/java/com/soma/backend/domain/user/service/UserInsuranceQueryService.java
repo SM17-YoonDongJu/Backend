@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.user.dto.UserInsuranceListResponse;
 import com.soma.backend.domain.user.repository.UserInsuranceRepository;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /**
  * 내 보험 정보 조회 유스케이스(조회 전용). 대상은 항상 요청 principal 본인이라 별도 인가 없이 userId로만
@@ -20,9 +21,11 @@ import com.soma.backend.domain.user.repository.UserInsuranceRepository;
 public class UserInsuranceQueryService {
 
   private final UserInsuranceRepository userInsuranceRepository;
+  private final S3UploadService s3UploadService;
 
   public UserInsuranceListResponse getMyInsurances(UUID userId) {
     return UserInsuranceListResponse.from(
-        userInsuranceRepository.findByUserIdOrderByCreatedAtDesc(userId));
+        userInsuranceRepository.findByUserIdOrderByCreatedAtDesc(userId),
+        s3UploadService::presignedGetUrl);
   }
 }

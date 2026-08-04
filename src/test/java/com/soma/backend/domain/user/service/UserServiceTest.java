@@ -35,6 +35,7 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
+import com.soma.backend.infra.s3.S3UploadService;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserService 단위 테스트")
@@ -58,8 +59,11 @@ class UserServiceTest {
   @Mock
   private HttpServletResponse response;
 
+  @Mock
+  private S3UploadService s3UploadService;
+
   private User activeUser() {
-    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", Role.USER);
+    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", Role.USER, null);
   }
 
   @Test
@@ -162,6 +166,7 @@ class UserServiceTest {
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
     UserUpdateRequest request = new UserUpdateRequest(null, List.of("서울"), "https://img/new.png");
+    given(s3UploadService.presignedGetUrl("https://img/new.png")).willReturn("https://img/new.png");
 
     // When
     UserMeResponse result = userService.updateMe(userId, request);

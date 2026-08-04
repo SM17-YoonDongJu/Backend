@@ -29,6 +29,9 @@ import software.amazon.awssdk.services.s3.S3Utilities;
 import software.amazon.awssdk.services.s3.model.GetUrlRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -47,6 +50,10 @@ class S3UploadServiceTest {
   private static final String CONTENT_TYPE = "image/png";
   private static final String OBJECT_URL =
       "https://test-bucket.s3.ap-northeast-2.amazonaws.com/avatars/uuid.png";
+  private static final String DOCUMENT_KEY = "report-documents/uuid.pdf";
+  private static final String PRESIGNED_URL =
+      "https://test-bucket.s3.ap-northeast-2.amazonaws.com/avatars/uuid.png?X-Amz-Signature=abc";
+  private static final String EXTERNAL_URL = "https://cdn.example.com/profile.png";
   private static final byte[] BYTES = {(byte) 0x89, 0x50, 0x4E, 0x47};
 
   @InjectMocks
@@ -54,6 +61,9 @@ class S3UploadServiceTest {
 
   @Mock
   private S3Client s3Client;
+
+  @Mock
+  private S3Presigner s3Presigner;
 
   @BeforeEach
   void setBucket() {
@@ -126,5 +136,67 @@ class S3UploadServiceTest {
     then(utilities).should().getUrl(captor.capture());
     assertThat(captor.getValue().bucket()).isEqualTo(BUCKET);
     assertThat(captor.getValue().key()).isEqualTo(KEY);
+  }
+
+  @Test
+  @DisplayName("presignedGetUrl은 bare key를 그대로 실어 단기 서명 GET URL을 발급한다")
+  void presignedGetUrl_bareKey_signsWithKey() throws Exception {
+    // Given
+    givenPresignerReturns(PRESIGNED_URL);
+
+    // When
+    String result = s3UploadService.presignedGetUrl(DOCUMENT_KEY);
+
+    // Then
+    assertThat(result).isEqualTo(PRESIGNED_URL);
+    assertThat(capturedPresignRequest().getObjectRequest().bucket()).isEqualTo(BUCKET);
+    assertThat(capturedPresignRequest().getObjectRequest().key()).isEqualTo(DOCUMENT_KEY);
+  }
+
+  @Test
+  @DisplayName("presignedGetUrl은 우리 버킷 object URL이면 path에서 key를 뽑아 서명한다")
+  void presignedGetUrl_ourBucketUrl_extractsKey() throws Exception {
+    // Given
+    givenPresignerReturns(PRESIGNED_URL);
+
+    // When
+    String result = s3UploadService.presignedGetUrl(OBJECT_URL);
+
+    // Then
+    assertThat(result).isEqualTo(PRESIGNED_URL);
+    assertThat(capturedPresignRequest().getObjectRequest().key()).isEqualTo(KEY);
+  }
+
+  @Test
+  @DisplayName("presignedGetUrl은 외부 호스트 URL(소셜 프로필 등)이면 서명하지 않고 원본을 반환한다")
+  void presignedGetUrl_externalUrl_returnsOriginal() {
+    // When
+    String result = s3UploadService.presignedGetUrl(EXTERNAL_URL);
+
+    // Then
+    assertThat(result).isEqualTo(EXTERNAL_URL);
+    then(s3Presigner).shouldHaveNoInteractions();
+  }
+
+  @Test
+  @DisplayName("presignedGetUrl은 null·blank는 서명 없이 그대로 통과시킨다")
+  void presignedGetUrl_nullOrBlank_passesThrough() {
+    // When & Then
+    assertThat(s3UploadService.presignedGetUrl(null)).isNull();
+    assertThat(s3UploadService.presignedGetUrl("  ")).isEqualTo("  ");
+    then(s3Presigner).shouldHaveNoInteractions();
+  }
+
+  private void givenPresignerReturns(String url) throws Exception {
+    PresignedGetObjectRequest presigned = mock(PresignedGetObjectRequest.class);
+    given(presigned.url()).willReturn(URI.create(url).toURL());
+    given(s3Presigner.presignGetObject(any(GetObjectPresignRequest.class))).willReturn(presigned);
+  }
+
+  private GetObjectPresignRequest capturedPresignRequest() {
+    ArgumentCaptor<GetObjectPresignRequest> captor =
+        ArgumentCaptor.forClass(GetObjectPresignRequest.class);
+    then(s3Presigner).should().presignGetObject(captor.capture());
+    return captor.getValue();
   }
 }

@@ -60,7 +60,7 @@ class DevLoginServiceTest {
   @Test
   @DisplayName("기존 유저가 있으면 재사용하고 새로 생성하지 않는다")
   void login_reusesExistingUser() {
-    User existing = User.create("길동", LocalDate.of(1990, 1, 1), "MALE", null, Role.USER);
+    User existing = User.create("길동", LocalDate.of(1990, 1, 1), "MALE", null, Role.USER, null);
     given(userRepository.findByNickname("길동")).willReturn(Optional.of(existing));
     given(jwtProvider.generateAccessToken(any(), any())).willReturn("t");
     given(cookieProvider.buildAccessTokenCookie(any()))

@@ -2,6 +2,7 @@ package com.soma.backend.domain.adjuster.dto;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
@@ -79,7 +80,8 @@ public record AdjusterMyPageResponse(
       long totalCompletedCount,
       int consultationConversionRate,
       long monthlyCompletedCount,
-      long monthlyConsultConvertedCount) {
+      long monthlyConsultConvertedCount,
+      UnaryOperator<String> urlResolver) {
     Integer rawReviewCount = profile.getReviewCount();
     int reviewCount = rawReviewCount == null ? 0 : rawReviewCount;
     double averageRating = resolveAverageRating(rawReviewCount, profile);
@@ -88,7 +90,7 @@ public record AdjusterMyPageResponse(
     Profile profileSection = new Profile(
         user.getNickname(),
         null, // email: V2__replace_email_with_phone.sql로 users.email 제거됨 — 재수집 전까지 소스 없음(항상 null)
-        user.getAvatarUrl(),
+        urlResolver.apply(user.getAvatarUrl()),
         profile.getHeadline(),
         profile.getSpecialties() == null ? List.of() : profile.getSpecialties(),
         profile.getCareer(),

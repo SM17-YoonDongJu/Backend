@@ -19,6 +19,7 @@ import com.soma.backend.domain.adjuster.repository.AdjusterHomeRepository;
 import com.soma.backend.domain.adjuster.repository.AdjusterIdentityRow;
 import com.soma.backend.domain.adjuster.repository.InProgressCaseRow;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /**
  * 사정사 홈 대시보드 집계 유스케이스(CQRS, 조회 전용). 검수 대기 풀 카운트(global)와 요청 사정사의
@@ -43,6 +44,7 @@ public class AdjusterHomeQueryService {
 
   private final AdjusterHomeRepository adjusterHomeRepository;
   private final ReportReviewRepository reportReviewRepository;
+  private final S3UploadService s3UploadService;
 
   public AdjusterHomeResponse getHome(UUID adjusterId, int inProgressLimit) {
     int limit = clampLimit(inProgressLimit);
@@ -95,7 +97,7 @@ public class AdjusterHomeQueryService {
   private Adjuster toAdjuster(UUID adjusterId, AdjusterIdentityRow identity) {
     String name = identity == null ? null : identity.name();
     String avatarUrl = identity == null ? null : identity.avatarUrl();
-    return new Adjuster(adjusterId, name, avatarUrl);
+    return new Adjuster(adjusterId, name, s3UploadService.presignedGetUrl(avatarUrl));
   }
 
   /**

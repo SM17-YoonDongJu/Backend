@@ -23,6 +23,7 @@ import com.soma.backend.domain.report.repository.ReviewContextRow;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.s3.S3UploadService;
 
 /**
  * 검수 화면(편집 워크스페이스) 집계 조회 유스케이스(CQRS). AI 초안(REPORTS/REPORT_ISSUES)·사정사 작업본
@@ -39,6 +40,7 @@ public class ReviewWorkspaceQueryService {
   private final ReportReviewRepository reportReviewRepository;
   private final ReportAttachmentRepository reportAttachmentRepository;
   private final UserClaimRepository userClaimRepository;
+  private final S3UploadService s3UploadService;
 
   public ReviewWorkspaceResponse getReviewWorkspace(UUID reportId, UUID adjusterId) {
     Report report = reportRepository.findById(reportId)
@@ -54,6 +56,8 @@ public class ReviewWorkspaceQueryService {
     List<ReportIssue> aiIssues = reportIssueRepository.findAllByReportId(reportId);
     ReportReview review = reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId).orElse(null);
     List<ReportAttachment> attachments = reportAttachmentRepository.findAllByReportId(reportId);
-    return ReviewWorkspaceResponse.from(report, context, region, claimDetails, aiIssues, review, attachments);
+    return ReviewWorkspaceResponse.from(
+        report, context, region, claimDetails, aiIssues, review, attachments,
+        s3UploadService::presignedGetUrl);
   }
 }
