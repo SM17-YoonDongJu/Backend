@@ -106,6 +106,26 @@ hotfix/*  ← 운영 긴급 수정 (main 기준으로 분기)
 **브랜치 네이밍:** `<type>/<issue-number>-<2-3-word-kebab-summary>`
 예시: `feat/12-kakao-oauth2`, `bug/17-match-duplicate-room`
 
+## Versioning (SemVer)
+
+`vMAJOR.MINOR.PATCH`(SemVer 2.0.0). `develop → main` 릴리즈 PR 머지 직후 `main` HEAD에 annotated 태그를 찍고, 그 태그가 배포 버전의 단일 진실이다(팀 룰 원본: Notion "시멘틱 버저닝 룰").
+
+- **MAJOR** — 기존 클라이언트가 코드 수정 없이는 못 붙는 **호환 불가**만(엔드포인트·기능 제거, 요청 계약·인증 방식 파괴).
+- **MINOR** — 기능 추가 + **응답 계약 변경**(응답 필드 추가·구조 조정 등, 서버는 계속 응답). Conventional Commits `feat`.
+- **PATCH** — 버그 수정·내부 개선. `fix`·`refactor`·`perf`·`chore`·`docs`·`test`.
+- 한 릴리즈에 여러 변경이 섞이면 **가장 높은 등급**으로 정한다(호환 불가 있으면 MAJOR, 없고 기능/응답 변경 있으면 MINOR, 나머지뿐이면 PATCH).
+- **표준 SemVer를 그대로 적용한다** — 0.x여도 호환 깨는 변경은 MAJOR다(첫 breaking에서 `0.x` → `1.0.0`). 버전은 기계적으로 SemVer를 따르고, **정식 서비스 오픈은 버전과 분리**해 GitHub Release 노트·마일스톤으로 표시한다(`1.0.0`을 정식 오픈 예약 버전으로 두지 않는다).
+- API URL 버전(`/api/v1`)은 앱 태그와 별개 — 계약 파괴로 구버전 병행이 필요할 때만 `/v2`. `build.gradle`은 `0.0.1-SNAPSHOT` 유지(릴리즈 진실은 git 태그), 첫 릴리즈는 `v0.1.0`.
+- **태깅은 semantic-release가 자동화한다** — `deploy-prod.yml`의 `release` job이 `main` push마다 커밋을 분석해 다음 버전을 정하고 태그·GitHub Release·CHANGELOG를 생성한다. 버전 매핑은 `.releaserc.json`의 `releaseRules`에 있다(`feat`→MINOR, `fix`→PATCH, `BREAKING CHANGE`→MAJOR는 preset 기본, 내부 개선 타입 `refactor`·`perf`·`chore`·`docs`·`test`는 PATCH로 끌어올림). 응답 계약 변경을 MINOR로 반영하려면 반드시 `feat`로 커밋해야 한다(분석은 커밋 type만 본다).
+- semantic-release는 마지막 태그 이후를 분석하므로 baseline이 필요하다 — **첫 태그 `v0.1.0`만 수동으로 선점**한다.
+
+```bash
+# 최초 1회만: baseline 태그 선점 (이후 릴리즈 태깅은 semantic-release가 자동)
+git checkout main && git pull
+git tag -a v0.1.0 -m "release: v0.1.0"
+git push origin v0.1.0
+```
+
 ## Code Conventions
 
 Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반 시 빌드 실패.

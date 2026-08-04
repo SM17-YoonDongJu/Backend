@@ -21,6 +21,25 @@ env:
   EC2_HOME: /home/ubuntu
 
 jobs:
+  release:
+    name: Semantic Release (tag + GitHub Release)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            conventional-changelog-conventionalcommits
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-and-push:
     name: Build & Push to ECR
     runs-on: ubuntu-latest
