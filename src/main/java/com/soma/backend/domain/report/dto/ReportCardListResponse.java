@@ -31,12 +31,12 @@ public record ReportCardListResponse(List<Card> list, Pagination pagination) {
       String title,
       LocalDateTime createdAt,
       String reportNo,
-      Long claimedMinAmount,
-      Long claimedMaxAmount,
-      Long proposalCount,
+      Integer claimedMinAmount,
+      Integer claimedMaxAmount,
+      Integer proposalCount,
       LocalDateTime reviewedAt,
       String adjusterNickname,
-      Long offeredAmount,
+      Integer offeredAmount,
       String treatment) {
 
     public static Card from(ReportCardRow row) {
@@ -49,7 +49,7 @@ public record ReportCardListResponse(List<Card> list, Pagination pagination) {
           row.caseNo(),
           row.claimedMinAmount(),
           row.claimedMaxAmount(),
-          row.proposalCount() == null ? 0L : row.proposalCount(),
+          row.proposalCount() == null ? 0 : row.proposalCount().intValue(),
           row.reviewedAt(),
           row.adjusterNickname(),
           row.offeredAmount(),

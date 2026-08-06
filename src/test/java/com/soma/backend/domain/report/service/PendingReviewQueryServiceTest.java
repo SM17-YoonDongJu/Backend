@@ -91,7 +91,7 @@ class PendingReviewQueryServiceTest {
   @DisplayName("목록 아이템의 offer_headroom은 claimed_max - offered(음수 허용), null은 0 처리")
   void listMapsDerivedFields() {
     UUID reportId = UUID.randomUUID();
-    PendingReviewRow row = row(reportId, 1000L, 5000L, 8000L, 2L, true);
+    PendingReviewRow row = row(reportId, 1000, 5000, 8000, 2L, true);
     Pageable pageable = PageRequest.of(0, 20);
     Page<PendingReviewRow> page = new PageImpl<>(List.of(row), pageable, 1);
     given(reportRepository.findPendingReviewRows(isNull(), isNull(), isNull(), eq(reportId), any(), eq(pageable)))
@@ -175,7 +175,7 @@ class PendingReviewQueryServiceTest {
   }
 
   private static PendingReviewRow row(
-      UUID reportId, Long claimedMin, Long claimedMax, Long offered, Long issueCount, Boolean held) {
+      UUID reportId, Integer claimedMin, Integer claimedMax, Integer offered, Long issueCount, Boolean held) {
     return new PendingReviewRow(
         reportId, "CASE-1", "제목", AccidentType.DISABILITY, List.of("서울"), ReportStatus.AWAITING_INSPECTION,
         claimedMin, claimedMax, offered, issueCount, held, LocalDateTime.of(2026, 5, 31, 9, 0));

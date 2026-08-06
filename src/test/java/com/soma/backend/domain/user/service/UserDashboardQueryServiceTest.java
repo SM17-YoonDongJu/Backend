@@ -61,8 +61,8 @@ class UserDashboardQueryServiceTest {
             ReportStatus.AWAITING_ADOPTION, createdAt)));
     given(userDashboardRepository.findFirstReviewedAt(reportId)).willReturn(firstReviewedAt);
     given(userDashboardRepository.findProposalItems(reportId)).willReturn(List.of(
-        proposalItem(1000L, 3000L, List.of("근골격계", "신경")),
-        proposalItem(2000L, 4000L, null)));
+        proposalItem(1000, 3000, List.of("근골격계", "신경")),
+        proposalItem(2000, 4000, null)));
 
     UserDashboardResponse result = service.getDashboard(userId);
 
@@ -75,10 +75,10 @@ class UserDashboardQueryServiceTest {
 
     ProposalSummary summary = result.proposalSummary();
     assertThat(summary.count()).isEqualTo(2);
-    assertThat(summary.minAmount()).isEqualTo(1000L);
-    assertThat(summary.maxAmount()).isEqualTo(4000L);
+    assertThat(summary.minAmount()).isEqualTo(1000);
+    assertThat(summary.maxAmount()).isEqualTo(4000);
     // 중앙값 평균 = ((1000+3000)/2 + (2000+4000)/2) / 2 = (2000 + 3000) / 2 = 2500
-    assertThat(summary.avgAmount()).isEqualTo(2500L);
+    assertThat(summary.avgAmount()).isEqualTo(2500);
     assertThat(summary.items()).hasSize(2);
     assertThat(summary.items().get(0).speciality()).isEqualTo("근골격계");
     assertThat(summary.items().get(1).speciality()).isNull();
@@ -125,15 +125,15 @@ class UserDashboardQueryServiceTest {
             ReportStatus.COUNSELING, LocalDateTime.now())));
     given(userDashboardRepository.findFirstReviewedAt(reportId)).willReturn(LocalDateTime.now());
     given(userDashboardRepository.findProposalItems(reportId)).willReturn(List.of(
-        proposalItem(null, 5000L, null),
-        proposalItem(2000L, 4000L, List.of("교통사고"))));
+        proposalItem(null, 5000, null),
+        proposalItem(2000, 4000, List.of("교통사고"))));
 
     ProposalSummary summary = service.getDashboard(userId).proposalSummary();
 
     assertThat(summary.count()).isEqualTo(2);
-    assertThat(summary.minAmount()).isEqualTo(2000L);
-    assertThat(summary.maxAmount()).isEqualTo(5000L);
-    assertThat(summary.avgAmount()).isEqualTo(3000L);
+    assertThat(summary.minAmount()).isEqualTo(2000);
+    assertThat(summary.maxAmount()).isEqualTo(5000);
+    assertThat(summary.avgAmount()).isEqualTo(3000);
   }
 
   /**
@@ -144,7 +144,7 @@ class UserDashboardQueryServiceTest {
     given(reportRepository.countByUserId(userId)).willReturn(3L);
   }
 
-  private static ProposalItemRow proposalItem(Long estimateMin, Long estimateMax, List<String> specialties) {
+  private static ProposalItemRow proposalItem(Integer estimateMin, Integer estimateMax, List<String> specialties) {
     return new ProposalItemRow(
         UUID.randomUUID(), UUID.randomUUID(), "사정사", 12, specialties, estimateMin, estimateMax);
   }

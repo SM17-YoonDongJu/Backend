@@ -9,5 +9,5 @@ public record ChatAttachment(
     String attachmentKey,
     String name,
     String contentType,
-    Long size) {
+    Integer size) {
 }

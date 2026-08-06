@@ -28,7 +28,7 @@ public record SharedReportResponse(
     String summary,
     Adjuster adjuster,
     Estimate estimate,
-    Long offeredAmount,
+    Integer offeredAmount,
     List<Issue> issues,
     int issueCount,
     List<String> applicableGuarantees,
@@ -72,7 +72,7 @@ public record SharedReportResponse(
   }
 
   /** 사정사 확정 보상 범위(최소·최대). */
-  public record Estimate(Long min, Long max) {
+  public record Estimate(Integer min, Integer max) {
   }
 
   /**
@@ -85,7 +85,7 @@ public record SharedReportResponse(
       String title,
       String adjusterOpinion,
       String description,
-      Long impactAmount,
+      Integer impactAmount,
       String reviewStatus,
       List<String> tags) {
   }

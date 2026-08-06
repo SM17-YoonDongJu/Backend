@@ -67,7 +67,7 @@ public class ReviewedReportQueryService {
       monthFrom = targetMonth.atDay(1).atStartOfDay();
       monthTo = targetMonth.plusMonths(1).atDay(1).atStartOfDay();
     }
-    Map<String, Long> statusCounts = buildStatusCounts(adjusterId, monthFrom, monthTo);
+    Map<String, Integer> statusCounts = buildStatusCounts(adjusterId, monthFrom, monthTo);
     Page<ReviewedReportRow> rows =
         reportReviewRepository.findReviewedReportRows(adjusterId, outcome, monthFrom, monthTo, pageable);
     return ReviewedReportListResponse.from(stats, statusCounts, rows);
@@ -78,17 +78,17 @@ public class ReviewedReportQueryService {
    * 건수가 없는 탭도 항상 배지 값을 갖게 하고, DB 그룹 집계로 실제 값을 채운다. 삽입 순서(total → enum 순)를
    * 유지하려고 {@link LinkedHashMap}을 쓴다.
    */
-  private Map<String, Long> buildStatusCounts(UUID adjusterId, LocalDateTime monthFrom, LocalDateTime monthTo) {
+  private Map<String, Integer> buildStatusCounts(UUID adjusterId, LocalDateTime monthFrom, LocalDateTime monthTo) {
     List<StatusCount> grouped = reportReviewRepository.countByStatusGrouped(adjusterId, monthFrom, monthTo);
-    long total = grouped.stream().mapToLong(row -> row.count()).sum();
+    int total = (int) grouped.stream().mapToLong(row -> row.count()).sum();
 
-    Map<String, Long> counts = new LinkedHashMap<>();
+    Map<String, Integer> counts = new LinkedHashMap<>();
     counts.put("total", total);
     for (ReviewStatus reviewStatus : ReviewStatus.values()) {
-      counts.put(reviewStatus.name(), 0L);
+      counts.put(reviewStatus.name(), 0);
     }
     for (StatusCount row : grouped) {
-      counts.put(row.status().name(), row.count());
+      counts.put(row.status().name(), row.count().intValue());
     }
     return counts;
   }

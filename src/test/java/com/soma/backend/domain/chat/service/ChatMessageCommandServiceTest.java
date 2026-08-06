@@ -106,7 +106,7 @@ class ChatMessageCommandServiceTest {
     stubSave();
 
     SendMessageRequest.Attachment attachment =
-        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 1234L);
+        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 1234);
     ChatMessageResponse response =
         service.send(userId, roomId, new SendMessageRequest("캡션입니다", List.of(attachment)));
 
@@ -140,9 +140,9 @@ class ChatMessageCommandServiceTest {
     stubSave();
 
     SendMessageRequest.Attachment image =
-        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 10L);
+        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 10);
     SendMessageRequest.Attachment pdf =
-        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_doc.pdf", "doc.pdf", "application/pdf", 20L);
+        new SendMessageRequest.Attachment("chat/" + roomId + "/uuid_doc.pdf", "doc.pdf", "application/pdf", 20);
     ChatMessageResponse response =
         service.send(userId, roomId, new SendMessageRequest(null, List.of(image, pdf)));
 

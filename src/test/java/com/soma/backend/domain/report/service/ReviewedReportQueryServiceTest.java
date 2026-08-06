@@ -143,10 +143,10 @@ class ReviewedReportQueryServiceTest {
     ReviewedReportListResponse result =
         service.getReviewedReports(adjusterId, null, null, PageRequest.of(0, 20));
 
-    Map<String, Long> counts = result.statusCounts();
-    assertThat(counts.get("total")).isEqualTo(7L);
-    assertThat(counts.get("SENT")).isEqualTo(5L);
-    assertThat(counts.get("REJECTED")).isEqualTo(2L);
+    Map<String, Integer> counts = result.statusCounts();
+    assertThat(counts.get("total")).isEqualTo(7);
+    assertThat(counts.get("SENT")).isEqualTo(5);
+    assertThat(counts.get("REJECTED")).isEqualTo(2);
     assertThat(counts.get("COUNSELING")).isZero();
     assertThat(counts.get("ACCEPTED")).isZero();
     assertThat(counts.keySet()).containsExactly("total", "SENT", "COUNSELING", "REJECTED", "ACCEPTED");

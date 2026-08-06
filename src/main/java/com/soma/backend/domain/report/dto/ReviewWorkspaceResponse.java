@@ -37,7 +37,7 @@ public record ReviewWorkspaceResponse(
     String status,
     String confidenceLevel,
     boolean isMasked,
-    Long offeredAmount,
+    Integer offeredAmount,
     Client client,
     ClaimContext claim,
     List<AttachmentItem> attachments,
@@ -196,7 +196,7 @@ public record ReviewWorkspaceResponse(
   }
 
   /** 보상 범위(최소·최대). */
-  public record Estimate(Long min, Long max) {
+  public record Estimate(Integer min, Integer max) {
   }
 
   /** ④ 첨부 서류 1건(REPORT_ATTACHMENTS — 리치). */
@@ -237,12 +237,12 @@ public record ReviewWorkspaceResponse(
       String aiDescription,
       String aiStatus,
       List<String> tags,
-      Long impactAmount,
+      Integer impactAmount,
       String reviewStatus,
       String adjusterOpinion,
       String modifiedTitle,
       String modifiedDescription,
-      Long modifiedImpactAmount,
+      Integer modifiedImpactAmount,
       String modifiedReason,
       String excludedReason) {
 

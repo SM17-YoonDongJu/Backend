@@ -95,7 +95,7 @@ class ReportReviewCommandServiceTest {
   }
 
   private ReviewReportRequest request(List<ReviewReportRequest.IssueReview> issues) {
-    return new ReviewReportRequest(1_000_000L, 3_000_000L, List.of(), List.of(), List.of(), issues, "피드백");
+    return new ReviewReportRequest(1_000_000, 3_000_000, List.of(), List.of(), List.of(), issues, "피드백");
   }
 
   @Test
@@ -203,14 +203,14 @@ class ReportReviewCommandServiceTest {
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
     ReviewReportRequest.IssueReview issue = new ReviewReportRequest.IssueReview(
-        null, null, "ADDED", "신규 쟁점 제목", "신규 쟁점 설명", 1_500_000L, null, null, null);
+        null, null, "ADDED", "신규 쟁점 제목", "신규 쟁점 설명", 1_500_000, null, null, null);
 
     ReviewReportResponse result = service.review(adjusterId, reportId, request(List.of(issue)));
 
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(review.getIssues()).hasSize(1);
     assertThat(review.getIssues().get(0).getTitle()).isEqualTo("신규 쟁점 제목");
-    assertThat(review.getIssues().get(0).getImpactAmount()).isEqualTo(1_500_000L);
+    assertThat(review.getIssues().get(0).getImpactAmount()).isEqualTo(1_500_000);
     verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
   }
@@ -307,7 +307,7 @@ class ReportReviewCommandServiceTest {
   void partialContentKeepsUnsentFields() {
     Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
     ReportReview review = persistedReview();
-    ReflectionTestUtils.setField(review, "estimateMinAmount", 100L);
+    ReflectionTestUtils.setField(review, "estimateMinAmount", 100);
     ReflectionTestUtils.setField(review, "review", "기존 의견");
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
@@ -315,11 +315,11 @@ class ReportReviewCommandServiceTest {
         .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
 
-    ReviewReportRequest partial = new ReviewReportRequest(null, 500L, null, null, null, null, null);
+    ReviewReportRequest partial = new ReviewReportRequest(null, 500, null, null, null, null, null);
     service.review(adjusterId, reportId, partial);
 
-    assertThat(review.getEstimateMinAmount()).isEqualTo(100L);
-    assertThat(review.getEstimateMaxAmount()).isEqualTo(500L);
+    assertThat(review.getEstimateMinAmount()).isEqualTo(100);
+    assertThat(review.getEstimateMaxAmount()).isEqualTo(500);
     assertThat(review.getReview()).isEqualTo("기존 의견");
   }
 

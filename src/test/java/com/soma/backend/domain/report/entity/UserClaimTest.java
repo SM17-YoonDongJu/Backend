@@ -23,7 +23,7 @@ class UserClaimTest {
     ClaimDetails details = ClaimDetails.of(AccidentType.MEDICAL_INDEMNITY, List.of("급성 충수염"), List.of());
 
     UserClaim claim = UserClaim.create(
-        UUID.randomUUID(), null, 1000L, LocalDate.now(),
+        UUID.randomUUID(), null, 1000, LocalDate.now(),
         AccidentType.MEDICAL_INDEMNITY, details, "질문", "사고 경위", null);
 
     assertThat(claim.getDetails()).isInstanceOf(MedicalIndemnityDetails.class);
@@ -35,7 +35,7 @@ class UserClaimTest {
     ClaimDetails trafficDetails = new TrafficDetails(List.of("급성 충수염"), List.of());
 
     assertThatThrownBy(() -> UserClaim.create(
-        UUID.randomUUID(), null, 1000L, LocalDate.now(),
+        UUID.randomUUID(), null, 1000, LocalDate.now(),
         AccidentType.MEDICAL_INDEMNITY, trafficDetails, "질문", "사고 경위", null))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CLAIM_DETAILS_TYPE_MISMATCH));

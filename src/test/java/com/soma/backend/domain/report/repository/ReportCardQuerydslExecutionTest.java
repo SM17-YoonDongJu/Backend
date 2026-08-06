@@ -99,7 +99,7 @@ class ReportCardQuerydslExecutionTest {
   void mapsReviewAndReportFields() {
     UUID userId = UUID.randomUUID();
     UUID reportId = saveReport(userId, ReportStatus.CLOSED, AccidentType.TRAFFIC, "AC-1");
-    setReportExtras(reportId, 1_000_000L, 2_000_000L, 8_500_000L, "후유장해");
+    setReportExtras(reportId, 1_000_000, 2_000_000, 8_500_000, "후유장해");
     saveReview(reportId, saveUser("김사정"), ReviewStatus.ACCEPTED);
     saveReview(reportId, saveUser("이사정"), ReviewStatus.SENT);
     saveReview(reportId, saveUser("박사정"), ReviewStatus.REJECTED);
@@ -113,10 +113,10 @@ class ReportCardQuerydslExecutionTest {
       assertThat(row.status()).isEqualTo(ReportStatus.CLOSED);
       assertThat(row.accidentType()).isEqualTo(AccidentType.TRAFFIC);
       assertThat(row.caseNo()).isEqualTo("AC-1");
-      assertThat(row.claimedMinAmount()).isEqualTo(1_000_000L);
-      assertThat(row.claimedMaxAmount()).isEqualTo(2_000_000L);
+      assertThat(row.claimedMinAmount()).isEqualTo(1_000_000);
+      assertThat(row.claimedMaxAmount()).isEqualTo(2_000_000);
       assertThat(row.proposalCount()).isEqualTo(2L); // ACCEPTED + SENT (REJECTED 제외)
-      assertThat(row.offeredAmount()).isEqualTo(8_500_000L);
+      assertThat(row.offeredAmount()).isEqualTo(8_500_000);
       assertThat(row.treatment()).isEqualTo("후유장해");
       assertThat(row.reviewedAt()).isNotNull();
     });
@@ -185,7 +185,7 @@ class ReportCardQuerydslExecutionTest {
     return reportRepository.save(report).getId();
   }
 
-  private void setReportExtras(UUID reportId, Long claimMin, Long claimMax, Long offered, String treatment) {
+  private void setReportExtras(UUID reportId, Integer claimMin, Integer claimMax, Integer offered, String treatment) {
     Report report = reportRepository.findById(reportId).orElseThrow();
     ReflectionTestUtils.setField(report, "claimedMinAmount", claimMin);
     ReflectionTestUtils.setField(report, "claimedMaxAmount", claimMax);

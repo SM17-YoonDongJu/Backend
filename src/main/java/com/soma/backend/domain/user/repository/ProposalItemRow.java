@@ -13,6 +13,6 @@ public record ProposalItemRow(
     String nickname,
     Integer career,
     List<String> specialties,
-    Long estimateMinAmount,
-    Long estimateMaxAmount) {
+    Integer estimateMinAmount,
+    Integer estimateMaxAmount) {
 }

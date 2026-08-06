@@ -16,7 +16,7 @@ public record CreateReportRequest(
     AccidentType accidentType,
     LocalDate accidentDate,
     List<String> diagnosis,
-    Long offeredAmount,
+    Integer offeredAmount,
     List<Hospitalization> hospitalizations,
     String description,
     String additionalInformation,

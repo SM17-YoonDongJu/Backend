@@ -46,5 +46,5 @@ public class ReportIssue extends CreatedAtEntity {
   private List<String> tags;
 
   @Column(name = "impact_amount")
-  private Long impactAmount;
+  private Integer impactAmount;
 }

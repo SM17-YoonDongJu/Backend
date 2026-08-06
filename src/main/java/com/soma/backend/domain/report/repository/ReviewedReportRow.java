@@ -20,7 +20,7 @@ public record ReviewedReportRow(
     List<String> region,
     ReviewStatus status,
     LocalDateTime reviewedAt,
-    Long confirmedMinAmount,
-    Long confirmedMaxAmount,
+    Integer confirmedMinAmount,
+    Integer confirmedMaxAmount,
     Integer rating) {
 }
