@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
@@ -21,10 +22,10 @@ public record CreateAdjusterApplicationRequest(
     @NotBlank(message = "연락처는 필수입니다.") @Size(max = 20) String phone,
     @NotEmpty(message = "전문분야는 최소 하나 이상 필요합니다.")
         List<@NotBlank @Size(max = 30) String> specialties,
-    @Nullable @Size(max = 100) String licenseNo,
-    @Nullable @Size(max = 500) String licenseImageUrl,
-    @Nullable Integer career,
-    @Nullable String introduction,
+    @Nullable @Schema(nullable = true) @Size(max = 100) String licenseNo,
+    @Nullable @Schema(nullable = true) @Size(max = 500) String licenseImageUrl,
+    @Nullable @Schema(nullable = true) Integer career,
+    @Nullable @Schema(nullable = true) String introduction,
     @NotBlank(message = "소속은 필수입니다.") String affiliation,
     @NotBlank(message = "활동 지역은 필수입니다.") @Size(max = 100) String region,
     @NotBlank(message = "등록증 파일은 필수입니다.") @Size(max = 500) String registrationImageUrl) {

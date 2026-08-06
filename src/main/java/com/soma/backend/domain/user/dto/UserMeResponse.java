@@ -7,6 +7,8 @@ import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.user.entity.User;
 
 /**
@@ -17,15 +19,15 @@ import com.soma.backend.domain.user.entity.User;
  * (user_id, phone_number, avatar_url, social_provider, created_at).
  */
 public record UserMeResponse(
-    UUID userId,
-    String nickname,
-    @Nullable String phoneNumber,
-    String role,
-    @Nullable String gender,
-    @Nullable List<String> region,
-    @Nullable String avatarUrl,
-    @Nullable String socialProvider,
-    LocalDateTime createdAt) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID userId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
+    @Nullable @Schema(nullable = true) String phoneNumber,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String role,
+    @Nullable @Schema(nullable = true) String gender,
+    @Nullable @Schema(nullable = true) List<String> region,
+    @Nullable @Schema(nullable = true) String avatarUrl,
+    @Nullable @Schema(nullable = true) String socialProvider,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
 
   public static UserMeResponse from(
       User user, @Nullable String socialProvider, UnaryOperator<String> urlResolver) {

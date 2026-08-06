@@ -6,6 +6,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.repository.CustomerReportDetailRow;
@@ -23,24 +25,24 @@ import com.soma.backend.domain.report.repository.CustomerReportDetailRow;
  * confidenceLevel은 대문자로 정규화한다(부재 시 null).
  */
 public record CustomerReportDetailResponse(
-    UUID reportId,
-    String status,
-    String accidentType,
-    String treatment,
-    Integer claimedMinAmount,
-    Integer claimedMaxAmount,
-    Integer offeredAmount,
-    List<String> applicableGuarantees,
-    List<String> omittedSpecialContract,
-    List<String> basisTermsPrecedents,
-    List<IssueItem> issue,
-    String question,
-    UUID adjusterId,
-    String confidenceLevel,
-    String reportNo,
-    String reviewComment,
-    LocalDateTime reviewedAt,
-    Adjuster adjuster) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String accidentType,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String treatment,
+    @Schema(nullable = true) Integer claimedMinAmount,
+    @Schema(nullable = true) Integer claimedMaxAmount,
+    @Schema(nullable = true) Integer offeredAmount,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> applicableGuarantees,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> omittedSpecialContract,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> basisTermsPrecedents,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<IssueItem> issue,
+    @Schema(nullable = true) String question,
+    @Schema(nullable = true) UUID adjusterId,
+    @Schema(nullable = true) String confidenceLevel,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String reportNo,
+    @Schema(nullable = true, description = "채택된 제안이 없으면 null") String reviewComment,
+    @Schema(nullable = true, description = "채택된 제안이 없으면 null") LocalDateTime reviewedAt,
+    @Schema(nullable = true, description = "담당 사정사(adjusterId)가 없으면 null") Adjuster adjuster) {
 
   /**
    * 조회 결과를 상세 응답으로 조립한다. {@code opinionByIssueId}는 채택 리뷰의 쟁점 오버레이
@@ -92,11 +94,11 @@ public record CustomerReportDetailResponse(
    * 상세용 부분집합이라 issue_id는 노출하지 않는다.
    */
   public record IssueItem(
-      String title,
-      String opinion,
-      String status,
-      List<String> tags,
-      Integer impactAmount) {
+      @Schema(nullable = true) String title,
+      @Schema(nullable = true) String opinion,
+      @Schema(nullable = true) String status,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> tags,
+      @Schema(nullable = true) Integer impactAmount) {
 
     static IssueItem of(ReportIssue issue, String adjusterOpinion) {
       String opinion = adjusterOpinion != null ? adjusterOpinion : issue.getDescription();
@@ -110,6 +112,8 @@ public record CustomerReportDetailResponse(
   }
 
   /** 담당 사정사 요약(users.nickname·adjuster_profiles.career 연차). adjuster_id가 없으면 상위 필드가 null이다. */
-  public record Adjuster(String nickname, Integer career) {
+  public record Adjuster(
+      @Schema(nullable = true) String nickname,
+      @Schema(nullable = true) Integer career) {
   }
 }

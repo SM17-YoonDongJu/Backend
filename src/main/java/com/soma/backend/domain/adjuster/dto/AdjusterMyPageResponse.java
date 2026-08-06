@@ -6,6 +6,8 @@ import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.global.common.RegionFormat;
@@ -20,10 +22,10 @@ import com.soma.backend.global.common.RegionFormat;
  * {@code User}(user)를 읽기 전용으로 조립한 크로스-애그리거트 뷰다.
  */
 public record AdjusterMyPageResponse(
-    Profile profile,
-    Stats stats,
-    MonthlyActivity monthlyActivity,
-    Certification certification) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Profile profile,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Stats stats,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) MonthlyActivity monthlyActivity,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Certification certification) {
 
   /**
    * 프로필 헤더 섹션. {@code nickname}은 USERS.nickname(사정사 프로필 name이 아님), {@code role}은
@@ -34,14 +36,14 @@ public record AdjusterMyPageResponse(
    * 이메일 재수집(회원가입/소셜 스코프 변경)은 별도 티켓이다.
    */
   public record Profile(
-      String nickname,
-      @Nullable String email,
-      @Nullable String avatarUrl,
-      @Nullable String headline,
-      List<String> specialties,
-      @Nullable Integer career,
-      String activityRegion,
-      String role) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
+      @Nullable @Schema(nullable = true) String email,
+      @Nullable @Schema(nullable = true) String avatarUrl,
+      @Nullable @Schema(nullable = true) String headline,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> specialties,
+      @Nullable @Schema(nullable = true) Integer career,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String activityRegion,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String role) {
   }
 
   /**
@@ -64,9 +66,9 @@ public record AdjusterMyPageResponse(
 
   /** 자격·등록 섹션. {@code createdAt}은 사정사 가입일(USERS.created_at). */
   public record Certification(
-      @Nullable String licenseNo,
-      String activityRegion,
-      LocalDateTime createdAt) {
+      @Nullable @Schema(nullable = true) String licenseNo,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String activityRegion,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
   }
 
   /**

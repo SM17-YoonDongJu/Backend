@@ -3,6 +3,8 @@ package com.soma.backend.domain.report.dto;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * API#4 응답.
  *
@@ -11,5 +13,9 @@ import java.util.UUID;
  * 시각을 노출한다(FE #119).
  */
 public record ReviewReportResponse(
-    UUID reportId, String status, UUID reportReviewId, String reviewStatus, LocalDateTime sentAt) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportReviewId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String reviewStatus,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime sentAt) {
 }

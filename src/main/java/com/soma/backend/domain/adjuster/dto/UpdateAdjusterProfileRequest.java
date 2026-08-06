@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -16,14 +17,15 @@ import jakarta.validation.constraints.Size;
  * 나머지는 ADJUSTER_PROFILES로 반영된다.
  */
 public record UpdateAdjusterProfileRequest(
-    @Nullable @Size(max = 100, message = "태그라인은 100자 이내여야 합니다.") String headline,
-    @Nullable @Size(max = 300, message = "소개는 300자 이내여야 합니다.") String introduction,
-    @Nullable @PositiveOrZero(message = "경력 연차는 0 이상이어야 합니다.") Integer career,
-    @Nullable @Size(max = 100, message = "활동 지역은 100자 이내여야 합니다.") String activityRegion,
-    @Nullable String avatarUrl,
-    @Nullable @Size(max = 3, message = "전문분야는 최대 3개까지 선택할 수 있습니다.")
+    @Nullable @Schema(nullable = true) @Size(max = 100, message = "태그라인은 100자 이내여야 합니다.") String headline,
+    @Nullable @Schema(nullable = true) @Size(max = 300, message = "소개는 300자 이내여야 합니다.") String introduction,
+    @Nullable @Schema(nullable = true) @PositiveOrZero(message = "경력 연차는 0 이상이어야 합니다.") Integer career,
+    @Nullable @Schema(nullable = true) @Size(max = 100, message = "활동 지역은 100자 이내여야 합니다.")
+        String activityRegion,
+    @Nullable @Schema(nullable = true) String avatarUrl,
+    @Nullable @Schema(nullable = true) @Size(max = 3, message = "전문분야는 최대 3개까지 선택할 수 있습니다.")
         List<@NotBlank @Size(max = 30) String> specialties,
-    @Nullable List<@Valid CareerItem> careers) {
+    @Nullable @Schema(nullable = true) List<@Valid CareerItem> careers) {
 
   /** 주요 경력 항목(period·company). 폼 입력값이므로 두 값 모두 필수다. */
   public record CareerItem(

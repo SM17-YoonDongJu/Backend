@@ -7,6 +7,8 @@ import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.report.repository.AdjusterReviewRow;
 import com.soma.backend.domain.user.entity.Role;
@@ -24,35 +26,37 @@ import com.soma.backend.global.common.RegionFormat;
  * 공개 응답이라 계약에 명시된 필드만 노출하고 면허 원본 등 불필요한 PII는 싣지 않는다.
  */
 public record AdjusterDetailResponse(
-    UUID adjusterId,
-    String nickname,
-    @Nullable String avatarUrl,
-    String headline,
-    String activityRegion,
-    String introduction,
-    List<String> specialties,
-    List<CareerItem> careers,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID adjusterId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
+    @Nullable @Schema(nullable = true) String avatarUrl,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String headline,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String activityRegion,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String introduction,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> specialties,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<CareerItem> careers,
     int career,
     double averageRating,
     int reviewCount,
-    List<RecentReview> recentReviews,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<RecentReview> recentReviews,
     int completedConsultCount,
     long handledCaseCount,
     boolean verified,
-    ConsultGuide consultGuide,
-    Certification certification) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) ConsultGuide consultGuide,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Certification certification) {
 
   /** 주요 경력 항목(careers jsonb 요소). 공개 상세에서는 원소의 null 필드를 ""로 채운다(전부 비null). */
-  public record CareerItem(String period, String company) {
+  public record CareerItem(
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String period,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String company) {
   }
 
   /** 최근 후기 항목. 공개 상세에서는 item(연결 리포트 사건 유형)·content 포함 전부 비null(빈 값은 ""). */
   public record RecentReview(
-      String nickname,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
       int score,
-      String item,
-      LocalDateTime reviewedAt,
-      String content) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String item,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime reviewedAt,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String content) {
   }
 
   /**
@@ -61,14 +65,19 @@ public record AdjusterDetailResponse(
    * <p>{@code initialConsult}·{@code feeBasis}는 아직 BE 데이터 소스가 없어 빈 문자열 placeholder다
    * (FE도 실 API 미정으로 MSW 선제공 상태) — 소스가 정해지면 채운다.
    */
-  public record ConsultGuide(String method, String initialConsult, String feeBasis) {
+  public record ConsultGuide(
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String method,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String initialConsult,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String feeBasis) {
   }
 
   /**
    * 자격 인증 블록. {@code registrationNo}는 등록/자격 번호(license_no, 없으면 ""),
    * {@code verifiedAt}은 인증 시각(데이터가 없으면 null).
    */
-  public record Certification(String registrationNo, @Nullable LocalDateTime verifiedAt) {
+  public record Certification(
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String registrationNo,
+      @Nullable @Schema(nullable = true) LocalDateTime verifiedAt) {
   }
 
   /**

@@ -7,6 +7,8 @@ import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.adjuster.entity.AdjusterApplication;
 import com.soma.backend.domain.adjuster.entity.AdjusterApplicationDocument;
 
@@ -16,17 +18,17 @@ import com.soma.backend.domain.adjuster.entity.AdjusterApplicationDocument;
  * speciality(단수)는 프론트 계약용으로 specialties 첫 항목에서 파생한다(specialties 배열도 함께 유지).
  */
 public record AdjusterApplicationResponse(
-    UUID applicationId,
-    String status,
-    LocalDateTime submittedAt,
-    String name,
-    @Nullable String phone,
-    List<String> specialties,
-    String speciality,
-    @Nullable String licenseNo,
-    List<Document> documents,
-    @Nullable LocalDateTime rejectedAt,
-    @Nullable String rejectReason) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID applicationId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime submittedAt,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String name,
+    @Nullable @Schema(nullable = true) String phone,
+    @Schema(nullable = true) List<String> specialties,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String speciality,
+    @Nullable @Schema(nullable = true) String licenseNo,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Document> documents,
+    @Nullable @Schema(nullable = true) LocalDateTime rejectedAt,
+    @Nullable @Schema(nullable = true) String rejectReason) {
 
   public static AdjusterApplicationResponse from(AdjusterApplication application) {
     List<Document> documents = application.getDocuments().stream()
@@ -50,7 +52,9 @@ public record AdjusterApplicationResponse(
   }
 
   /** 문서별 심사 상태 항목(documents[]). */
-  public record Document(String type, String status) {
+  public record Document(
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String type,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status) {
 
     public static Document from(AdjusterApplicationDocument document) {
       return new Document(document.getDocType().name(), document.getStatus().name());

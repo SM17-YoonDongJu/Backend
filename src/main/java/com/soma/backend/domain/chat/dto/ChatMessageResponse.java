@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 
 /**
@@ -13,16 +15,20 @@ import com.soma.backend.domain.chat.entity.ChatMessageType;
  * 첨부 없는 메시지는 {@code null}이다(프론트 계약 — 단수). SYSTEM 메시지는 발신자가 없어 {@code senderId}가 null이다.
  */
 public record ChatMessageResponse(
-    UUID messageId,
-    UUID chatRoomId,
-    @Nullable UUID senderId,
-    ChatMessageType messageType,
-    String content,
-    @Nullable Attachment attachment,
-    boolean isMine,
-    LocalDateTime createdAt) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID messageId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID chatRoomId,
+    @Nullable @Schema(nullable = true, description = "SYSTEM 메시지는 발신자가 없어 null") UUID senderId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) ChatMessageType messageType,
+    @Schema(nullable = true, description = "첨부 메시지(IMAGE/FILE)에 캡션이 없으면 null") String content,
+    @Nullable @Schema(nullable = true, description = "첨부가 없는 메시지는 null") Attachment attachment,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean isMine,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
 
   /** 첨부 표시 정보 + 단기 presigned GET URL. */
-  public record Attachment(String url, String name, String contentType, Integer size) {
+  public record Attachment(
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String url,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String name,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String contentType,
+      @Schema(nullable = true) Integer size) {
   }
 }
