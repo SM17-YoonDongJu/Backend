@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.report.repository.ReportCardRow;
 
 /**
@@ -13,7 +15,9 @@ import com.soma.backend.domain.report.repository.ReportCardRow;
  * — 리포트에 달린 report_reviews 1건당 카드 1개다(리포트당 리뷰 N개면 N개 카드). 필드는 camelCase record로
  * 두고 Jackson 전역 설정이 snake_case로 직렬화한다.
  */
-public record ReportCardListResponse(List<Card> list, Pagination pagination) {
+public record ReportCardListResponse(
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Card> list,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Pagination pagination) {
 
   public static ReportCardListResponse from(Page<ReportCardRow> page) {
     List<Card> cards = page.getContent().stream().map(Card::from).toList();
@@ -25,19 +29,19 @@ public record ReportCardListResponse(List<Card> list, Pagination pagination) {
    * reviewedAt·adjusterNickname은 그 리뷰 값으로, 담당 사정사가 없으면 null이다.
    */
   public record Card(
-      UUID reportId,
-      String status,
-      String accidentType,
-      String title,
-      LocalDateTime createdAt,
-      String reportNo,
-      Integer claimedMinAmount,
-      Integer claimedMaxAmount,
-      Integer proposalCount,
-      LocalDateTime reviewedAt,
-      String adjusterNickname,
-      Integer offeredAmount,
-      String treatment) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String accidentType,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String title,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String reportNo,
+      @Schema(nullable = true) Integer claimedMinAmount,
+      @Schema(nullable = true) Integer claimedMaxAmount,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Integer proposalCount,
+      @Schema(nullable = true) LocalDateTime reviewedAt,
+      @Schema(nullable = true) String adjusterNickname,
+      @Schema(nullable = true) Integer offeredAmount,
+      @Schema(nullable = true) String treatment) {
 
     public static Card from(ReportCardRow row) {
       return new Card(

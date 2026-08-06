@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * 고객 홈 BFF 응답(GET /users/me/dashboard). 상태 기반 섹션 스왑을 위해 온보딩 분기(report_count)·대표
  * 활성 리포트·제안가 집계를 한 번에 조합한다. 전부 기존 ERD 필드의 조합/집계이며 신규 컬럼은 없다
@@ -13,20 +15,20 @@ import java.util.UUID;
  */
 public record UserDashboardResponse(
     long reportCount,
-    ActiveReport activeReport,
-    ProposalSummary proposalSummary) {
+    @Schema(nullable = true) ActiveReport activeReport,
+    @Schema(nullable = true) ProposalSummary proposalSummary) {
 
   /**
    * 대표 활성 리포트(CLOSED·NOT_SELECTED 제외 중 가장 최근 접수 1건). {@code firstReviewedAt}은 최초 검수
    * 시각(min REPORT_REVIEWS.created_at, 아직 없으면 null), {@code proposalCount}는 노출 제안(거절 제외) 수.
    */
   public record ActiveReport(
-      UUID reportId,
-      String title,
-      String accidentType,
-      String status,
-      LocalDateTime createdAt,
-      LocalDateTime firstReviewedAt,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String title,
+      @Schema(nullable = true) String accidentType,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt,
+      @Schema(nullable = true) LocalDateTime firstReviewedAt,
       long proposalCount) {
   }
 
@@ -36,20 +38,20 @@ public record UserDashboardResponse(
    */
   public record ProposalSummary(
       int count,
-      Integer minAmount,
-      Integer maxAmount,
-      Integer avgAmount,
-      List<Item> items) {
+      @Schema(nullable = true) Integer minAmount,
+      @Schema(nullable = true) Integer maxAmount,
+      @Schema(nullable = true) Integer avgAmount,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Item> items) {
 
     /** speciality(단수)는 사정사 specialties[] 첫 전문분야, career는 연차. nickname은 사정사 이름. */
     public record Item(
-        UUID proposalId,
-        UUID adjusterId,
-        String nickname,
-        Integer career,
-        String speciality,
-        Integer estimateMinAmount,
-        Integer estimateMaxAmount) {
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID proposalId,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID adjusterId,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
+        @Schema(nullable = true) Integer career,
+        @Schema(nullable = true) String speciality,
+        @Schema(nullable = true) Integer estimateMinAmount,
+        @Schema(nullable = true) Integer estimateMaxAmount) {
     }
   }
 }

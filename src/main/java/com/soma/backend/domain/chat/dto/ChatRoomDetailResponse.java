@@ -3,6 +3,8 @@ package com.soma.backend.domain.chat.dto;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.chat.entity.ChatRoomStatus;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.ReviewStatus;
@@ -13,16 +15,16 @@ import com.soma.backend.domain.report.entity.ReviewStatus;
  * {@link ChatRoomSummaryResponse.Counterpart}를 재사용한다.
  */
 public record ChatRoomDetailResponse(
-    UUID chatRoomId,
-    UUID reportId,
-    UUID proposalId,
-    ChatRoomStatus roomStatus,
-    ReviewStatus matchStatus,
-    String caseNo,
-    AccidentType reportTypeLabel,
-    ChatRoomSummaryResponse.Counterpart counterpart,
-    String lastMessage,
-    LocalDateTime lastMessageAt,
-    long unreadCount,
-    LocalDateTime createdAt) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID chatRoomId,
+    @Schema(nullable = true, description = "검색으로 개설된 방은 연결된 리포트가 없어 null") UUID reportId,
+    @Schema(nullable = true, description = "검색으로 개설된 방은 연결된 제안이 없어 null") UUID proposalId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) ChatRoomStatus roomStatus,
+    @Schema(nullable = true, description = "검색으로 개설된 방은 제안이 없어 null") ReviewStatus matchStatus,
+    @Schema(nullable = true, description = "검색으로 개설된 방은 연결된 리포트가 없어 null") String caseNo,
+    @Schema(nullable = true, description = "검색으로 개설된 방은 연결된 리포트가 없어 null") AccidentType reportTypeLabel,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) ChatRoomSummaryResponse.Counterpart counterpart,
+    @Schema(nullable = true, description = "아직 메시지가 없으면 null") String lastMessage,
+    @Schema(nullable = true, description = "아직 메시지가 없으면 null") LocalDateTime lastMessageAt,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) long unreadCount,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
 }

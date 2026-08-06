@@ -7,6 +7,8 @@ import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.user.entity.UserInsurance;
 
 /**
@@ -18,17 +20,17 @@ import com.soma.backend.domain.user.entity.UserInsurance;
  * 나머지 미입력 값은 원본 그대로(JSON null, 키는 유지) 내린다. {@code policy_file_url}은 증권 등록 여부
  * 배지("증권 등록됨/미등록")용으로 FE가 요청한 필드이며 등록 전이면 null이다.
  */
-public record UserInsuranceListResponse(List<Item> list) {
+public record UserInsuranceListResponse(@Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Item> list) {
 
   /** 보험 항목 1건. */
   public record Item(
-      UUID id,
-      String insurerName,
-      String productName,
-      @Nullable String policyNo,
-      @Nullable LocalDate enrolledAt,
-      List<String> coverages,
-      @Nullable String policyFileUrl) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID id,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String insurerName,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String productName,
+      @Nullable @Schema(nullable = true) String policyNo,
+      @Nullable @Schema(nullable = true) LocalDate enrolledAt,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> coverages,
+      @Nullable @Schema(nullable = true) String policyFileUrl) {
 
     public static Item from(UserInsurance insurance, UnaryOperator<String> urlResolver) {
       return new Item(

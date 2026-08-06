@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.ReportIssue;
@@ -29,28 +31,28 @@ import com.soma.backend.domain.report.repository.ReviewContextRow;
  * 리스트 필드는 null 대신 빈 배열로 직렬화한다.
  */
 public record ReviewWorkspaceResponse(
-    UUID reportId,
-    String caseNo,
-    String title,
-    String accidentType,
-    String region,
-    String status,
-    String confidenceLevel,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String caseNo,
+    @Schema(nullable = true, description = "AI 초안이 생성 전이면 null") String title,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String accidentType,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String region,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+    @Schema(nullable = true) String confidenceLevel,
     boolean isMasked,
-    Integer offeredAmount,
-    Client client,
-    ClaimContext claim,
-    List<AttachmentItem> attachments,
-    Estimate aiEstimate,
-    Estimate adjusterEstimate,
-    List<String> applicableGuarantees,
-    List<String> omittedSpecialContract,
-    List<String> basisTermsPrecedents,
-    List<IssueItem> issues,
-    String review,
-    String reviewStatus,
+    @Schema(nullable = true) Integer offeredAmount,
+    @Schema(nullable = true) Client client,
+    @Schema(nullable = true) ClaimContext claim,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<AttachmentItem> attachments,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Estimate aiEstimate,
+    @Schema(nullable = true, description = "사정사 작업본(started=false)이 없으면 null") Estimate adjusterEstimate,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> applicableGuarantees,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> omittedSpecialContract,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> basisTermsPrecedents,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<IssueItem> issues,
+    @Schema(nullable = true, description = "사정사 작업본(started=false)이 없으면 null") String review,
+    @Schema(nullable = true, description = "사정사 작업본(started=false)이 없으면 null") String reviewStatus,
     boolean started,
-    Progress progress) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Progress progress) {
 
   public static ReviewWorkspaceResponse from(
       Report report, ReviewContextRow context, List<String> region, ClaimDetails claimDetails,
@@ -154,7 +156,11 @@ public record ReviewWorkspaceResponse(
 
   /** ① 의뢰인 정보(users). region은 단일 문자열. */
   public record Client(
-      String nickname, String gender, LocalDate birthDate, String region, LocalDateTime joinedAt) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String gender,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDate birthDate,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String region,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime joinedAt) {
 
     public static Client from(ReviewContextRow context, String region) {
       if (context == null) {
@@ -173,14 +179,14 @@ public record ReviewWorkspaceResponse(
    * 도메인 엔티티 {@code UserClaim}과 구분하기 위해 ClaimContext로 둔다(뷰 조각).
    */
   public record ClaimContext(
-      String accidentType,
-      LocalDate accidentDate,
-      String diagnosis,
-      String hospitalization,
-      String description,
-      String additionalInformation,
-      String productName,
-      String insurerName) {
+      @Schema(nullable = true) String accidentType,
+      @Schema(nullable = true) LocalDate accidentDate,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String diagnosis,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String hospitalization,
+      @Schema(nullable = true) String description,
+      @Schema(nullable = true) String additionalInformation,
+      @Schema(nullable = true) String productName,
+      @Schema(nullable = true) String insurerName) {
 
     public static ClaimContext from(ReviewContextRow context, ClaimDetails details) {
       if (context == null) {
@@ -196,20 +202,20 @@ public record ReviewWorkspaceResponse(
   }
 
   /** 보상 범위(최소·최대). */
-  public record Estimate(Integer min, Integer max) {
+  public record Estimate(@Schema(nullable = true) Integer min, @Schema(nullable = true) Integer max) {
   }
 
   /** ④ 첨부 서류 1건(REPORT_ATTACHMENTS — 리치). */
   public record AttachmentItem(
-      UUID attachmentId,
-      String name,
-      String mimeType,
-      String url,
-      String reportType,
-      Integer pageCount,
-      String issuedBy,
-      LocalDate issuedAt,
-      String aiSummary) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID attachmentId,
+      @Schema(nullable = true) String name,
+      @Schema(nullable = true) String mimeType,
+      @Schema(nullable = true) String url,
+      @Schema(nullable = true) String reportType,
+      @Schema(nullable = true, description = "OCR 처리 전이면 null") Integer pageCount,
+      @Schema(nullable = true, description = "OCR 처리 전이면 null") String issuedBy,
+      @Schema(nullable = true, description = "OCR 처리 전이면 null") LocalDate issuedAt,
+      @Schema(nullable = true, description = "OCR 처리 전이면 null") String aiSummary) {
 
     public static AttachmentItem from(ReportAttachment attachment, UnaryOperator<String> urlResolver) {
       return new AttachmentItem(
@@ -231,20 +237,20 @@ public record ReviewWorkspaceResponse(
    * modifiedImpactAmount는 사정사가 직접 입력한 영향 금액(미입력·미검수면 null)이다.
    */
   public record IssueItem(
-      UUID issueId,
-      UUID reviewIssueId,
-      String aiTitle,
-      String aiDescription,
-      String aiStatus,
-      List<String> tags,
-      Integer impactAmount,
-      String reviewStatus,
-      String adjusterOpinion,
-      String modifiedTitle,
-      String modifiedDescription,
-      Integer modifiedImpactAmount,
-      String modifiedReason,
-      String excludedReason) {
+      @Schema(nullable = true, description = "사정사 신규(ADDED) 쟁점이면 null") UUID issueId,
+      @Schema(nullable = true, description = "미검수 AI 쟁점이면 null") UUID reviewIssueId,
+      @Schema(nullable = true) String aiTitle,
+      @Schema(nullable = true) String aiDescription,
+      @Schema(nullable = true) String aiStatus,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> tags,
+      @Schema(nullable = true) Integer impactAmount,
+      @Schema(nullable = true, description = "미검수 AI 쟁점이면 null") String reviewStatus,
+      @Schema(nullable = true) String adjusterOpinion,
+      @Schema(nullable = true) String modifiedTitle,
+      @Schema(nullable = true) String modifiedDescription,
+      @Schema(nullable = true) Integer modifiedImpactAmount,
+      @Schema(nullable = true) String modifiedReason,
+      @Schema(nullable = true) String excludedReason) {
 
     static IssueItem of(ReportIssue ai, ReportReviewIssue overlay) {
       return new IssueItem(

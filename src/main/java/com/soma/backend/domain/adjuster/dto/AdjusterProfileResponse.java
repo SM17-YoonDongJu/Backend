@@ -7,6 +7,8 @@ import java.util.function.UnaryOperator;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.report.repository.AdjusterReviewRow;
 import com.soma.backend.domain.user.entity.User;
@@ -21,34 +23,36 @@ import com.soma.backend.global.common.RegionFormat;
  * {@code User}(user), {@code AdjusterReviewRow}(report)를 읽기 전용으로 조립한 크로스-애그리거트 뷰다.
  */
 public record AdjusterProfileResponse(
-    UUID adjusterId,
-    String nickname,
-    String headline,
-    @Nullable String avatarUrl,
-    String activityRegion,
-    String introduction,
-    List<String> specialties,
-    List<CareerItem> careers,
-    Integer career,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID adjusterId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String headline,
+    @Nullable @Schema(nullable = true) String avatarUrl,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String activityRegion,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String introduction,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> specialties,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<CareerItem> careers,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Integer career,
     double averageRating,
     int reviewCount,
-    List<RecentReview> recentReviews,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<RecentReview> recentReviews,
     int completedConsultCount,
     long handledCaseCount,
     int pendingReviewCount,
-    LocalDateTime updatedAt) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime updatedAt) {
 
   /** 주요 경력 항목(careers jsonb 요소). */
-  public record CareerItem(String period, String company) {
+  public record CareerItem(
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String period,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String company) {
   }
 
   /** 최근 후기 항목. item은 연결 리포트의 사건 유형 영문 값(없으면 null). */
   public record RecentReview(
-      String nickname,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String nickname,
       int score,
-      @Nullable String item,
-      LocalDateTime reviewedAt,
-      @Nullable String content) {
+      @Nullable @Schema(nullable = true) String item,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime reviewedAt,
+      @Nullable @Schema(nullable = true) String content) {
   }
 
   /**

@@ -7,6 +7,8 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.report.repository.ReviewedReportRow;
 
 /**
@@ -17,7 +19,9 @@ import com.soma.backend.domain.report.repository.ReviewedReportRow;
  * 어떤 탭이 선택돼도 전체 분포를 보여준다(FE #94).
  */
 public record ReviewedReportListResponse(
-    Stats stats, Map<String, Integer> statusCounts, List<Item> items,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Stats stats,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Map<String, Integer> statusCounts,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Item> items,
     int page, int size, long totalElements, int totalPages) {
 
   public static ReviewedReportListResponse from(
@@ -46,8 +50,16 @@ public record ReviewedReportListResponse(
    * 고객의 사건별 평점(미작성 시 null)이다(FE #59).
    */
   public record Item(
-      UUID reportId, String caseNo, String title, String accidentType, String region, String status,
-      LocalDateTime reviewedAt, Integer confirmedMinAmount, Integer confirmedMaxAmount, Integer rating) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String caseNo,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String title,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String accidentType,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String region,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime reviewedAt,
+      @Schema(nullable = true) Integer confirmedMinAmount,
+      @Schema(nullable = true) Integer confirmedMaxAmount,
+      @Schema(nullable = true, description = "고객의 사건별 평점. 미작성 시 null") Integer rating) {
 
     public static Item from(ReviewedReportRow row) {
       return new Item(
