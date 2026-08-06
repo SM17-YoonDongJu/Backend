@@ -80,7 +80,7 @@ class ReportCommandServiceTest {
             "사진.jpg", "기타", ".jpg");
     CreateReportRequest request = new CreateReportRequest(
         UUID.randomUUID(), AccidentType.MEDICAL_INDEMNITY, LocalDate.now(), List.of("급성 충수염"),
-        1_420_000L, List.of(), "사고 경위", null, List.of(pdf, img), "질문");
+        1_420_000, List.of(), "사고 경위", null, List.of(pdf, img), "질문");
 
     CreateReportResponse response = service.createReport(userId, request);
 

@@ -107,7 +107,7 @@ class ReportNotificationAfterCommitIntegrationTest {
 
   private ReviewReportRequest emptyReviewRequest() {
     return new ReviewReportRequest(
-        1_000_000L, 3_000_000L, List.of(), List.of(), List.of(), List.of(), "통합 테스트 검수 의견");
+        1_000_000, 3_000_000, List.of(), List.of(), List.of(), List.of(), "통합 테스트 검수 의견");
   }
 
   private List<Notification> notificationsOfCustomer() {

@@ -49,10 +49,10 @@ public class ReportReview extends BaseEntity {
   private String review;
 
   @Column(name = "estimate_min_amount")
-  private Long estimateMinAmount;
+  private Integer estimateMinAmount;
 
   @Column(name = "estimate_max_amount")
-  private Long estimateMaxAmount;
+  private Integer estimateMaxAmount;
 
   @JdbcTypeCode(SqlTypes.ARRAY)
   @Column(name = "applicable_guarantees", columnDefinition = "text[]")
@@ -109,7 +109,7 @@ public class ReportReview extends BaseEntity {
    * 검수 내용 부분 갱신(estimate·배열3·review). null 인자는 미포함(기존 값 유지)으로 보고, 빈 배열·빈 문자열은
    * 명시적 비움으로 반영한다. status 전이와 무관하게 upsert된다.
    */
-  public void updateReviewContent(Long estimateMinAmount, Long estimateMaxAmount,
+  public void updateReviewContent(Integer estimateMinAmount, Integer estimateMaxAmount,
       List<String> applicableGuarantees, List<String> omittedSpecialContract,
       List<String> basisTermsPrecedents, String review) {
     if (estimateMinAmount != null) {

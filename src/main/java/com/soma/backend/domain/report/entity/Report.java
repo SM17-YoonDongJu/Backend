@@ -85,13 +85,13 @@ public class Report extends BaseEntity {
   private ReportStatus status;
 
   @Column(name = "claimed_min_amount")
-  private Long claimedMinAmount;
+  private Integer claimedMinAmount;
 
   @Column(name = "claimed_max_amount")
-  private Long claimedMaxAmount;
+  private Integer claimedMaxAmount;
 
   @Column(name = "offered_amount")
-  private Long offeredAmount;
+  private Integer offeredAmount;
 
   @JdbcTypeCode(SqlTypes.ARRAY)
   @Column(name = "applicable_guarantees", columnDefinition = "text[]")

@@ -5,8 +5,8 @@ import java.util.UUID;
 
 /** API#4 요청 바디(snake_case 수신 → camelCase 필드). */
 public record ReviewReportRequest(
-    Long estimateMinAmount,
-    Long estimateMaxAmount,
+    Integer estimateMinAmount,
+    Integer estimateMaxAmount,
     List<String> applicableGuarantees,
     List<String> omittedSpecialContract,
     List<String> basisTermsPrecedents,
@@ -21,6 +21,6 @@ public record ReviewReportRequest(
    */
   public record IssueReview(
       UUID reviewIssueId, UUID issueId, String reviewStatus, String title, String description,
-      Long impactAmount, String adjusterOpinion, String modifiedReason, String excludedReason) {
+      Integer impactAmount, String adjusterOpinion, String modifiedReason, String excludedReason) {
   }
 }

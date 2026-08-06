@@ -22,6 +22,6 @@ public record ChatBroadcastMessage(
     LocalDateTime createdAt) {
 
   /** 첨부 조회용 단기 presigned GET URL + 표시 메타. */
-  public record Attachment(String url, String name, String contentType, Long size) {
+  public record Attachment(String url, String name, String contentType, Integer size) {
   }
 }

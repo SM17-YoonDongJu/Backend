@@ -43,7 +43,7 @@ public class UserClaim extends BaseEntity {
   private UUID productId;
 
   @Column(name = "offered_amount")
-  private Long offeredAmount;
+  private Integer offeredAmount;
 
   @Column(name = "accident_date")
   private LocalDate accidentDate;
@@ -66,7 +66,7 @@ public class UserClaim extends BaseEntity {
   private String additionalInformation;
 
   /** 사고 정보 입력 생성. details와 accidentType이 어긋나면 CLAIM_DETAILS_TYPE_MISMATCH(design.md §3). */
-  public static UserClaim create(UUID userId, UUID productId, Long offeredAmount, LocalDate accidentDate,
+  public static UserClaim create(UUID userId, UUID productId, Integer offeredAmount, LocalDate accidentDate,
       AccidentType accidentType, ClaimDetails details, String question, String description,
       String additionalInformation) {
     if (accidentType == null || details == null || details.type() != accidentType) {

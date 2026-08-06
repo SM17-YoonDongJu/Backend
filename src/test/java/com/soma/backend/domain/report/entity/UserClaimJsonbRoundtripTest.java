@@ -60,7 +60,7 @@ class UserClaimJsonbRoundtripTest {
         "2026-01-02",
         null);
     UserClaim saved = userClaimRepository.save(UserClaim.create(
-        userId, null, 1_420_000L, LocalDate.of(2026, 1, 1),
+        userId, null, 1_420_000, LocalDate.of(2026, 1, 1),
         AccidentType.MEDICAL_INDEMNITY, details, "보험금이 적게 나온 것 같아요", "사고 경위", null));
 
     entityManager.flush();

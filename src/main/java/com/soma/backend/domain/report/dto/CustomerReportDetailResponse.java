@@ -27,9 +27,9 @@ public record CustomerReportDetailResponse(
     String status,
     String accidentType,
     String treatment,
-    Long claimedMinAmount,
-    Long claimedMaxAmount,
-    Long offeredAmount,
+    Integer claimedMinAmount,
+    Integer claimedMaxAmount,
+    Integer offeredAmount,
     List<String> applicableGuarantees,
     List<String> omittedSpecialContract,
     List<String> basisTermsPrecedents,
@@ -96,7 +96,7 @@ public record CustomerReportDetailResponse(
       String opinion,
       String status,
       List<String> tags,
-      Long impactAmount) {
+      Integer impactAmount) {
 
     static IssueItem of(ReportIssue issue, String adjusterOpinion) {
       String opinion = adjusterOpinion != null ? adjusterOpinion : issue.getDescription();

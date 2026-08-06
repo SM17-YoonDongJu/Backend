@@ -38,7 +38,7 @@ public class ReportReviewIssue extends CreatedAtEntity {
   private String description;
 
   @Column(name = "impact_amount")
-  private Long impactAmount;
+  private Integer impactAmount;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "review_status", nullable = false, length = 30)
@@ -53,7 +53,7 @@ public class ReportReviewIssue extends CreatedAtEntity {
   @Column(name = "excluded_reason")
   private String excludedReason;
 
-  public ReportReviewIssue(UUID reportIssueId, String title, String description, Long impactAmount,
+  public ReportReviewIssue(UUID reportIssueId, String title, String description, Integer impactAmount,
       IssueReviewStatus reviewStatus, String adjusterOpinion, String modifiedReason, String excludedReason) {
     this.reportIssueId = reportIssueId;
     this.title = title;
@@ -66,7 +66,7 @@ public class ReportReviewIssue extends CreatedAtEntity {
   }
 
   /** 재검수 시 같은 쟁점(report_issue_id) 행을 삭제·재삽입하지 않고 값만 갱신(부분 UK 충돌 회피). */
-  void updateContent(String title, String description, Long impactAmount, IssueReviewStatus reviewStatus,
+  void updateContent(String title, String description, Integer impactAmount, IssueReviewStatus reviewStatus,
       String adjusterOpinion, String modifiedReason, String excludedReason) {
     this.title = title;
     this.description = description;

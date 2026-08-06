@@ -162,7 +162,7 @@ class ChatMessageQueryServiceTest {
   void getMessages_attachmentMessage_getsPresignedUrlAndIsMineFlag() {
     ChatMessage attachment = ChatMessage.attachment(
         roomId, adjusterId, ChatMessageType.IMAGE,
-        List.of(new ChatAttachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 1234L)), null);
+        List.of(new ChatAttachment("chat/" + roomId + "/uuid_photo.png", "photo.png", "image/png", 1234)), null);
     ReflectionTestUtils.setField(attachment, "id", UUID.randomUUID());
     ReflectionTestUtils.setField(attachment, "createdAt", LocalDateTime.now());
 

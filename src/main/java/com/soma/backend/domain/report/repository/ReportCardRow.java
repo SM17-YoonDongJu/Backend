@@ -19,11 +19,11 @@ public record ReportCardRow(
     String title,
     LocalDateTime createdAt,
     String caseNo,
-    Long claimedMinAmount,
-    Long claimedMaxAmount,
+    Integer claimedMinAmount,
+    Integer claimedMaxAmount,
     Long proposalCount,
     LocalDateTime reviewedAt,
     String adjusterNickname,
-    Long offeredAmount,
+    Integer offeredAmount,
     String treatment) {
 }

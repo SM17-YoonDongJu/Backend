@@ -17,11 +17,11 @@ import com.soma.backend.domain.report.repository.ReviewedReportRow;
  * 어떤 탭이 선택돼도 전체 분포를 보여준다(FE #94).
  */
 public record ReviewedReportListResponse(
-    Stats stats, Map<String, Long> statusCounts, List<Item> items,
+    Stats stats, Map<String, Integer> statusCounts, List<Item> items,
     int page, int size, long totalElements, int totalPages) {
 
   public static ReviewedReportListResponse from(
-      Stats stats, Map<String, Long> statusCounts, Page<ReviewedReportRow> page) {
+      Stats stats, Map<String, Integer> statusCounts, Page<ReviewedReportRow> page) {
     List<Item> items = page.getContent().stream().map(Item::from).toList();
     return new ReviewedReportListResponse(
         stats, statusCounts, items,
@@ -47,7 +47,7 @@ public record ReviewedReportListResponse(
    */
   public record Item(
       UUID reportId, String caseNo, String title, String accidentType, String region, String status,
-      LocalDateTime reviewedAt, Long confirmedMinAmount, Long confirmedMaxAmount, Integer rating) {
+      LocalDateTime reviewedAt, Integer confirmedMinAmount, Integer confirmedMaxAmount, Integer rating) {
 
     public static Item from(ReviewedReportRow row) {
       return new Item(

@@ -15,9 +15,9 @@ public record PendingReviewRow(
     AccidentType accidentType,
     List<String> region,
     ReportStatus status,
-    Long claimedMinAmount,
-    Long claimedMaxAmount,
-    Long offeredAmount,
+    Integer claimedMinAmount,
+    Integer claimedMaxAmount,
+    Integer offeredAmount,
     Long issueCount,
     Boolean held,
     LocalDateTime createdAt) {

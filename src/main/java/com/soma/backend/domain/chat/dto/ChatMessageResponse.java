@@ -23,6 +23,6 @@ public record ChatMessageResponse(
     LocalDateTime createdAt) {
 
   /** 첨부 표시 정보 + 단기 presigned GET URL. */
-  public record Attachment(String url, String name, String contentType, Long size) {
+  public record Attachment(String url, String name, String contentType, Integer size) {
   }
 }

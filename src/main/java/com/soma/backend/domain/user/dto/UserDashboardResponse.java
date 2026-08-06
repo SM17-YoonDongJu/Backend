@@ -36,9 +36,9 @@ public record UserDashboardResponse(
    */
   public record ProposalSummary(
       int count,
-      Long minAmount,
-      Long maxAmount,
-      Long avgAmount,
+      Integer minAmount,
+      Integer maxAmount,
+      Integer avgAmount,
       List<Item> items) {
 
     /** speciality(단수)는 사정사 specialties[] 첫 전문분야, career는 연차. nickname은 사정사 이름. */
@@ -48,8 +48,8 @@ public record UserDashboardResponse(
         String nickname,
         Integer career,
         String speciality,
-        Long estimateMinAmount,
-        Long estimateMaxAmount) {
+        Integer estimateMinAmount,
+        Integer estimateMaxAmount) {
     }
   }
 }

@@ -62,31 +62,31 @@ public class UserDashboardQueryService {
     if (rows.isEmpty()) {
       return null;
     }
-    Long minAmount = rows.stream()
+    Integer minAmount = rows.stream()
         .map(ProposalItemRow::estimateMinAmount)
         .filter(amount -> amount != null)
-        .min(Long::compareTo)
+        .min(Integer::compareTo)
         .orElse(null);
-    Long maxAmount = rows.stream()
+    Integer maxAmount = rows.stream()
         .map(ProposalItemRow::estimateMaxAmount)
         .filter(amount -> amount != null)
-        .max(Long::compareTo)
+        .max(Integer::compareTo)
         .orElse(null);
     List<ProposalSummary.Item> items = rows.stream().map(this::toItem).toList();
     return new ProposalSummary(rows.size(), minAmount, maxAmount, averageMidpoint(rows), items);
   }
 
   /** 제안가 평균 — 각 제안 중앙값((min+max)/2)의 평균을 반올림. min·max 둘 다 있는 제안만 집계, 없으면 null. */
-  private Long averageMidpoint(List<ProposalItemRow> rows) {
-    List<Long> midpoints = rows.stream()
+  private Integer averageMidpoint(List<ProposalItemRow> rows) {
+    List<Integer> midpoints = rows.stream()
         .filter(row -> row.estimateMinAmount() != null && row.estimateMaxAmount() != null)
         .map(row -> (row.estimateMinAmount() + row.estimateMaxAmount()) / 2)
         .toList();
     if (midpoints.isEmpty()) {
       return null;
     }
-    long sum = midpoints.stream().mapToLong(Long::longValue).sum();
-    return Math.round((double) sum / midpoints.size());
+    int sum = midpoints.stream().mapToInt(Integer::intValue).sum();
+    return (int) Math.round((double) sum / midpoints.size());
   }
 
   private ProposalSummary.Item toItem(ProposalItemRow row) {

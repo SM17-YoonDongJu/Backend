@@ -90,7 +90,7 @@ class ReviewWorkspaceQueryServiceTest {
 
     assertThat(result.started()).isFalse();
     assertThat(result.applicableGuarantees()).containsExactly("AI-보장");
-    assertThat(result.aiEstimate().min()).isEqualTo(12_000_000L);
+    assertThat(result.aiEstimate().min()).isEqualTo(12_000_000);
     assertThat(result.adjusterEstimate()).isNull();
     assertThat(result.review()).isNull();
     assertThat(result.reviewStatus()).isNull();
@@ -112,7 +112,7 @@ class ReviewWorkspaceQueryServiceTest {
     UUID aiIssueId = aiIssue.getId();
     ReportReview review = review();
     review.getIssues().add(reviewIssue(aiIssueId, IssueReviewStatus.ACCEPTED, null, "인정 의견", null));
-    review.getIssues().add(reviewIssue(null, IssueReviewStatus.ADDED, "외모추상 특약 누락", "신규 의견", 3_000_000L));
+    review.getIssues().add(reviewIssue(null, IssueReviewStatus.ADDED, "외모추상 특약 누락", "신규 의견", 3_000_000));
 
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportRepository.findReviewContext(reportId)).willReturn(context());
@@ -125,7 +125,7 @@ class ReviewWorkspaceQueryServiceTest {
 
     assertThat(result.started()).isTrue();
     assertThat(result.applicableGuarantees()).containsExactly("사정사-보장");
-    assertThat(result.adjusterEstimate().min()).isEqualTo(14_000_000L);
+    assertThat(result.adjusterEstimate().min()).isEqualTo(14_000_000);
     assertThat(result.reviewStatus()).isEqualTo("SENT");
     assertThat(result.issues()).hasSize(2);
 
@@ -140,7 +140,7 @@ class ReviewWorkspaceQueryServiceTest {
     assertThat(added.issueId()).isNull();
     assertThat(added.reviewStatus()).isEqualTo("ADDED");
     assertThat(added.modifiedTitle()).isEqualTo("외모추상 특약 누락");
-    assertThat(added.modifiedImpactAmount()).isEqualTo(3_000_000L);
+    assertThat(added.modifiedImpactAmount()).isEqualTo(3_000_000);
 
     assertThat(result.progress().total()).isEqualTo(2);
     assertThat(result.progress().accepted()).isEqualTo(1);
@@ -173,8 +173,8 @@ class ReviewWorkspaceQueryServiceTest {
     Report report = BeanUtils.instantiateClass(Report.class);
     ReflectionTestUtils.setField(report, "id", reportId);
     ReflectionTestUtils.setField(report, "status", ReportStatus.AWAITING_INSPECTION);
-    ReflectionTestUtils.setField(report, "claimedMinAmount", 12_000_000L);
-    ReflectionTestUtils.setField(report, "claimedMaxAmount", 18_000_000L);
+    ReflectionTestUtils.setField(report, "claimedMinAmount", 12_000_000);
+    ReflectionTestUtils.setField(report, "claimedMaxAmount", 18_000_000);
     ReflectionTestUtils.setField(report, "applicableGuarantees", List.of("AI-보장"));
     return report;
   }
@@ -189,14 +189,14 @@ class ReviewWorkspaceQueryServiceTest {
   private ReportReview review() {
     ReportReview review = new ReportReview(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", UUID.randomUUID());
-    ReflectionTestUtils.setField(review, "estimateMinAmount", 14_000_000L);
-    ReflectionTestUtils.setField(review, "estimateMaxAmount", 17_500_000L);
+    ReflectionTestUtils.setField(review, "estimateMinAmount", 14_000_000);
+    ReflectionTestUtils.setField(review, "estimateMaxAmount", 17_500_000);
     ReflectionTestUtils.setField(review, "applicableGuarantees", List.of("사정사-보장"));
     return review;
   }
 
   private ReportReviewIssue reviewIssue(
-      UUID reportIssueId, IssueReviewStatus status, String title, String opinion, Long impactAmount) {
+      UUID reportIssueId, IssueReviewStatus status, String title, String opinion, Integer impactAmount) {
     return new ReportReviewIssue(reportIssueId, title, null, impactAmount, status, opinion, null, null);
   }
 

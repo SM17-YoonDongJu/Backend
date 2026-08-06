@@ -10,6 +10,6 @@ import java.util.List;
 public record SendMessageRequest(String content, List<Attachment> attachments) {
 
   /** ⑦ 업로드로 확보한 첨부 참조(private object key + 표시 메타). */
-  public record Attachment(String attachmentKey, String name, String contentType, Long size) {
+  public record Attachment(String attachmentKey, String name, String contentType, Integer size) {
   }
 }

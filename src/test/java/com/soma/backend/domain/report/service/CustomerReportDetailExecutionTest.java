@@ -83,9 +83,9 @@ class CustomerReportDetailExecutionTest {
     assertThat(res.status()).isEqualTo("AWAITING_INSPECTION");
     assertThat(res.accidentType()).isEqualTo("disability");
     assertThat(res.treatment()).isEqualTo("3주 입원 후 통원");
-    assertThat(res.claimedMinAmount()).isEqualTo(12_000_000L);
-    assertThat(res.claimedMaxAmount()).isEqualTo(18_000_000L);
-    assertThat(res.offeredAmount()).isEqualTo(8_500_000L);
+    assertThat(res.claimedMinAmount()).isEqualTo(12_000_000);
+    assertThat(res.claimedMaxAmount()).isEqualTo(18_000_000);
+    assertThat(res.offeredAmount()).isEqualTo(8_500_000);
     assertThat(res.confidenceLevel()).isEqualTo("HIGH");
     assertThat(res.reportNo()).isEqualTo("CRD-1");
     // ACCEPTED 제안이 없으므로 확정 배열은 report 원본을 그대로 노출한다.
@@ -119,7 +119,7 @@ class CustomerReportDetailExecutionTest {
     ReflectionTestUtils.setField(report, "basisTermsPrecedents", List.of("REPORT_근거"));
     UUID reportId = reportRepository.save(report).getId();
     UUID aiIssueId =
-        saveIssue(reportId, "과실비율 쟁점", "AI 초안 설명", "TRUSTED", List.of("교통사고", "과실"), 5_000_000L);
+        saveIssue(reportId, "과실비율 쟁점", "AI 초안 설명", "TRUSTED", List.of("교통사고", "과실"), 5_000_000);
     // 채택 리뷰 + 그 쟁점 오버레이(사정사 의견) → opinion은 adjuster_opinion 우선.
     saveAcceptedReviewWithOpinion(reportId, adjusterId, "검수 의견입니다",
         List.of("REVIEW_보장"), List.of("REVIEW_특약"), List.of("REVIEW_근거"),
@@ -144,7 +144,7 @@ class CustomerReportDetailExecutionTest {
     assertThat(res.issue().get(0).opinion()).isEqualTo("사정사 의견: 과실 40%로 재산정");
     assertThat(res.issue().get(0).status()).isEqualTo("TRUSTED");
     assertThat(res.issue().get(0).tags()).containsExactly("교통사고", "과실");
-    assertThat(res.issue().get(0).impactAmount()).isEqualTo(5_000_000L);
+    assertThat(res.issue().get(0).impactAmount()).isEqualTo(5_000_000);
   }
 
   @Test
@@ -191,14 +191,14 @@ class CustomerReportDetailExecutionTest {
     ReflectionTestUtils.setField(report, "status", status);
     ReflectionTestUtils.setField(report, "treatment", "3주 입원 후 통원");
     ReflectionTestUtils.setField(report, "confidenceLevel", "high");
-    ReflectionTestUtils.setField(report, "claimedMinAmount", 12_000_000L);
-    ReflectionTestUtils.setField(report, "claimedMaxAmount", 18_000_000L);
-    ReflectionTestUtils.setField(report, "offeredAmount", 8_500_000L);
+    ReflectionTestUtils.setField(report, "claimedMinAmount", 12_000_000);
+    ReflectionTestUtils.setField(report, "claimedMaxAmount", 18_000_000);
+    ReflectionTestUtils.setField(report, "offeredAmount", 8_500_000);
     return report;
   }
 
   private UUID saveIssue(
-      UUID reportId, String title, String description, String aiStatus, List<String> tags, Long impactAmount) {
+      UUID reportId, String title, String description, String aiStatus, List<String> tags, Integer impactAmount) {
     ReportIssue issue = BeanUtils.instantiateClass(ReportIssue.class);
     ReflectionTestUtils.setField(issue, "reportId", reportId);
     ReflectionTestUtils.setField(issue, "title", title);

@@ -123,9 +123,9 @@ class ReportControllerAuthTest {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
         UUID.randomUUID(), "MATCHED", "traffic", "교통사고 리포트",
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-1",
-        1_000_000L, 2_000_000L, 3L,
+        1_000_000, 2_000_000, 3,
         LocalDateTime.of(2026, 7, 27, 12, 0), "홍사정",
-        8_500_000L, "후유장해");
+        8_500_000, "후유장해");
     ReportCardListResponse response =
         new ReportCardListResponse(List.of(card), new Pagination(1, 10, 1, 1, false));
     given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt())).willReturn(response);
@@ -181,7 +181,7 @@ class ReportControllerAuthTest {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
         UUID.randomUUID(), "COUNSELING", "traffic", "교통사고 리포트",
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
-        1_000_000L, 2_000_000L, 1L,
+        1_000_000, 2_000_000, 1,
         LocalDateTime.of(2026, 7, 27, 12, 0), "김사정",
         null, "후유장해");
     given(reportQueryService.getReceivedProposals(any(), anyInt(), anyInt()))
@@ -215,12 +215,12 @@ class ReportControllerAuthTest {
     UUID adjusterId = UUID.randomUUID();
     CustomerReportDetailResponse.IssueItem issue = new CustomerReportDetailResponse.IssueItem(
         "장해등급 과소 산정 가능", "등급 재산정이 필요합니다(사정사 의견)", "TRUSTED",
-        List.of("약관 제12조", "진단서"), 3_000_000L);
+        List.of("약관 제12조", "진단서"), 3_000_000);
     CustomerReportDetailResponse.Adjuster adjuster =
         new CustomerReportDetailResponse.Adjuster("홍사정", 7);
     CustomerReportDetailResponse response = new CustomerReportDetailResponse(
         reportId, "MATCHED", "disability", "3주 입원 후 통원",
-        12_000_000L, 18_000_000L, 8_500_000L,
+        12_000_000, 18_000_000, 8_500_000,
         List.of("상해후유장해"), List.of("일상생활배상책임"), List.of("대법원 2019다12345"),
         List.of(issue), "후유장해 청구가 가능한가요?", adjusterId, "HIGH", "20260727-1",
         "검수 의견입니다", LocalDateTime.of(2026, 7, 27, 12, 0), adjuster);
