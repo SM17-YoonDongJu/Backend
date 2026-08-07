@@ -47,7 +47,7 @@ out/
 
 ### Claude Code ###
 .claude/settings.local.json
-_workspace/
+_workspace*/
 
 ### Local docs / drafts (velog, manual-test 등, 추적 안 함) ###
 docs/

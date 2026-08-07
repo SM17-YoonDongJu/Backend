@@ -7,11 +7,15 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.report.entity.AmountRange;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
 
 /** API#2 응답. 노션 스펙 정합 — {@code { list: [...], pagination: {...} }} 구조(page는 1-based). */
-public record PendingReviewListResponse(List<Item> list, Pagination pagination) {
+public record PendingReviewListResponse(
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Item> list,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Pagination pagination) {
 
   public static PendingReviewListResponse from(
       Page<PendingReviewRow> page, Map<UUID, String> reportReviewStatusByReportId) {
@@ -39,19 +43,19 @@ public record PendingReviewListResponse(List<Item> list, Pagination pagination) 
    * (청구액 대비 여유) 계산에만 내부적으로 사용한다.
    */
   public record Item(
-      UUID reportId,
-      String caseId,
-      String title,
-      String accidentType,
-      String region,
-      String status,
-      String reportReviewStatus,
-      Long claimedMinAmount,
-      Long claimedMaxAmount,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String caseId,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String title,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String accidentType,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String region,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String status,
+      @Schema(nullable = true, description = "요청 사정사 본인의 검수 상태. 본인 검수가 없으면 null") String reportReviewStatus,
+      @Schema(nullable = true) Integer claimedMinAmount,
+      @Schema(nullable = true) Integer claimedMaxAmount,
       long offerHeadroom,
       long issueCount,
       boolean held,
-      LocalDateTime createdAt) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
 
     public static Item from(PendingReviewRow row, String reportReviewStatus) {
       long offerHeadroom = new AmountRange(

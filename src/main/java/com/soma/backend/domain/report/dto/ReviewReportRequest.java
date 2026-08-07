@@ -3,15 +3,20 @@ package com.soma.backend.domain.report.dto;
 import java.util.List;
 import java.util.UUID;
 
-/** API#4 요청 바디(snake_case 수신 → camelCase 필드). */
+import io.swagger.v3.oas.annotations.media.Schema;
+
+/**
+ * API#4 요청 바디(snake_case 수신 → camelCase 필드). 부분 반영(upsert) 계약이라 모든 필드가 선택이다 —
+ * 보내지 않은 필드는 기존 값을 유지한다({@code ReportReviewCommandService.review} 참고).
+ */
 public record ReviewReportRequest(
-    Long estimateMinAmount,
-    Long estimateMaxAmount,
-    List<String> applicableGuarantees,
-    List<String> omittedSpecialContract,
-    List<String> basisTermsPrecedents,
-    List<IssueReview> issues,
-    String review) {
+    @Schema(nullable = true) Integer estimateMinAmount,
+    @Schema(nullable = true) Integer estimateMaxAmount,
+    @Schema(nullable = true) List<String> applicableGuarantees,
+    @Schema(nullable = true) List<String> omittedSpecialContract,
+    @Schema(nullable = true) List<String> basisTermsPrecedents,
+    @Schema(nullable = true) List<IssueReview> issues,
+    @Schema(nullable = true) String review) {
 
   /**
    * issue 단위 검수 결과(부분 반영). reviewIssueId(report_issues_reviews.id)가 있으면 그 행을 갱신하고, 없으면
@@ -20,7 +25,17 @@ public record ReviewReportRequest(
    * 유지된다(삭제 없음).
    */
   public record IssueReview(
-      UUID reviewIssueId, UUID issueId, String reviewStatus, String title, String description,
-      Long impactAmount, String adjusterOpinion, String modifiedReason, String excludedReason) {
+      @Schema(nullable = true, description = "report_issues_reviews.id. 있으면 그 행을 갱신") UUID reviewIssueId,
+      @Schema(nullable = true,
+          description = "AI 쟁점(report_issues.id). ADDED(신규 쟁점)면 null, ACCEPTED·MODIFIED·EXCLUDED면 필수")
+          UUID issueId,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "ACCEPTED | MODIFIED | EXCLUDED | ADDED")
+          String reviewStatus,
+      @Schema(nullable = true, description = "reviewStatus=ADDED면 필수") String title,
+      @Schema(nullable = true, description = "reviewStatus=ADDED면 필수") String description,
+      @Schema(nullable = true) Integer impactAmount,
+      @Schema(nullable = true) String adjusterOpinion,
+      @Schema(nullable = true, description = "reviewStatus=MODIFIED면 필수") String modifiedReason,
+      @Schema(nullable = true, description = "reviewStatus=EXCLUDED면 필수") String excludedReason) {
   }
 }

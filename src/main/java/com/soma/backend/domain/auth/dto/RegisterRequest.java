@@ -6,6 +6,7 @@ import org.jspecify.annotations.Nullable;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
@@ -39,6 +40,6 @@ public record RegisterRequest(
         regexp = "^01[0-9]-?\\d{3,4}-?\\d{4}$",
         message = "유효한 휴대폰 번호 형식이 아닙니다.") String phoneNumber,
     @NotNull @Size(max = 10) String gender,
-    @Nullable @Size(max = 100, message = "지역은 100자 이하여야 합니다.") String region,
+    @Nullable @Schema(nullable = true) @Size(max = 100, message = "지역은 100자 이하여야 합니다.") String region,
     @NotBlank String userType) {
 }

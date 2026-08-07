@@ -7,7 +7,8 @@ import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.ReportStatus;
 
 /**
- * GET /reports 고객 리포트 목록 projection(QueryDSL, per-review). report_reviews 1건당 1행이며,
+ * GET /reports 고객 리포트 목록 projection(QueryDSL). 리뷰가 있는 리포트는 report_reviews 1건당 1행이고,
+ * 리뷰가 0건인 미검수 리포트는 리뷰 필드가 비어 있는 1행이다(reviewedAt·adjusterNickname null, proposalCount 0).
  * reviewedAt·adjusterNickname은 그 리뷰(report_reviews) 값, 나머지(status·accidentType·claimed·offered·
  * treatment·proposalCount)는 소속 리포트(reports) 값이다. proposalCount는 REJECTED 제외 리뷰 수(리포트 단위),
  * status는 REPORTS.status(응답에서 CLOSED→MATCHED 매핑), adjusterNickname은 리뷰 담당 사정사가 없으면 null.
@@ -19,11 +20,11 @@ public record ReportCardRow(
     String title,
     LocalDateTime createdAt,
     String caseNo,
-    Long claimedMinAmount,
-    Long claimedMaxAmount,
+    Integer claimedMinAmount,
+    Integer claimedMaxAmount,
     Long proposalCount,
     LocalDateTime reviewedAt,
     String adjusterNickname,
-    Long offeredAmount,
+    Integer offeredAmount,
     String treatment) {
 }

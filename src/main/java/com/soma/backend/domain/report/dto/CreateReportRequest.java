@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.claim.Hospitalization;
 
@@ -12,18 +14,22 @@ import com.soma.backend.domain.report.entity.claim.Hospitalization;
  * 나머지는 공통 컬럼/첨부(documents)로 매핑된다.
  */
 public record CreateReportRequest(
-    UUID productId,
-    AccidentType accidentType,
-    LocalDate accidentDate,
-    List<String> diagnosis,
-    Long offeredAmount,
-    List<Hospitalization> hospitalizations,
-    String description,
-    String additionalInformation,
-    List<Document> documents,
-    String question) {
+    @Schema(nullable = true) UUID productId,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) AccidentType accidentType,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDate accidentDate,
+    @Schema(nullable = true) List<String> diagnosis,
+    @Schema(nullable = true) Integer offeredAmount,
+    @Schema(nullable = true) List<Hospitalization> hospitalizations,
+    @Schema(nullable = true) String description,
+    @Schema(nullable = true) String additionalInformation,
+    @Schema(nullable = true) List<Document> documents,
+    @Schema(nullable = true) String question) {
 
   /** 프론트가 S3에 직접 업로드한 뒤 전달하는 문서 메타(design.md §6). */
-  public record Document(String s3Url, String name, String reportType, String fileType) {
+  public record Document(
+      @Schema(nullable = true) String s3Url,
+      @Schema(nullable = true) String name,
+      @Schema(nullable = true) String reportType,
+      @Schema(nullable = true) String fileType) {
   }
 }

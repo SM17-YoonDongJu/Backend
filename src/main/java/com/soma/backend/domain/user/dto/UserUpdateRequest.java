@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -16,12 +17,12 @@ import jakarta.validation.constraints.Size;
  * @param avatarUrl   변경할 프로필 이미지 URL(500자 이하)
  */
 public record UserUpdateRequest(
-    @Nullable @Pattern(
+    @Nullable @Schema(nullable = true, description = "세 필드 중 최소 하나는 있어야 한다") @Pattern(
         regexp = "^01[0-9]-?\\d{3,4}-?\\d{4}$",
         message = "유효한 휴대폰 번호 형식이 아닙니다.") String phoneNumber,
-    @Nullable @Size(max = 10, message = "지역은 최대 10개까지 등록할 수 있습니다.")
+    @Nullable @Schema(nullable = true) @Size(max = 10, message = "지역은 최대 10개까지 등록할 수 있습니다.")
         List<@Size(max = 100, message = "지역은 각 100자 이하여야 합니다.") String> region,
-    @Nullable @Size(max = 500, message = "프로필 이미지 URL은 500자 이하여야 합니다.") String avatarUrl) {
+    @Nullable @Schema(nullable = true) @Size(max = 500, message = "프로필 이미지 URL은 500자 이하여야 합니다.") String avatarUrl) {
 
   /**
    * 수정할 필드가 하나도 없는지 여부. 부분 수정 API라 최소 한 필드는 있어야 한다.

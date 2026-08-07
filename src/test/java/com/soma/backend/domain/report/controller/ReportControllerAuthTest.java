@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.controller;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -123,9 +124,9 @@ class ReportControllerAuthTest {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
         UUID.randomUUID(), "MATCHED", "traffic", "교통사고 리포트",
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-1",
-        1_000_000L, 2_000_000L, 3L,
+        1_000_000, 2_000_000, 3,
         LocalDateTime.of(2026, 7, 27, 12, 0), "홍사정",
-        8_500_000L, "후유장해");
+        8_500_000, "후유장해");
     ReportCardListResponse response =
         new ReportCardListResponse(List.of(card), new Pagination(1, 10, 1, 1, false));
     given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt())).willReturn(response);
@@ -149,6 +150,30 @@ class ReportControllerAuthTest {
         .andExpect(jsonPath("$.data.pagination.total_elements").value(1))
         .andExpect(jsonPath("$.data.pagination.total_pages").value(1))
         .andExpect(jsonPath("$.data.pagination.has_next").value(false));
+  }
+
+  @Test
+  @DisplayName("검수 전(무리뷰) 카드는 reviewed_at·adjuster_nickname을 null로 내려준다")
+  void listSerializesReviewlessCardWithNullReviewFields() throws Exception {
+    ReportCardListResponse.Card card = new ReportCardListResponse.Card(
+        UUID.randomUUID(), "AWAITING_INSPECTION", "traffic", "제목 없음",
+        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
+        null, null, 0,
+        null, null,
+        null, null);
+    ReportCardListResponse response =
+        new ReportCardListResponse(List.of(card), new Pagination(1, 10, 1, 1, false));
+    given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt())).willReturn(response);
+
+    mockMvc.perform(get("/reports").with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.list[0].report_id").value(card.reportId().toString()))
+        .andExpect(jsonPath("$.data.list[0].status").value("AWAITING_INSPECTION"))
+        .andExpect(jsonPath("$.data.list[0].proposal_count").value(0))
+        .andExpect(jsonPath("$.data.list[0].reviewed_at").value(nullValue()))
+        .andExpect(jsonPath("$.data.list[0].adjuster_nickname").value(nullValue()))
+        .andExpect(jsonPath("$.data.list[0].offered_amount").value(nullValue()))
+        .andExpect(jsonPath("$.data.pagination.total_elements").value(1));
   }
 
   @Test
@@ -181,7 +206,7 @@ class ReportControllerAuthTest {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
         UUID.randomUUID(), "COUNSELING", "traffic", "교통사고 리포트",
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
-        1_000_000L, 2_000_000L, 1L,
+        1_000_000, 2_000_000, 1,
         LocalDateTime.of(2026, 7, 27, 12, 0), "김사정",
         null, "후유장해");
     given(reportQueryService.getReceivedProposals(any(), anyInt(), anyInt()))
@@ -215,12 +240,12 @@ class ReportControllerAuthTest {
     UUID adjusterId = UUID.randomUUID();
     CustomerReportDetailResponse.IssueItem issue = new CustomerReportDetailResponse.IssueItem(
         "장해등급 과소 산정 가능", "등급 재산정이 필요합니다(사정사 의견)", "TRUSTED",
-        List.of("약관 제12조", "진단서"), 3_000_000L);
+        List.of("약관 제12조", "진단서"), 3_000_000);
     CustomerReportDetailResponse.Adjuster adjuster =
         new CustomerReportDetailResponse.Adjuster("홍사정", 7);
     CustomerReportDetailResponse response = new CustomerReportDetailResponse(
         reportId, "MATCHED", "disability", "3주 입원 후 통원",
-        12_000_000L, 18_000_000L, 8_500_000L,
+        12_000_000, 18_000_000, 8_500_000,
         List.of("상해후유장해"), List.of("일상생활배상책임"), List.of("대법원 2019다12345"),
         List.of(issue), "후유장해 청구가 가능한가요?", adjusterId, "HIGH", "20260727-1",
         "검수 의견입니다", LocalDateTime.of(2026, 7, 27, 12, 0), adjuster);

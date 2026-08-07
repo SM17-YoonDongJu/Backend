@@ -82,12 +82,12 @@ class SharedReportQueryServiceTest {
     ChatRoom chatRoom = memberRoom();
     Report report = report();
     ReportReview review = review();
-    ReportIssue aiIssue = aiIssue("AI제목", "AI설명", 1_000_000L, List.of("교통", "후유장해"));
+    ReportIssue aiIssue = aiIssue("AI제목", "AI설명", 1_000_000, List.of("교통", "후유장해"));
     // overlay: 제목은 override, 설명은 null(→AI fallback), 금액은 override
     review.getIssues().add(overlay(aiIssue.getId(), IssueReviewStatus.ACCEPTED,
-        "사정사제목", null, 2_000_000L, "인정합니다"));
+        "사정사제목", null, 2_000_000, "인정합니다"));
     review.getIssues().add(overlay(null, IssueReviewStatus.ADDED,
-        "신규쟁점", "신규설명", 3_000_000L, "추가 의견"));
+        "신규쟁점", "신규설명", 3_000_000, "추가 의견"));
     givenPipeline(chatRoom, review, report, List.of(aiIssue), adjusterProfile());
 
     // When
@@ -105,9 +105,9 @@ class SharedReportQueryServiceTest {
     assertThat(response.reportUpdatedAt()).isEqualTo(LocalDateTime.of(2026, 5, 20, 9, 0));
     assertThat(response.submittedAt()).isEqualTo(LocalDateTime.of(2026, 5, 22, 10, 0));
     assertThat(response.summary()).isEqualTo("검수 요약 인용문");
-    assertThat(response.offeredAmount()).isEqualTo(5_000_000L);
-    assertThat(response.estimate().min()).isEqualTo(12_000_000L);
-    assertThat(response.estimate().max()).isEqualTo(18_000_000L);
+    assertThat(response.offeredAmount()).isEqualTo(5_000_000);
+    assertThat(response.estimate().min()).isEqualTo(12_000_000);
+    assertThat(response.estimate().max()).isEqualTo(18_000_000);
     assertThat(response.applicableGuarantees()).containsExactly("보장A");
     assertThat(response.omittedSpecialContract()).containsExactly("특약B");
     assertThat(response.basisTermsPrecedents()).containsExactly("근거C");
@@ -125,7 +125,7 @@ class SharedReportQueryServiceTest {
     assertThat(matched.reviewIssueId()).isNotNull();
     assertThat(matched.title()).isEqualTo("사정사제목");
     assertThat(matched.description()).isEqualTo("AI설명");
-    assertThat(matched.impactAmount()).isEqualTo(2_000_000L);
+    assertThat(matched.impactAmount()).isEqualTo(2_000_000);
     assertThat(matched.adjusterOpinion()).isEqualTo("인정합니다");
     assertThat(matched.reviewStatus()).isEqualTo("ACCEPTED");
     assertThat(matched.tags()).containsExactly("교통", "후유장해");
@@ -142,8 +142,8 @@ class SharedReportQueryServiceTest {
   void getSharedReport_excludedOverlay_skipped() {
     // Given
     ReportReview review = review();
-    ReportIssue kept = aiIssue("유지쟁점", "설명", 1_000L, List.of("tag"));
-    ReportIssue excluded = aiIssue("제외쟁점", "설명", 2_000L, List.of("tag"));
+    ReportIssue kept = aiIssue("유지쟁점", "설명", 1_000, List.of("tag"));
+    ReportIssue excluded = aiIssue("제외쟁점", "설명", 2_000, List.of("tag"));
     review.getIssues().add(overlay(kept.getId(), IssueReviewStatus.ACCEPTED, null, null, null, "인정"));
     review.getIssues().add(overlay(excluded.getId(), IssueReviewStatus.EXCLUDED, null, null, null, "제외"));
     givenPipeline(memberRoom(), review, report(), List.of(kept, excluded), adjusterProfile());
@@ -162,7 +162,7 @@ class SharedReportQueryServiceTest {
   void getSharedReport_addedIssue_hasNullIssueIdAndEmptyTags() {
     // Given
     ReportReview review = review();
-    review.getIssues().add(overlay(null, IssueReviewStatus.ADDED, "신규", "신규설명", 4_000L, "추가"));
+    review.getIssues().add(overlay(null, IssueReviewStatus.ADDED, "신규", "신규설명", 4_000, "추가"));
     givenPipeline(memberRoom(), review, report(), List.of(), adjusterProfile());
 
     // When
@@ -182,8 +182,8 @@ class SharedReportQueryServiceTest {
   void getSharedReport_aiIssueWithoutOverlay_skipped() {
     // Given
     ReportReview review = review();
-    ReportIssue reviewed = aiIssue("검수됨", "설명", 1_000L, List.of("tag"));
-    ReportIssue notReviewed = aiIssue("미검수", "설명", 2_000L, List.of("tag"));
+    ReportIssue reviewed = aiIssue("검수됨", "설명", 1_000, List.of("tag"));
+    ReportIssue notReviewed = aiIssue("미검수", "설명", 2_000, List.of("tag"));
     review.getIssues().add(overlay(reviewed.getId(), IssueReviewStatus.MODIFIED, null, null, null, "수정"));
     givenPipeline(memberRoom(), review, report(), List.of(reviewed, notReviewed), adjusterProfile());
 
@@ -305,7 +305,7 @@ class SharedReportQueryServiceTest {
     ReflectionTestUtils.setField(report, "title", "교통사고 후유장해");
     ReflectionTestUtils.setField(report, "accidentType", AccidentType.TRAFFIC);
     ReflectionTestUtils.setField(report, "status", ReportStatus.COUNSELING);
-    ReflectionTestUtils.setField(report, "offeredAmount", 5_000_000L);
+    ReflectionTestUtils.setField(report, "offeredAmount", 5_000_000);
     ReflectionTestUtils.setField(report, "updatedAt", LocalDateTime.of(2026, 5, 20, 9, 0));
     return report;
   }
@@ -314,8 +314,8 @@ class SharedReportQueryServiceTest {
     ReportReview review = new ReportReview(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", reviewId);
     ReflectionTestUtils.setField(review, "review", "검수 요약 인용문");
-    ReflectionTestUtils.setField(review, "estimateMinAmount", 12_000_000L);
-    ReflectionTestUtils.setField(review, "estimateMaxAmount", 18_000_000L);
+    ReflectionTestUtils.setField(review, "estimateMinAmount", 12_000_000);
+    ReflectionTestUtils.setField(review, "estimateMaxAmount", 18_000_000);
     ReflectionTestUtils.setField(review, "applicableGuarantees", List.of("보장A"));
     ReflectionTestUtils.setField(review, "omittedSpecialContract", List.of("특약B"));
     ReflectionTestUtils.setField(review, "basisTermsPrecedents", List.of("근거C"));
@@ -323,7 +323,7 @@ class SharedReportQueryServiceTest {
     return review;
   }
 
-  private ReportIssue aiIssue(String title, String description, Long impactAmount, List<String> tags) {
+  private ReportIssue aiIssue(String title, String description, Integer impactAmount, List<String> tags) {
     ReportIssue issue = BeanUtils.instantiateClass(ReportIssue.class);
     ReflectionTestUtils.setField(issue, "id", UUID.randomUUID());
     ReflectionTestUtils.setField(issue, "reportId", reportId);
@@ -335,7 +335,7 @@ class SharedReportQueryServiceTest {
   }
 
   private ReportReviewIssue overlay(UUID reportIssueId, IssueReviewStatus status,
-      String title, String description, Long impactAmount, String opinion) {
+      String title, String description, Integer impactAmount, String opinion) {
     ReportReviewIssue overlay = new ReportReviewIssue(
         reportIssueId, title, description, impactAmount, status, opinion, null, null);
     ReflectionTestUtils.setField(overlay, "id", UUID.randomUUID());

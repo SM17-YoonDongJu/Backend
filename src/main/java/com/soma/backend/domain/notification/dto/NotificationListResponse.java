@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.notification.entity.Notification;
 
 /**
@@ -14,7 +16,12 @@ import com.soma.backend.domain.notification.entity.Notification;
  * 직렬화된다(unread_count, total_elements, total_pages, is_read, created_at).
  */
 public record NotificationListResponse(
-    List<Item> items, long unreadCount, int page, int size, long totalElements, int totalPages) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Item> items,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) long unreadCount,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) int page,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) int size,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) long totalElements,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) int totalPages) {
 
   public static NotificationListResponse from(Page<Notification> page, long unreadCount) {
     List<Item> items = page.getContent().stream().map(Item::from).toList();
@@ -24,7 +31,12 @@ public record NotificationListResponse(
 
   /** 알림 목록 아이템 1건({id, type, title, body, is_read, created_at}). */
   public record Item(
-      UUID id, String type, String title, @Nullable String body, boolean isRead, LocalDateTime createdAt) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID id,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String type,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String title,
+      @Nullable @Schema(nullable = true) String body,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean isRead,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
 
     public static Item from(Notification notification) {
       return new Item(

@@ -11,7 +11,7 @@ class AmountRangeTest {
   @Test
   @DisplayName("offerHeadroom = claimed_max - offered")
   void headroomBasic() {
-    AmountRange range = new AmountRange(1000L, 5000L, 3000L);
+    AmountRange range = new AmountRange(1000, 5000, 3000);
 
     assertThat(range.offerHeadroom()).isEqualTo(2000L);
   }
@@ -19,7 +19,7 @@ class AmountRangeTest {
   @Test
   @DisplayName("offered가 claimed_max보다 크면 headroom은 음수가 될 수 있다")
   void headroomNegative() {
-    AmountRange range = new AmountRange(1000L, 5000L, 8000L);
+    AmountRange range = new AmountRange(1000, 5000, 8000);
 
     assertThat(range.offerHeadroom()).isEqualTo(-3000L);
   }
@@ -28,7 +28,7 @@ class AmountRangeTest {
   @DisplayName("null 금액은 0으로 안전 처리한다")
   void headroomNullSafe() {
     assertThat(new AmountRange(null, null, null).offerHeadroom()).isZero();
-    assertThat(new AmountRange(null, 5000L, null).offerHeadroom()).isEqualTo(5000L);
-    assertThat(new AmountRange(null, null, 3000L).offerHeadroom()).isEqualTo(-3000L);
+    assertThat(new AmountRange(null, 5000, null).offerHeadroom()).isEqualTo(5000L);
+    assertThat(new AmountRange(null, null, 3000).offerHeadroom()).isEqualTo(-3000L);
   }
 }

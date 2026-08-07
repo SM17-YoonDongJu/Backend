@@ -94,14 +94,14 @@ class ChatSharedReportControllerTest {
 
     SharedReportResponse.Adjuster adjuster =
         new SharedReportResponse.Adjuster(adjusterId, "김사정", 18, List.of("후유장해", "교통사고"));
-    SharedReportResponse.Estimate estimate = new SharedReportResponse.Estimate(12_000_000L, 18_000_000L);
+    SharedReportResponse.Estimate estimate = new SharedReportResponse.Estimate(12_000_000, 18_000_000);
     SharedReportResponse.Issue issue = new SharedReportResponse.Issue(
-        issueId, reviewIssueId, "장해등급 과소", "인정 의견", "설명", 3_000_000L, "ACCEPTED", List.of("교통"));
+        issueId, reviewIssueId, "장해등급 과소", "인정 의견", "설명", 3_000_000, "ACCEPTED", List.of("교통"));
     SharedReportResponse response = new SharedReportResponse(
         chatRoomId, reportId, proposalId, "20260520-017", "traffic", "교통사고 후유장해",
         "COUNSELING", "SENT",
         LocalDateTime.of(2026, 5, 20, 9, 0), LocalDateTime.of(2026, 5, 22, 10, 0),
-        "검수 요약 인용문", adjuster, estimate, 5_000_000L, List.of(issue), 1,
+        "검수 요약 인용문", adjuster, estimate, 5_000_000, List.of(issue), 1,
         List.of("보장A"), List.of("특약B"), List.of("근거C"));
     given(sharedReportQueryService.getSharedReport(eq(userId), eq(chatRoomId))).willReturn(response);
 

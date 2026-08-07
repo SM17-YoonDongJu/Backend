@@ -22,8 +22,9 @@ public interface ReportRepositoryCustom {
       Set<AccidentType> specialtyTypes, Pageable pageable);
 
   /**
-   * GET /reports 고객 리포트 목록(per-review). userId 소유 리포트에 달린 report_reviews를 1건당 1행으로
-   * 반환하며(전체 리뷰), status가 있으면 리포트 상태로 필터한다. reviewedAt·adjusterNickname은 그 리뷰값이다.
+   * GET /reports 고객 리포트 목록. userId 소유 리포트를 빠짐없이 반환한다 — 리뷰가 있으면 report_reviews
+   * 1건당 1행(per-review, 전체 리뷰), 리뷰가 0건인 미검수 리포트도 카드 1행으로 포함되며 이때
+   * reviewedAt·adjusterNickname은 null, proposalCount는 0이다. status가 있으면 리포트 상태로 필터한다.
    */
   Page<ReportCardRow> findUserReportCards(UUID userId, ReportStatus status, Pageable pageable);
 

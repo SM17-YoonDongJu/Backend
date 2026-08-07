@@ -2,6 +2,7 @@ package com.soma.backend.domain.report.dto;
 
 import org.jspecify.annotations.Nullable;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -16,5 +17,5 @@ public record CreateAdjusterReviewRequest(
         @Min(value = 1, message = "평점은 1~5입니다.")
         @Max(value = 5, message = "평점은 1~5입니다.")
         Integer score,
-    @Nullable @Size(max = 1000) String content) {
+    @Nullable @Size(max = 1000) @Schema(nullable = true) String content) {
 }

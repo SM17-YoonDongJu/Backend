@@ -7,6 +7,8 @@ import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.soma.backend.domain.adjuster.repository.AdjusterCardRow;
 import com.soma.backend.domain.adjuster.repository.AdjusterListMetaRow;
 import com.soma.backend.domain.user.entity.Role;
@@ -21,23 +23,23 @@ import com.soma.backend.global.common.RegionFormat;
  * (공개 상세 조회와 동일 규칙 — 프론트는 review_count로 평점 유무를 판별). verified는 자격 인증 사정사(RBAC)를 진실로 쓴다.
  */
 public record AdjusterListResponse(
-    List<Item> list,
-    Pagination pagination,
-    Meta meta) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Item> list,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Pagination pagination,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Meta meta) {
 
   /** 목록 카드 1건. activity_region은 text[]를 단일 문자열로 합친 값(RegionFormat)이다. */
   public record Item(
-      UUID adjusterId,
-      String name,
-      @Nullable String avatarUrl,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID adjusterId,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String name,
+      @Nullable @Schema(nullable = true) String avatarUrl,
       boolean verified,
-      List<String> specialties,
-      String headline,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<String> specialties,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String headline,
       double averageRating,
       int reviewCount,
       int career,
       int completedConsultCount,
-      String activityRegion) {
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String activityRegion) {
 
     public static Item from(AdjusterCardRow row, UnaryOperator<String> urlResolver) {
       int reviewCount = row.reviewCount() == null ? 0 : row.reviewCount();
