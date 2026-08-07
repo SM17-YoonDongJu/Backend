@@ -112,7 +112,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
 
   @Override
   public Page<ReportCardRow> findUserReportCards(UUID userId, ReportStatus status, Pageable pageable) {
-    return queryReportCards(userId, status, false, pageable);
+    return queryUserReportCards(userId, status, pageable);
   }
 
   @Override
@@ -121,10 +121,66 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
   }
 
   /**
-   * 고객 리포트 카드 목록 공통 조회 — per-review. 소유자(rp.userId) 리포트에 달린 report_reviews를 1건당 1행으로
-   * 편다(리포트당 리뷰 N개면 N행). {@code excludeRejected}면 REJECTED 리뷰 행을 제외한다(받은 제안 목록용).
-   * status가 있으면 리포트 상태로 필터한다. reviewedAt·adjusterNickname은 그 리뷰값, proposalCount는 REJECTED
-   * 제외 리뷰 수(리포트 단위 상관 서브쿼리), 나머지(accidentType·claimed·offered·treatment)는 리포트값이다.
+   * 내 리포트 카드 목록 조회(GET /reports) — 리포트(rp) 기준 LEFT JOIN. 소유자 리포트를 빠짐없이 노출하기 위해
+   * report_reviews를 LEFT JOIN 한다: 리뷰가 있으면 기존처럼 1건당 1행(per-review, 리포트당 리뷰 N개면 N행),
+   * 리뷰가 0건이면 카드 1행이 나오고 reviewedAt·adjusterNickname은 null·proposalCount는 0이다.
+   * 정렬은 리포트 접수 최신순(rp.createdAt desc)이 우선이고, 그다음 리뷰 최신순(리뷰 없는 행은 nulls-last —
+   * Postgres desc 기본값이 nulls-first라 명시가 필요하다)이다. rp.createdAt이 동률인 리포트가 여럿(특히
+   * 무리뷰 리포트끼리)이면 이 두 키만으로는 정렬이 유일하지 않아 페이지 경계에서 행이 중복/누락될 수 있어
+   * rp.id·rv.id를 타이브레이커로 덧붙인다. count도 content와 동일한 FROM/JOIN/WHERE에 non-distinct count라
+   * total이 실제 카드 행 수와 일치한다(countDistinct를 쓰면 per-review fan-out이 total에 반영되지 않아
+   * 페이지네이션이 어긋난다).
+   */
+  private Page<ReportCardRow> queryUserReportCards(UUID userId, ReportStatus status, Pageable pageable) {
+    QReport rp = QReport.report;
+    QReportReview rv = QReportReview.reportReview;
+    QReportReview sibling = new QReportReview("sibling");
+    QUser au = QUser.user;
+
+    BooleanBuilder where = new BooleanBuilder();
+    where.and(rp.userId.eq(userId));
+    if (status != null) {
+      where.and(rp.status.eq(status));
+    }
+
+    List<ReportCardRow> content = queryFactory
+        .select(Projections.constructor(ReportCardRow.class,
+            rp.id, rp.status, rp.accidentType, rp.title, rp.createdAt, rp.caseNo,
+            rp.claimedMinAmount, rp.claimedMaxAmount,
+            // proposalCount = REJECTED 제외 리뷰 수(리포트 단위). 무리뷰 리포트는 0이 된다.
+            JPAExpressions.select(sibling.count()).from(sibling)
+                .where(sibling.reportId.eq(rp.id).and(sibling.status.ne(ReviewStatus.REJECTED))),
+            rv.updatedAt, au.nickname, rp.offeredAmount, rp.treatment))
+        .from(rp)
+        .leftJoin(rv).on(rv.reportId.eq(rp.id))
+        .leftJoin(au).on(au.id.eq(rv.adjusterId))
+        .where(where)
+        // rp.id·rv.id 타이브레이커: created_at이 동률(특히 무리뷰 리포트끼리)이면 페이지 경계에서
+        // 순서가 흔들려 같은 행이 중복 노출되거나 아예 빠질 수 있어, 정렬을 항상 유일하게 고정한다.
+        .orderBy(rp.createdAt.desc(), rv.createdAt.desc().nullsLast(), rp.id.desc(), rv.id.desc().nullsLast())
+        .offset(pageable.getOffset())
+        .limit(pageable.getPageSize())
+        .fetch();
+
+    // content와 같은 FROM/LEFT JOIN/WHERE로 세야 리뷰 fan-out·무리뷰 1행이 total에 그대로 반영된다.
+    Long total = queryFactory
+        .select(rp.count())
+        .from(rp)
+        .leftJoin(rv).on(rv.reportId.eq(rp.id))
+        .where(where)
+        .fetchOne();
+
+    return new PageImpl<>(content, pageable, total == null ? 0L : total);
+  }
+
+  /**
+   * 받은 제안 목록 전용 조회(GET /me/received-proposals) — per-review. 소유자(rp.userId) 리포트에 달린
+   * report_reviews를 1건당 1행으로 편다(리포트당 리뷰 N개면 N행). {@code excludeRejected}면 REJECTED 리뷰 행을
+   * 제외한다. status가 있으면 리포트 상태로 필터한다. reviewedAt·adjusterNickname은 그 리뷰값, proposalCount는
+   * REJECTED 제외 리뷰 수(리포트 단위 상관 서브쿼리), 나머지(accidentType·claimed·offered·treatment)는 리포트값이다.
+   *
+   * <p>주의: 제안(리뷰)이 있어야 의미 있는 목록이라 {@code from(rv).join(rp)} INNER JOIN 의미를 깨지 마세요.
+   * 무리뷰 리포트까지 노출해야 하는 내 리포트 목록은 {@link #queryUserReportCards}(LEFT JOIN)를 씁니다.
    */
   private Page<ReportCardRow> queryReportCards(
       UUID userId, ReportStatus status, boolean excludeRejected, Pageable pageable) {
