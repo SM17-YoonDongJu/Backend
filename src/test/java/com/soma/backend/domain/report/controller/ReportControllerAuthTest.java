@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.controller;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -149,6 +150,30 @@ class ReportControllerAuthTest {
         .andExpect(jsonPath("$.data.pagination.total_elements").value(1))
         .andExpect(jsonPath("$.data.pagination.total_pages").value(1))
         .andExpect(jsonPath("$.data.pagination.has_next").value(false));
+  }
+
+  @Test
+  @DisplayName("검수 전(무리뷰) 카드는 reviewed_at·adjuster_nickname을 null로 내려준다")
+  void listSerializesReviewlessCardWithNullReviewFields() throws Exception {
+    ReportCardListResponse.Card card = new ReportCardListResponse.Card(
+        UUID.randomUUID(), "AWAITING_INSPECTION", "traffic", "제목 없음",
+        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
+        null, null, 0,
+        null, null,
+        null, null);
+    ReportCardListResponse response =
+        new ReportCardListResponse(List.of(card), new Pagination(1, 10, 1, 1, false));
+    given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt())).willReturn(response);
+
+    mockMvc.perform(get("/reports").with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.list[0].report_id").value(card.reportId().toString()))
+        .andExpect(jsonPath("$.data.list[0].status").value("AWAITING_INSPECTION"))
+        .andExpect(jsonPath("$.data.list[0].proposal_count").value(0))
+        .andExpect(jsonPath("$.data.list[0].reviewed_at").value(nullValue()))
+        .andExpect(jsonPath("$.data.list[0].adjuster_nickname").value(nullValue()))
+        .andExpect(jsonPath("$.data.list[0].offered_amount").value(nullValue()))
+        .andExpect(jsonPath("$.data.pagination.total_elements").value(1));
   }
 
   @Test

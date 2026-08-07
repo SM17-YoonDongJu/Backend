@@ -32,10 +32,10 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 
 /**
- * findUserReportCards(QueryDSL, per-review) 실행 검증 — 실제 test_db에 시드 데이터를 넣고, report_reviews
- * 1건당 1행으로 펴지는지·소유자 스코프·status 필터·페이지네이션·리뷰별 필드(adjusterNickname·reviewedAt)와
- * 리포트 필드(offeredAmount·treatment·proposalCount=REJECTED 제외)를 확인한다. status의 CLOSED→MATCHED
- * 매핑은 응답 DTO(Card.from) 책임이라 여기선 원본 ReportStatus를 검증한다.
+ * findUserReportCards(QueryDSL) 실행 검증 — 실제 test_db에 시드 데이터를 넣고, report_reviews 1건당 1행으로
+ * 펴지는지·리뷰가 0건인 리포트도 카드 1행으로 나오는지·소유자 스코프·status 필터·페이지네이션·리뷰별
+ * 필드(adjusterNickname·reviewedAt)와 리포트 필드(offeredAmount·treatment·proposalCount=REJECTED 제외)를
+ * 확인한다. status의 CLOSED→MATCHED 매핑은 응답 DTO(Card.from) 책임이라 여기선 원본 ReportStatus를 검증한다.
  * @Transactional로 각 테스트 종료 시 롤백돼 다른 실행 테스트를 오염시키지 않는다.
  */
 @SpringBootTest
@@ -53,24 +53,108 @@ class ReportCardQuerydslExecutionTest {
   private EntityManager entityManager;
 
   @Test
-  @DisplayName("per-review·소유자 스코프 — 소유 리포트의 리뷰만 1건당 1행으로 반환(타인·무리뷰 리포트 제외)")
-  void perReviewOwnerScope() {
+  @DisplayName("소유자 스코프 — 소유 리포트의 리뷰는 1건당 1행, 무리뷰 리포트도 카드 1행(타인 리포트는 제외)")
+  void includesReviewlessReportsWithinOwnerScope() {
     UUID userA = UUID.randomUUID();
     UUID userB = UUID.randomUUID();
     UUID a1 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A1");
     saveReview(a1, saveUser("사정1"), ReviewStatus.SENT);
     saveReview(a1, saveUser("사정2"), ReviewStatus.COUNSELING);
-    saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A2"); // 리뷰 없음 → 행 없음
+    UUID a2 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A2"); // 리뷰 없음 → 1행
     UUID b1 = saveReport(userB, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-B1");
     saveReview(b1, saveUser("사정3"), ReviewStatus.SENT);
     flushAndClear();
 
     Page<ReportCardRow> pageA = reportRepository.findUserReportCards(userA, null, PageRequest.of(0, 10));
 
-    assertThat(pageA.getTotalElements()).isEqualTo(2); // a1의 리뷰 2건(무리뷰 리포트·타인 리뷰 제외)
-    assertThat(pageA.getContent()).extracting(ReportCardRow::reportId).containsOnly(a1);
+    assertThat(pageA.getTotalElements()).isEqualTo(3); // a1의 리뷰 2건 + 무리뷰 a2 1건(타인 리포트 제외)
+    assertThat(pageA.getContent()).extracting(ReportCardRow::reportId)
+        .containsExactlyInAnyOrder(a1, a1, a2);
     assertThat(pageA.getContent()).extracting(ReportCardRow::adjusterNickname)
-        .containsExactlyInAnyOrder("사정1", "사정2");
+        .containsExactlyInAnyOrder("사정1", "사정2", null);
+    assertThat(pageA.getContent()).noneMatch(row -> row.reportId().equals(b1));
+  }
+
+  @Test
+  @DisplayName("무리뷰 리포트 단독 — 카드 1행, reviewedAt·adjusterNickname은 null이고 proposalCount는 0")
+  void reviewlessReportBecomesSingleEmptyCard() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC, "NR-1");
+    setReportExtras(reportId, 1_000_000, 2_000_000, null, null);
+    flushAndClear();
+
+    Page<ReportCardRow> page = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
+
+    assertThat(page.getTotalElements()).isEqualTo(1);
+    assertThat(page.getContent()).hasSize(1);
+    ReportCardRow row = page.getContent().get(0);
+    assertThat(row.reportId()).isEqualTo(reportId);
+    assertThat(row.status()).isEqualTo(ReportStatus.AWAITING_INSPECTION);
+    assertThat(row.accidentType()).isEqualTo(AccidentType.TRAFFIC);
+    assertThat(row.caseNo()).isEqualTo("NR-1");
+    assertThat(row.claimedMinAmount()).isEqualTo(1_000_000);
+    assertThat(row.claimedMaxAmount()).isEqualTo(2_000_000);
+    assertThat(row.reviewedAt()).isNull();
+    assertThat(row.adjusterNickname()).isNull();
+    assertThat(row.proposalCount()).isZero();
+  }
+
+  @Test
+  @DisplayName("nulls-last 정렬 — 리포트 created_at이 같으면 무리뷰 행이 리뷰 행보다 뒤로 간다")
+  void reviewlessRowSortsLastOnCreatedAtTie() {
+    UUID userId = UUID.randomUUID();
+    LocalDateTime tie = LocalDateTime.of(2026, 7, 5, 13, 0);
+    UUID reviewed = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "NL-1");
+    saveReview(reviewed, saveUser("사정1"), ReviewStatus.SENT);
+    UUID reviewless = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "NL-2");
+    entityManager.flush();
+    overrideCreatedAt(reviewed, tie);
+    overrideCreatedAt(reviewless, tie);
+    flushAndClear();
+
+    Page<ReportCardRow> page = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
+
+    assertThat(page.getContent()).extracting(ReportCardRow::reportId)
+        .containsExactly(reviewed, reviewless);
+  }
+
+  @Test
+  @DisplayName("페이지네이션 정합 — total은 무리뷰 1행까지 포함한 카드 행 수와 일치한다")
+  void totalMatchesCardRowCountIncludingReviewlessReports() {
+    UUID userId = UUID.randomUUID();
+    UUID withReviews = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "CT-1");
+    saveReview(withReviews, saveUser("사정1"), ReviewStatus.SENT);
+    saveReview(withReviews, saveUser("사정2"), ReviewStatus.REJECTED);
+    saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "CT-2"); // 무리뷰 → 1행
+    flushAndClear();
+
+    Page<ReportCardRow> all = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
+    assertThat(all.getTotalElements()).isEqualTo(3);
+    assertThat(all.getContent()).hasSize(3);
+
+    Page<ReportCardRow> paged = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 2));
+    assertThat(paged.getTotalElements()).isEqualTo(3);
+    assertThat(paged.getTotalPages()).isEqualTo(2);
+    assertThat(paged.getContent()).hasSize(2);
+    assertThat(paged.hasNext()).isTrue();
+  }
+
+  @Test
+  @DisplayName("status 필터 × 무리뷰 — 상태가 맞으면 리뷰가 없어도 카드로 남는다")
+  void statusFilterKeepsReviewlessReports() {
+    UUID userId = UUID.randomUUID();
+    UUID awaiting = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "SN-1"); // 무리뷰
+    UUID counseling = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER, "SN-2");
+    saveReview(counseling, saveUser("사정1"), ReviewStatus.COUNSELING);
+    flushAndClear();
+
+    Page<ReportCardRow> filtered =
+        reportRepository.findUserReportCards(userId, ReportStatus.AWAITING_INSPECTION, PageRequest.of(0, 10));
+
+    assertThat(filtered.getTotalElements()).isEqualTo(1);
+    assertThat(filtered.getContent()).extracting(ReportCardRow::reportId).containsExactly(awaiting);
+    assertThat(filtered.getContent().get(0).reviewedAt()).isNull();
+    assertThat(filtered.getContent().get(0).adjusterNickname()).isNull();
   }
 
   @Test
