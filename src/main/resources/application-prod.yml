@@ -6,6 +6,8 @@
 app:
   crypto:
     apple-token-key: ${APPLE_TOKEN_ENC_KEY:}
+  sqs:
+    ocr-queue-name: ${SQS_OCR_QUEUE_NAME:brbs-ocr-job-queue-prod}
 
 spring:
   jpa:

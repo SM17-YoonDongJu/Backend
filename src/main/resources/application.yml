@@ -60,6 +60,9 @@ jwt:
   refresh-token-expiry: 1209600000 # 14일
 
 app:
+  sqs:
+    # OCR 트리거 발행 대상 SQS 큐 이름(로컬/test 기본). dev·prod 프로파일에서 환경별 이름으로 오버라이드한다.
+    ocr-queue-name: ${SQS_OCR_QUEUE_NAME:ocr-job-queue}
   cookie:
     secure: ${COOKIE_SECURE:true}      # 운영 https 기본값. 로컬 http는 프로파일에서 false
     # 프론트(Vercel)와 백엔드가 다른 사이트(cross-site)로 배포되면 쿠키가 XHR에 실리도록

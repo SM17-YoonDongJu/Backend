@@ -2,6 +2,7 @@ package com.soma.backend.infra.sqs;
 
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import lombok.RequiredArgsConstructor;
@@ -23,17 +24,20 @@ import com.soma.backend.infra.outbox.KafkaOutboxRepository;
 @RequiredArgsConstructor
 public class OcrJobOutboxPortImpl implements OcrJobOutboxPort {
 
-  // 아웃박스 topic 컬럼에 저장하는 논리 대상 이름 = 발행 대상 SQS 큐 이름.
-  private static final String TOPIC = "ocr-job-queue";
   private static final String AGGREGATE_TYPE = "OCR_JOB";
 
   private final KafkaOutboxRepository outboxRepository;
   private final JsonMapper jsonMapper;
 
+  // 발행 대상 SQS 큐 이름(=아웃박스 topic 컬럼에 저장). 환경별로 다르다: 로컬/test는 ocr-job-queue,
+  // dev·prod는 프로파일이 brbs-ocr-job-queue-{env}로 오버라이드한다. OutboxRelay가 이 이름으로 GetQueueUrl 한다.
+  @Value("${app.sqs.ocr-queue-name:ocr-job-queue}")
+  private String ocrQueueName;
+
   @Override
   public void enqueue(OcrJob job) {
     String payload = jsonMapper.writeValueAsString(job);
     UUID aggregateId = job.claimId() != null ? UUID.fromString(job.claimId()) : null;
-    outboxRepository.save(KafkaOutboxEvent.pending(AGGREGATE_TYPE, aggregateId, TOPIC, job.jobId(), payload));
+    outboxRepository.save(KafkaOutboxEvent.pending(AGGREGATE_TYPE, aggregateId, ocrQueueName, job.jobId(), payload));
   }
 }

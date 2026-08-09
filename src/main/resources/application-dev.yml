@@ -1,4 +1,6 @@
 app:
+  sqs:
+    ocr-queue-name: ${SQS_OCR_QUEUE_NAME:brbs-ocr-job-queue-dev}
   cookie:
     # 기본 false(백엔드가 평문 http일 때). cross-site(SameSite=None) HTTPS 배포 시
     # COOKIE_SECURE=true·COOKIE_SAME_SITE=None을 .env.dev로 주입한다(same-site는 application.yml에서 env 주입).
