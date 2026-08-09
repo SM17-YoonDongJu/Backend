@@ -89,12 +89,14 @@ spring:
 
 ## 4. Kafka producer 안전설정 + 로컬 브로커
 
-의존성: `implementation 'org.springframework.kafka:spring-kafka'`. **consumer는 FastAPI 담당이라 producer만 설정.**
+의존성: `implementation 'org.springframework.kafka:spring-kafka'` + 운영 MSK IAM 인증용 `software.amazon.msk:aws-msk-iam-auth`. **consumer는 ocr_worker(Python) 담당이라 producer만 설정.**
 
 > **실제 배선:** 이 프로젝트는 producer 안전설정을 yaml이 아니라 **Java `@Configuration KafkaProducerConfig`
 > (`infra/kafka/KafkaProducerConfig.java`)** 로 구현한다 — `ocrProducerFactory`(ProducerFactory) + `KafkaTemplate`
-> 빈을 노출하고, `OutboxRelay`가 이 템플릿으로 OCR 트리거를 발행한다. `bootstrap-servers`/`security.protocol`만
-> `application.yml`의 `spring.kafka.*`에서 읽는다(로컬 KRaft ↔ 운영 MSK 전환 시 이 클래스는 불변, 환경변수만 교체).
+> 빈을 노출하고, `OutboxRelay`가 이 템플릿으로 OCR 트리거를 발행한다. `bootstrap-servers`/`security.protocol`은
+> `application.yml`의 `spring.kafka.*`에서 읽고, `security.protocol=SASL_SSL`이면 IAM 인증(`AWS_MSK_IAM`
+> mechanism·`IAMLoginModule` jaas·`IAMClientCallbackHandler`)을 이 클래스가 추가로 배선한다(운영 MSK).
+> 로컬 KRaft(PLAINTEXT)엔 미적용 — 로컬↔MSK 전환은 환경변수로 갈린다.
 > 아래 값은 그 빈이 `ProducerConfig`로 설정하는 값과 동일하다(등가 yaml 참고용).
 
 ```yaml
@@ -116,7 +118,7 @@ spring:
         linger.ms: 10
 ```
 
-로컬 브로커는 **KRaft 모드(zookeeper 불필요)**로 compose에 올리고, 호스트/컨테이너 이중 리스너로 붙게 한다. 운영은 MSK로 오버라이드(추후).
+로컬 브로커는 **KRaft 모드(zookeeper 불필요)**로 compose에 올리고, 호스트/컨테이너 이중 리스너로 붙게 한다. 운영은 **MSK Provisioned(IAM 인증, 9098/SASL_SSL)**로 오버라이드하며, `KAFKA_BOOTSTRAP_SERVERS`·`KAFKA_SECURITY_PROTOCOL`만 교체하면 된다(consumer ocr_worker는 `aws-msk-iam-sasl-signer`로 접속).
 
 ```yaml
   kafka:
