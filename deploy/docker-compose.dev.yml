@@ -103,6 +103,8 @@ services:
       NER_MODEL: ${NER_MODEL:-}
       NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
       TZ: Asia/Seoul
+    volumes:
+      - /home/ubuntu/backend/certs/rds-global-bundle.pem:/etc/ssl/rds/global-bundle.pem:ro
     logging:
       driver: json-file
       options:
@@ -139,6 +141,8 @@ services:
       NER_MODEL: ${NER_MODEL:-}
       NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
       TZ: Asia/Seoul
+    volumes:
+      - /home/ubuntu/backend/certs/rds-global-bundle.pem:/etc/ssl/rds/global-bundle.pem:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
