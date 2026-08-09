@@ -351,8 +351,9 @@ services:
     volumes:
       - ./monitoring/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
       - tempo-data:/var/tempo
-    mem_limit: 256m
-    mem_reservation: 128m
+    # 256m에서는 anon-rss가 문턱을 넘어 cgroup OOM으로 반복 크래시(재기동 중 스크랩 실패로 TargetDown 알럿 flapping).
+    mem_limit: 512m
+    mem_reservation: 256m
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready || exit 1"]
       interval: 30s
