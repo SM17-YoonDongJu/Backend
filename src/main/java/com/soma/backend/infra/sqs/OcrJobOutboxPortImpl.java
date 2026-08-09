@@ -1,4 +1,4 @@
-package com.soma.backend.infra.kafka;
+package com.soma.backend.infra.sqs;
 
 import java.util.UUID;
 
@@ -12,8 +12,8 @@ import com.soma.backend.infra.outbox.KafkaOutboxRepository;
 
 /**
  * {@link OcrJobOutboxPort} 구현체. OcrJob을 JSON 문자열로 직렬화해 KafkaOutboxEvent로 저장한다.
- * 이 메서드는 Kafka를 직접 호출하지 않는다 — 발행은 {@link OutboxRelay}가 별도 스케줄로 폴링해 수행한다
- * (Kafka 브로커 장애가 리포트 생성 트랜잭션에 영향을 주지 않도록 분리).
+ * 이 메서드는 SQS를 직접 호출하지 않는다 — 발행은 {@link OutboxRelay}가 별도 스케줄로 폴링해 수행한다
+ * (SQS 장애가 리포트 생성 트랜잭션에 영향을 주지 않도록 분리).
  * JsonMapper는 Spring Boot가 자동 구성한 전역 Bean을 그대로 재사용한다 — application.yml의
  * spring.jackson.property-naming-strategy: SNAKE_CASE가 이미 적용돼 있어 OcrJob의 camelCase 필드가
  * job_id/s3_key 같은 snake_case JSON으로 직렬화된다. 별도 모듈 등록이 필요 없다(OcrJob은 순수 String 필드만
@@ -23,6 +23,7 @@ import com.soma.backend.infra.outbox.KafkaOutboxRepository;
 @RequiredArgsConstructor
 public class OcrJobOutboxPortImpl implements OcrJobOutboxPort {
 
+  // 아웃박스 topic 컬럼에 저장하는 논리 대상 이름 = 발행 대상 SQS 큐 이름.
   private static final String TOPIC = "ocr-job-queue";
   private static final String AGGREGATE_TYPE = "OCR_JOB";
 

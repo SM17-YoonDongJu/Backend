@@ -10,14 +10,15 @@ dev EC2 배포의 단일 진실원. compose는 이 디렉터리를 PR로 수정�
 | `backend` | 컨테이너(ECR 이미지) | CD가 `--no-deps`로 앱만 재기동 |
 | `report` / `chatbot` | 컨테이너(ECR 이미지, AI 레포) | AI 레포가 두 이미지로 배포. `repository_dispatch`(deploy-report/deploy-chatbot)로 자동 CD |
 | PostgreSQL | **외부 RDS** | `.env.dev`의 `DB_HOST`로 연결 |
-| Redis / Kafka | **컨테이너** | `restart: unless-stopped`로 상주. **8월 전까지 컨테이너 유지**, 이후 ElastiCache/MSK 재검토 |
+| Redis | **컨테이너** | `restart: unless-stopped`로 상주 (이후 ElastiCache 재검토) |
+| SQS (OCR 트리거) | **관리형 AWS** | 컨테이너 없음. 인스턴스 IAM Role로 접속(정적 키 미주입) |
 
 ## 배포 흐름 (자동, `develop` push 시)
 `.github/workflows/deploy-dev.yml`:
 1. 이미지 빌드 → ECR push
 2. SSM으로 EC2에서: **리포 compose를 `~/backend/docker-compose.yml`로 동기화** → `docker compose --env-file .env.dev up -d --no-deps backend`
 
-> `--no-deps`라 배포는 앱만 bounce한다. 인프라(redis/kafka)는 아래 "최초 기동"으로 상주시켜야 한다.
+> `--no-deps`라 배포는 앱만 bounce한다. 인프라(redis)는 아래 "최초 기동"으로 상주시켜야 한다. OCR 트리거는 관리형 SQS(컨테이너 없음).
 
 ## 최초 기동 (새 EC2 / 인프라 부재 시 1회)
 ```bash

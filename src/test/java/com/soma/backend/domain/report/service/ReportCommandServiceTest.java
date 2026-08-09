@@ -35,8 +35,8 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.kafka.OcrJob;
-import com.soma.backend.infra.kafka.OcrJobOutboxPort;
+import com.soma.backend.infra.sqs.OcrJob;
+import com.soma.backend.infra.sqs.OcrJobOutboxPort;
 
 /** ReportCommandService 유스케이스 검증 — 생성(아웃박스 발행 포함) + 제안 채택/거절. */
 @ExtendWith(MockitoExtension.class)

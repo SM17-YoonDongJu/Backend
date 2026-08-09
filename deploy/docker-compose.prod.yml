@@ -1,8 +1,8 @@
 # prod EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
 # 사용: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 # CD(main push)는 backend만 bounce: ... up -d --no-deps backend
-# 인프라(redis/kafka)는 최초 1회 full up 후 restart 정책으로 상주한다.
-# dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시 · kafka-ui 미포함.
+# 인프라(redis)는 최초 1회 full up 후 restart 정책으로 상주한다. OCR 트리거 브로커는 AWS SQS(관리형, 컨테이너 없음).
+# dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시.
 name: brbs
 
 services:
@@ -25,8 +25,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
+      # OCR 트리거는 SQS로 발행한다. 큐 URL은 큐 이름(ocr-job-queue)에서 런타임 해석하므로 별도 env 불필요.
+      # 접속은 태스크/인스턴스 IAM Role 위임(AWS_REGION 필요, 아래 참조) — 정적 키 미주입.
       JWT_SECRET: ${JWT_SECRET}
       AWS_REGION: ${AWS_REGION}
       S3_BUCKET: ${S3_BUCKET}
@@ -71,7 +71,7 @@ services:
     networks:
       - brbs-net
 
-  # Kafka 워커(report-job 소비 · LangGraph · RAG). AI 레포가 이미지 배포. HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  # SQS 워커(OCR 트리거 소비 · LangGraph · RAG). AI 레포가 이미지 배포. HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
   # ⚠️ AI_BASE_URL(GPU 인스턴스) 연결 전에는 기동 실패할 수 있음 — backend는 --no-deps라 독립.
   report:
     image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-prod}
@@ -87,13 +87,10 @@ services:
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
       RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
-      KAFKA_REPORT_JOB_TOPIC: ${KAFKA_REPORT_JOB_TOPIC}
-      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP}
-      KAFKA_DLQ_SUFFIX: ${KAFKA_DLQ_SUFFIX:-.dlq}
-      KAFKA_MAX_RETRIES: ${KAFKA_MAX_RETRIES:-3}
-      # MSK IAM 인증 토큰 발급(aws-msk-iam-sasl-signer)에 리전 필요 — self-hosted PLAINTEXT면 미사용
+      # OCR 트리거 SQS 소비 (Kafka→SQS 전환, #208). ⚠️ 변수명·튜닝값은 AI report 워커의 SQS 소비자 구현과 합의 후 확정.
+      # (튜닝 후보: 롱폴링 wait-time·visibility-timeout·배치 max-messages. DLQ는 큐 redrive policy로 구성 — 앱 env 아님.)
+      SQS_OCR_JOB_QUEUE_URL: ${SQS_OCR_JOB_QUEUE_URL}
+      # SQS 접속·큐 URL 해석에 리전 필요 — 자격증명은 인스턴스 IAM Role 위임(정적 키 미주입)
       AWS_REGION: ${AWS_REGION}
       AI_BASE_URL: ${AI_BASE_URL}
       AI_API_KEY: ${AI_API_KEY}
@@ -117,7 +114,7 @@ services:
     networks:
       - brbs-net
 
-  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). Kafka·S3 없음, Redis 필수.
+  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). SQS·S3 없음, Redis 필수.
   chatbot:
     image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-prod}
     container_name: brbs-chatbot

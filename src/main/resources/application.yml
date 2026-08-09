@@ -44,11 +44,6 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
   
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    security:
-      protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
-
 server:
   port: 8080
   compression:

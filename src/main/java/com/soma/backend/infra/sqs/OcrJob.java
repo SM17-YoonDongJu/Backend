@@ -1,7 +1,7 @@
-package com.soma.backend.infra.kafka;
+package com.soma.backend.infra.sqs;
 
 /**
- * OCR 트리거 Kafka 메시지 계약(design.md §4, §7). 필드는 camelCase(Java record)로 선언하고, 발행 시
+ * OCR 트리거 SQS 메시지 계약(design.md §4, §7). 필드는 camelCase(Java record)로 선언하고, 발행 시
  * 전역 Jackson 설정(SNAKE_CASE)을 통해 snake_case JSON(job_id, s3_key, content_type, user_ref,
  * doc_type_hint, claim_id, report_id, attachment_id, doc_index, doc_total, uploaded_at)으로 나간다.
  * PII(개인식별정보)는 포함하지 않는다 — S3 키·참조 UUID·문서 메타데이터만 담는다.
