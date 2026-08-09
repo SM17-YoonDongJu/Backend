@@ -86,14 +86,14 @@ services:
     networks:
       - brbs-net
 
-  # Loki: 로그 저장·검색. 조회 포트(3100)는 loopback(SSM 포워드) + 앱 인스턴스 alloy의 원격 push(brbs-net 밖)를
-  # 받아야 하므로 push용으로 호스트 전체에도 게시(보안그룹으로 앱 인스턴스 private IP만 허용).
+  # Loki: 로그 저장·검색. 앱 인스턴스 alloy의 원격 push(brbs-net 밖)를 받아야 해서 호스트 전체에 게시한다
+  # (보안그룹으로 앱 인스턴스 private IP만 허용). 127.0.0.1 바인딩을 별도로 더 추가하면 이미 0.0.0.0이
+  # loopback도 포함해서 같은 포트를 두 번 바인딩하게 돼 충돌한다 — 조회는 이 하나로도 SSM 포워드 가능.
   loki:
     image: grafana/loki:3.3.2
     container_name: brbs-loki
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3100:3100"
       - "3100:3100"
     command:
       - "-config.file=/etc/loki/loki-config.yml"
