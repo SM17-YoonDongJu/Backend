@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -16,8 +17,9 @@ import org.springframework.kafka.core.ProducerFactory;
 /**
  * OCR 트리거 Kafka producer 설정({@link OutboxRelay}가 사용). consumer(OCR 소비/실행)는 FastAPI
  * 담당이라 이 앱은 producer만 구성한다. bootstrap-servers/security.protocol은 기존
- * application.yml(spring.kafka.*) 값을 그대로 읽는다 — 로컬 KRaft ↔ 운영 MSK 전환 시에도
- * 이 클래스는 손대지 않고 환경변수만 바꾸면 된다.
+ * application.yml(spring.kafka.*) 값을 그대로 읽는다 — 로컬 KRaft(PLAINTEXT) ↔ 운영 MSK(SASL_SSL)
+ * 전환은 환경변수로 갈리며, security.protocol이 SASL일 때만 IAM 인증(AWS_MSK_IAM)을 배선한다.
+ * 자격증명은 S3와 동일하게 IAM Role(DefaultCredentialsProvider)로 위임한다 — 정적 키를 주입하지 않는다.
  */
 @Configuration
 public class KafkaProducerConfig {
@@ -45,6 +47,14 @@ public class KafkaProducerConfig {
     config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 120_000);
     config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 30_000);
     config.put(ProducerConfig.LINGER_MS_CONFIG, 10);
+    // 운영 MSK는 IAM 인증(SASL_SSL)으로 붙는다 — 로컬/기본(PLAINTEXT)에는 아무 것도 추가하지 않는다.
+    // aws-msk-iam-auth가 IAMLoginModule/IAMClientCallbackHandler를 런타임 제공하므로 클래스는 문자열로 참조한다.
+    if (securityProtocol.startsWith("SASL")) {
+      config.put(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
+      config.put(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
+      config.put(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS,
+          "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+    }
     return new DefaultKafkaProducerFactory<>(config);
   }
 

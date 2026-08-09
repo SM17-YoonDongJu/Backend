@@ -89,6 +89,8 @@ services:
       KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP}
       KAFKA_DLQ_SUFFIX: ${KAFKA_DLQ_SUFFIX:-.dlq}
       KAFKA_MAX_RETRIES: ${KAFKA_MAX_RETRIES:-3}
+      # MSK IAM 인증 토큰 발급(aws-msk-iam-sasl-signer)에 리전 필요 — self-hosted PLAINTEXT면 미사용
+      AWS_REGION: ${AWS_REGION}
       AI_BASE_URL: ${AI_BASE_URL}
       AI_API_KEY: ${AI_API_KEY}
       AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
