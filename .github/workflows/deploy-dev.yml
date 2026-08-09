@@ -17,6 +17,8 @@ env:
   ECR_REPOSITORY: soma/backend
   IMAGE_TAG: ${{ github.sha }}
   EC2_INSTANCE_NAME: brbs-backend-dev
+  # 모니터링 스택(prometheus·grafana·loki·tempo) 전용 인스턴스 — #214 t3 콜로케이트에서 분리.
+  EC2_MONITORING_INSTANCE_NAME: brbs-monitoring
   EC2_USER: ubuntu
   EC2_HOME: /home/ubuntu
 
@@ -116,17 +118,12 @@ jobs:
           SHORT_SHA: ${{ needs.build-and-push.outputs.short_sha }}
         run: |
           # 리포의 배포 compose를 base64로 인코딩해 SSM 커맨드로 EC2에 그대로 기록(드리프트 차단)
+          # 관측성 스택 중 prometheus·grafana·loki·tempo는 #214로 별도 모니터링 인스턴스로 분리됐다.
+          # alloy는 이 호스트의 docker.sock을 읽어야 해서 남아 있고, ./monitoring/alloy/config.alloy를
+          # 계속 바인드 마운트하므로 그 서브디렉터리만 동기화한다(전체 deploy/monitoring/은 더 이상 불필요).
           COMPOSE_B64=$(base64 -w0 deploy/docker-compose.dev.yml)
-
-          # 관측성 설정(deploy/monitoring: prometheus·grafana provisioning·대시보드)도 같은 방식으로 동기화(#88).
-          # 볼륨 바인드 마운트 대상이라 EC2 디스크에 실파일이 있어야 한다. 대시보드 JSON이 커서 tar.gz로 묶어 싣고,
-          # SSM Parameters 총량 한도(100KB) 보호를 위해 90KB 초과 시 실패시킨다(초과하게 되면 S3 경유로 전환할 것).
-          tar -czf /tmp/monitoring.tar.gz -C deploy monitoring
-          MONITORING_B64=$(base64 -w0 /tmp/monitoring.tar.gz)
-          if [ "${#MONITORING_B64}" -gt 92160 ]; then
-            echo "::error::deploy/monitoring 페이로드(${#MONITORING_B64}B)가 SSM 한도(90KB)에 근접 — S3 경유 동기화로 전환 필요"
-            exit 1
-          fi
+          tar -czf /tmp/alloy-config.tar.gz -C deploy/monitoring alloy
+          ALLOY_CONFIG_B64=$(base64 -w0 /tmp/alloy-config.tar.gz)
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
@@ -138,13 +135,14 @@ jobs:
                 \"cd $EC2_HOME/backend\",
                 \"echo '===== compose 동기화(리포 기준) ====='\",
                 \"echo $COMPOSE_B64 | base64 -d > docker-compose.yml\",
-                \"echo '===== monitoring 설정 동기화(리포 기준, #88) ====='\",
-                \"echo $MONITORING_B64 | base64 -d > /tmp/monitoring.tar.gz\",
-                \"rm -rf monitoring\",
-                \"tar -xzf /tmp/monitoring.tar.gz -C .\",
-                \"rm -f /tmp/monitoring.tar.gz\",
-                \"echo '===== 관측성 컨테이너 재생성 (monitoring rm -rf 재동기화로 bind 마운트가 stale해지므로 grafana/prometheus를 다시 붙인다) ====='\",
-                \"docker compose --env-file .env.dev up -d --force-recreate prometheus grafana || true\",
+                \"echo '===== alloy 설정 동기화(리포 기준, #214) ====='\",
+                \"echo $ALLOY_CONFIG_B64 | base64 -d > /tmp/alloy-config.tar.gz\",
+                \"mkdir -p monitoring\",
+                \"rm -rf monitoring/alloy\",
+                \"tar -xzf /tmp/alloy-config.tar.gz -C monitoring\",
+                \"rm -f /tmp/alloy-config.tar.gz\",
+                \"echo '===== alloy 재생성 (bind 마운트 stale 방지) ====='\",
+                \"docker compose --env-file .env.dev up -d --force-recreate alloy || true\",
                 \"echo '===== ECR 로그인 ====='\",
                 \"aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REGISTRY\",
                 \"echo '===== 이미지 pull ====='\",
@@ -194,22 +192,156 @@ jobs:
             
             sleep 5
           done
-  
+
+  # deploy-monitoring을 돌릴지 미리 판별 — 모니터링 관련 파일이 안 바뀌었으면 스킵한다.
+  # (매 push마다 4개 컨테이너를 force-recreate하면 스크랩·push가 잠깐 끊겨 타깃다운 알림이 튄다)
+  detect-monitoring-changes:
+    name: Detect Monitoring Changes
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.monitoring }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check monitoring paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            monitoring:
+              - 'deploy/docker-compose.monitoring.yml'
+              - 'deploy/monitoring/**'
+
+  # 모니터링 인스턴스(brbs-monitoring)에 prometheus·grafana·loki·tempo 동기화 (#214).
+  # ECR 이미지가 아니라 공개 이미지(prom/grafana 등)라 build-and-push에 의존하지 않고 독립적으로 돈다.
+  # 모니터링 관련 파일 변경 시에만 돌고(위 detect-monitoring-changes), workflow_dispatch로는 무조건 강제 실행 가능.
+  deploy-monitoring:
+    name: Deploy Monitoring Stack via SSM
+    needs: detect-monitoring-changes
+    if: needs.detect-monitoring-changes.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Find monitoring EC2 instance
+        id: find-instance
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=$EC2_MONITORING_INSTANCE_NAME" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' \
+            --output text)
+
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" == "None" ]; then
+            echo "::error::Running instance with tag Name=$EC2_MONITORING_INSTANCE_NAME not found"
+            exit 1
+          fi
+
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "Found: $INSTANCE_ID"
+
+      - name: Deploy via SSM
+        env:
+          INSTANCE_ID: ${{ steps.find-instance.outputs.instance_id }}
+        run: |
+          # compose + deploy/monitoring/(prometheus·grafana provisioning·대시보드·loki·tempo 설정) 동기화.
+          # 볼륨 바인드 마운트 대상이라 EC2 디스크에 실파일이 있어야 한다. 대시보드 JSON이 커서 tar.gz로 묶어 싣고,
+          # SSM Parameters 총량 한도(100KB) 보호를 위해 90KB 초과 시 실패시킨다(초과하게 되면 S3 경유로 전환할 것).
+          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.monitoring.yml)
+
+          tar -czf /tmp/monitoring.tar.gz -C deploy monitoring
+          MONITORING_B64=$(base64 -w0 /tmp/monitoring.tar.gz)
+          if [ "${#MONITORING_B64}" -gt 92160 ]; then
+            echo "::error::deploy/monitoring 페이로드(${#MONITORING_B64}B)가 SSM 한도(90KB)에 근접 — S3 경유 동기화로 전환 필요"
+            exit 1
+          fi
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy monitoring stack" \
+            --parameters "{
+              \"commands\": [
+                \"set -e\",
+                \"cd $EC2_HOME/monitoring\",
+                \"echo '===== compose 동기화(리포 기준) ====='\",
+                \"echo $COMPOSE_B64 | base64 -d > docker-compose.yml\",
+                \"echo '===== monitoring 설정 동기화(리포 기준, #214) ====='\",
+                \"echo $MONITORING_B64 | base64 -d > /tmp/monitoring.tar.gz\",
+                \"rm -rf monitoring\",
+                \"tar -xzf /tmp/monitoring.tar.gz -C .\",
+                \"rm -f /tmp/monitoring.tar.gz\",
+                \"echo '===== 관측성 컨테이너 재생성 (monitoring rm -rf 재동기화로 bind 마운트가 stale해지므로 전부 다시 붙인다) ====='\",
+                \"docker compose --env-file .env.dev up -d --force-recreate prometheus grafana loki tempo\",
+                \"echo '===== 이미지 정리 ====='\",
+                \"docker image prune -f\",
+                \"echo '===== 배포 완료 ====='\"
+              ],
+              \"executionTimeout\": [\"600\"]
+            }" \
+            --output text \
+            --query 'Command.CommandId')
+
+          echo "Command ID: $COMMAND_ID"
+
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Pending")
+
+            echo "[$i/60] Status: $STATUS"
+
+            case "$STATUS" in
+              Success)
+                echo "Deploy 성공"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query 'StandardOutputContent' \
+                  --output text
+                break
+                ;;
+              Failed|Cancelled|TimedOut)
+                echo "::error::Deploy 실패: $STATUS"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query 'StandardErrorContent' \
+                  --output text
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
   notify:
     name: Notify Discord
-    needs: [build-and-push, deploy-to-ec2]
+    needs: [build-and-push, deploy-to-ec2, detect-monitoring-changes, deploy-monitoring]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Notify
         uses: ./.github/actions/discord-notify
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_DEPLOYMENT }}
-          status: ${{ (needs.build-and-push.result == 'success' && needs.deploy-to-ec2.result == 'success') && 'success' || 'failure' }}
-          title: 'Backend Dev 배포 ${{ (needs.build-and-push.result == ''success'' && needs.deploy-to-ec2.result == ''success'') && ''완료'' || ''실패'' }}'
+          # deploy-monitoring은 모니터링 파일 미변경 시 skipped가 정상이라 success와 함께 통과로 친다.
+          status: ${{ (needs.build-and-push.result == 'success' && needs.deploy-to-ec2.result == 'success' && (needs.deploy-monitoring.result == 'success' || needs.deploy-monitoring.result == 'skipped')) && 'success' || 'failure' }}
+          title: 'Backend Dev 배포 ${{ (needs.build-and-push.result == ''success'' && needs.deploy-to-ec2.result == ''success'' && (needs.deploy-monitoring.result == ''success'' || needs.deploy-monitoring.result == ''skipped'')) && ''완료'' || ''실패'' }}'
           service: backend
           environment: dev
           image_tag: ${{ needs.build-and-push.outputs.short_sha }}

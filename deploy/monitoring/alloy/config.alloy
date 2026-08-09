@@ -1,6 +1,7 @@
-// Grafana Alloy 설정 — Docker 데몬의 모든 컨테이너 stdout을 수집해 Loki로 push.
-// backend(Spring)·report·chatbot(FastAPI)·redis·kafka 로그가 한 번에 딸려 들어온다.
+// Grafana Alloy 설정 — Docker 데몬의 모든 컨테이너 stdout을 수집해 (원격) Loki로 push.
+// backend(Spring)·report·chatbot(FastAPI)·redis 로그가 한 번에 딸려 들어온다.
 // docker.sock을 read-only로 마운트해 컨테이너 목록·로그 스트림을 읽는다.
+// alloy는 앱 인스턴스(t3)에 남고 Loki는 모니터링 인스턴스로 분리됐다(#214) — push는 원격.
 
 logging {
   level  = "warn"
@@ -64,8 +65,9 @@ loki.process "parse" {
   }
 }
 
+// 모니터링 인스턴스(10.0.11.48). 보안그룹: t3 → 모니터링 인스턴스 3100 인바운드 허용.
 loki.write "default" {
   endpoint {
-    url = "http://loki:3100/loki/api/v1/push"
+    url = "http://10.0.11.48:3100/loki/api/v1/push"
   }
 }

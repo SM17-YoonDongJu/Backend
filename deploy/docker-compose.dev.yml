@@ -39,6 +39,9 @@ services:
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
       # dev는 미설정 시 개발 전용 기본키로 기동한다(빈 값 주입 방지 — 빈 값은 기동 실패를 유발). 운영은 fail-fast.
       APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY:-ZGV2LWxvY2FsLWFwcGxlLXRva2VuLWVuYy1rZXkhISE=}
+      # PII 컬럼(user_claims·user_insurances) 암호화 키. dev도 fallback 없이 .env.dev에서 반드시 주입한다
+      # (Apple 키와 달리 dev가 실 배포 환경이라 레포에 커밋된 기본값을 그대로 쓰면 DB 덤프 유출 시 무의미해짐).
+      PII_ENC_KEY: ${PII_ENC_KEY}
       # OAuth redirect_uri {baseUrl} 치환값(프론트 인가요청·provider 콘솔 등록 redirect_uri와 일치해야 함)
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-http://localhost:8080}
       OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-http://localhost:8080,http://localhost:3000,https://brbosang.com}
@@ -51,9 +54,11 @@ services:
       # actuator 관리 포트 분리: health·info·metrics·prometheus를 관리 포트(9292)로 격리해 앱 트래픽(8080)과 분리한다.
       # Prometheus는 brbs-net에서 backend:9292 스크랩, 헬스체크는 컨테이너 내부 localhost:9292로 접근.
       MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
-      # 분산 트레이싱: Tempo가 있는 dev에서만 켠다(prod은 스택 미배포라 미주입 → OFF). OTLP HTTP로 tempo:4318에 push.
+      # 분산 트레이싱: Tempo가 있는 dev에서만 켠다(prod은 스택 미배포라 미주입 → OFF).
+      # Tempo가 별도 모니터링 인스턴스로 분리되어(하단 관측성 섹션 참고) OTLP HTTP push 대상이 원격이다 —
+      # 값은 .env.dev의 OTLP_TRACING_ENDPOINT(모니터링 인스턴스 private IP 기준)로 주입.
       TRACING_ENABLED: "true"
-      OTLP_TRACING_ENDPOINT: http://tempo:4318/v1/traces
+      OTLP_TRACING_ENDPOINT: ${OTLP_TRACING_ENDPOINT}
       # 샘플링(dev 전량=1.0). 운영 조정은 이 값만 교체.
       TRACING_SAMPLE_PROBABILITY: ${TRACING_SAMPLE_PROBABILITY:-1.0}
       TZ: Asia/Seoul
@@ -178,89 +183,19 @@ services:
     networks:
       - brbs-net
 
-  # ── 관측성 스택 (Prometheus + Grafana + exporters, #88) ──
-  # t3 App 인스턴스 콜로케이트. 외부 미노출(127.0.0.1 바인딩) → SSM 포트포워드로 접근.
-  # 스크랩은 brbs-net 내부에서 컨테이너 이름으로 수행(backend·node-exporter·cadvisor는 포트 미게시).
-  prometheus:
-    image: prom/prometheus:v3.1.0
-    container_name: brbs-prometheus
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:9090:9090"
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
-      - "--web.enable-lifecycle"
-      # Tempo metrics_generator가 span 메트릭(서비스 그래프)을 remote_write로 밀어넣게 수신 활성.
-      - "--web.enable-remote-write-receiver"
-      # exemplar 저장 — 메트릭 → 트레이스 점프(metric-to-trace)용.
-      - "--enable-feature=exemplar-storage"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    mem_limit: 512m
-    mem_reservation: 256m
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - brbs-net
+  # ── 관측성 스택: 앱 인스턴스 상주 에이전트 (#88, #214 모니터링 인스턴스 분리) ──
+  # prometheus·grafana·loki·tempo는 docker-compose.monitoring.yml로 분리해 별도 모니터링 인스턴스에서 띄운다.
+  # 아래 셋(node-exporter·cadvisor·alloy)은 "이 호스트 자체"를 감시/수집하는 에이전트라 이동할 수 없다 —
+  # 대신 모니터링 인스턴스가 원격으로 스크랩·push할 수 있도록 포트를 호스트에 게시한다.
+  # 노출 범위는 보안그룹으로 좁힌다(모니터링 인스턴스 private IP發만 인바운드 허용, 외부 미노출).
 
-  grafana:
-    image: grafana/grafana:11.4.0
-    container_name: brbs-grafana
-    restart: unless-stopped
-    ports:
-      # Grafana 기본 포트(EC2 loopback, 프론트 :3000과 무관). 외부 미노출 → SSM 포워드로 접근.
-      - "127.0.0.1:3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
-      # 알림(Discord) 웹훅 2개 — severity 라우팅(critical/warning 채널). provisioning/alerting 이 참조(시크릿).
-      # 미설정 시 기동 실패: "알림 없는 줄 모르고 운영"을 막는 의도된 가드(GRAFANA_ADMIN_PASSWORD와 동일 철학).
-      ALERT_WEBHOOK_URL_CRITICAL: ${ALERT_WEBHOOK_URL_CRITICAL:?set ALERT_WEBHOOK_URL_CRITICAL}
-      ALERT_WEBHOOK_URL_WARNING: ${ALERT_WEBHOOK_URL_WARNING:?set ALERT_WEBHOOK_URL_WARNING}
-      TZ: Asia/Seoul
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana-data:/var/lib/grafana
-    mem_limit: 384m
-    mem_reservation: 128m
-    depends_on:
-      - prometheus
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q ok || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - brbs-net
-
-  # 시스템 메트릭(CPU·메모리·디스크·네트워크). 스크랩은 내부망(node-exporter:9100) → 포트 미게시.
+  # 시스템 메트릭(CPU·메모리·디스크·네트워크). 모니터링 인스턴스(10.0.11.48)가 9100으로 원격 스크랩.
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: brbs-node-exporter
     restart: unless-stopped
+    ports:
+      - "9100:9100"
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
@@ -279,7 +214,8 @@ services:
     networks:
       - brbs-net
 
-  # 컨테이너 메트릭. 스크랩은 내부망(cadvisor:8080) → 포트 미게시.
+  # 컨테이너 메트릭. 모니터링 인스턴스(10.0.11.48)가 8082로 원격 스크랩.
+  # 호스트 포트는 8082(8080은 backend 앱 포트와 충돌, 8001은 chatbot과 충돌이라 회피).
   cadvisor:
     # dev EC2의 Docker는 containerd 이미지 스토어(storage driver: overlayfs)를 쓰는데, 구버전(v0.49.1)은
     # classic overlay2 전용 경로(image/…/layerdb)에서 RW 레이어를 찾다 실패해 컨테이너 등록 자체가
@@ -289,6 +225,8 @@ services:
     container_name: brbs-cadvisor
     restart: unless-stopped
     privileged: true
+    ports:
+      - "8082:8080"
     devices:
       - /dev/kmsg
     volumes:
@@ -306,76 +244,17 @@ services:
     networks:
       - brbs-net
 
-  # ── 로그 집계 (Loki + Alloy) ──
-  # Loki: 로그 저장·검색. 조회 포트(3100)만 loopback 게시(SSM 포워드), push는 brbs-net 내부.
-  # ⚠️ 스택 추가로 t3 메모리 여유(대략 +640m)가 필요 — 배포 전 `free -m`/node-exporter 메모리 패널로 확인.
-  loki:
-    image: grafana/loki:3.3.2
-    container_name: brbs-loki
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3100:3100"
-    command:
-      - "-config.file=/etc/loki/loki-config.yml"
-    volumes:
-      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
-      - loki-data:/loki
-    mem_limit: 256m
-    mem_reservation: 128m
-    healthcheck:
-      # grafana/loki 이미지는 alpine 기반(busybox wget). 이 스택은 아무도 service_healthy로 의존하지 않으므로
-      # 헬스체크 오탐이 나도 컨테이너는 계속 뜬다(비차단).
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready | grep -q ready || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - brbs-net
-
-  # Tempo: 트레이스 저장·조회. 조회 포트(3200)만 loopback. OTLP 리시버(4317/4318)는 brbs-net 내부만
-  # (backend가 tempo:4318로 push) → 호스트 미게시.
-  tempo:
-    image: grafana/tempo:2.7.1
-    container_name: brbs-tempo
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3200:3200"
-    command:
-      - "-config.file=/etc/tempo/tempo-config.yml"
-    volumes:
-      - ./monitoring/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
-      - tempo-data:/var/tempo
-    # 256m에서는 anon-rss가 문턱을 넘어 cgroup OOM으로 반복 크래시(재기동 중 스크랩 실패로 TargetDown 알럿 flapping).
-    mem_limit: 512m
-    mem_reservation: 256m
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - brbs-net
-
-  # Alloy: Docker 데몬의 모든 컨테이너 stdout을 수집해 Loki로 push. docker.sock을 read-only로 마운트한다.
+  # Alloy: Docker 데몬의 모든 컨테이너 stdout을 수집해 (원격) Loki로 push. docker.sock을 read-only로 마운트한다.
+  # docker.sock은 이 호스트(backend·report·chatbot·redis가 뜨는 곳) 것이라 alloy 자체는 이동 불가 —
+  # push 대상만 config.alloy에서 원격 Loki(모니터링 인스턴스)를 가리키도록 변경(플레이스홀더, PR로 실제 IP 채움).
+  # 12345(자체 상태 UI)도 모니터링 인스턴스의 Prometheus가 alloy job으로 원격 스크랩하므로 호스트 전체 게시.
   # ⚠️ docker.sock 권한: 이미지 기본 사용자로 못 읽으면 `user: root` 또는 `group_add: [docker]` 추가.
   alloy:
     image: grafana/alloy:v1.5.1
     container_name: brbs-alloy
     restart: unless-stopped
     ports:
-      - "127.0.0.1:12345:12345"
+      - "12345:12345"
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -387,8 +266,6 @@ services:
       - alloy-data:/var/lib/alloy/data
     mem_limit: 128m
     mem_reservation: 64m
-    depends_on:
-      - loki
     logging:
       driver: json-file
       options:
@@ -399,10 +276,6 @@ services:
 
 volumes:
   redis-data:
-  prometheus-data:
-  grafana-data:
-  loki-data:
-  tempo-data:
   alloy-data:
 
 networks:
