@@ -28,8 +28,8 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.kafka.OcrJob;
-import com.soma.backend.infra.kafka.OcrJobOutboxPort;
+import com.soma.backend.infra.sqs.OcrJob;
+import com.soma.backend.infra.sqs.OcrJobOutboxPort;
 
 /**
  * 리포트 생성·제안 결정 커맨드 유스케이스(design.md §6). createReport는 UserClaim·Report(shell)·첨부를

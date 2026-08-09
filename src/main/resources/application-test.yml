@@ -22,10 +22,6 @@ spring:
     redis:
       host: localhost
       port: 6379
-  kafka:
-    bootstrap-servers: localhost:9092
-    security:
-      protocol: PLAINTEXT
   security:
     oauth2:
       client:

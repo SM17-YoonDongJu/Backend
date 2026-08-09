@@ -1,6 +1,6 @@
 ---
 name: spring-infra
-description: "Spring Boot 인프라·관측성·배포 하드닝 구현 가이드. Actuator 헬스체크·liveness/readiness 프로브, JVM 메모리 제한(MaxRAMPercentage)·GC 로그·OOM 힙덤프, HikariCP 커넥션 풀 제한, Kafka producer 안전설정(acks·idempotence)과 로컬 KRaft 브로커 docker compose, Dockerfile·docker-compose 하드닝(restart·healthcheck·mem_limit), PII-안전 로깅(logback), curl·k6 smoke test 작성 시 반드시 이 스킬을 참조. '헬스체크 열기', 'JVM 메모리 제한', 'GC 로그', 'DB 풀 제한', 'Kafka producer 설정', 'docker healthcheck', '프로덕션 하드닝', '관측성 세팅', 'smoke test' 요청과 이들의 '다시/수정/보완/추가' 후속 요청 시 사용. 비즈니스 로직 구현은 제외(springboot-dev 사용)."
+description: "Spring Boot 인프라·관측성·배포 하드닝 구현 가이드. Actuator 헬스체크·liveness/readiness 프로브, JVM 메모리 제한(MaxRAMPercentage)·GC 로그·OOM 힙덤프, HikariCP 커넥션 풀 제한, SQS producer 배선(SqsClient·아웃박스 릴레이)과 로컬 LocalStack docker compose, Dockerfile·docker-compose 하드닝(restart·healthcheck·mem_limit), PII-안전 로깅(logback), curl·k6 smoke test 작성 시 반드시 이 스킬을 참조. '헬스체크 열기', 'JVM 메모리 제한', 'GC 로그', 'DB 풀 제한', 'SQS producer 설정', 'docker healthcheck', '프로덕션 하드닝', '관측성 세팅', 'smoke test' 요청과 이들의 '다시/수정/보완/추가' 후속 요청 시 사용. 비즈니스 로직 구현은 제외(springboot-dev 사용)."
 ---
 
 # Spring Boot 인프라·관측성·배포 하드닝 가이드
@@ -87,69 +87,55 @@ spring:
 - **풀 크기 근거:** 무한정 늘리면 DB가 죽는다. `maximum-pool-size`는 DB `max_connections`와 인스턴스 수를 역산해서 정한다(기본 10은 단일 인스턴스 보수값). 하드닝 시 env로 환경별 오버라이드를 배선한다.
 - **`max-lifetime`은 DB/LB 유휴 종료 시간보다 짧게** — 그래야 죽은 커넥션을 쥐고 있다가 터지는 걸 막는다. 현재는 미설정(Hikari 기본 30분)이라 명시 설정을 권장한다.
 
-## 4. Kafka producer 안전설정 + 로컬 브로커
+## 4. SQS producer 배선 + 로컬 브로커(LocalStack)
 
-의존성: `implementation 'org.springframework.kafka:spring-kafka'` + 운영 MSK IAM 인증용 `software.amazon.msk:aws-msk-iam-auth`. **consumer는 ocr_worker(Python) 담당이라 producer만 설정.**
+의존성: `implementation 'software.amazon.awssdk:sqs:2.26.0'`(S3와 같은 AWS SDK v2 라인, spring-cloud-aws 미사용). **consumer는 report 워커(Python) 담당이라 producer만 설정.**
 
-> **실제 배선:** 이 프로젝트는 producer 안전설정을 yaml이 아니라 **Java `@Configuration KafkaProducerConfig`
-> (`infra/kafka/KafkaProducerConfig.java`)** 로 구현한다 — `ocrProducerFactory`(ProducerFactory) + `KafkaTemplate`
-> 빈을 노출하고, `OutboxRelay`가 이 템플릿으로 OCR 트리거를 발행한다. `bootstrap-servers`/`security.protocol`은
-> `application.yml`의 `spring.kafka.*`에서 읽고, `security.protocol=SASL_SSL`이면 IAM 인증(`AWS_MSK_IAM`
-> mechanism·`IAMLoginModule` jaas·`IAMClientCallbackHandler`)을 이 클래스가 추가로 배선한다(운영 MSK).
-> 로컬 KRaft(PLAINTEXT)엔 미적용 — 로컬↔MSK 전환은 환경변수로 갈린다.
-> 아래 값은 그 빈이 `ProducerConfig`로 설정하는 값과 동일하다(등가 yaml 참고용).
+> **실제 배선:** OCR 트리거는 트랜잭셔널 아웃박스로 적재하고(`OcrJobOutboxPortImpl` → `kafka_outbox_events`),
+> `OutboxRelay`가 폴링해 **`SqsClient.sendMessage`** 로 발행한다. `SqsClient` 빈은 `infra/sqs/SqsConfig`가
+> **S3Config와 동일 패턴**으로 구성한다 — `aws.region` + `DefaultCredentialsProvider`(IAM Role 위임, 정적 키 미주입).
+> `aws.sqs.endpoint`가 있으면(로컬 LocalStack) `endpointOverride` + 더미 StaticCredentials로 로컬에 붙는다.
+> 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름 `ocr-job-queue`)이며, 큐 URL은 `GetQueueUrl`로 1회 해석해 캐시한다.
+> 아웃박스 테이블/엔티티 이름(`kafka_outbox_events`/`KafkaOutboxEvent`)은 역사적 이름으로 **유지**한다(전송 계층만 SQS로 교체).
 
-```yaml
-spring:
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    security:
-      protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
-    producer:                     # 참고: 실제로는 KafkaProducerConfig(ProducerConfig)로 동일 값 배선
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-      acks: all                   # 모든 ISR 확인 후 성공 — 유실 방지
-      retries: 3
-      properties:
-        enable.idempotence: true  # 중복/재전송 방지 (정확히 한 번 전송)
-        max.in.flight.requests.per.connection: 5
-        delivery.timeout.ms: 120000
-        request.timeout.ms: 30000
-        linger.ms: 10
+SQS 안전값은 브로커 위치와 무관하게 유효하다:
+- **at-least-once + 수신측 멱등:** SQS 표준 큐는 최소 1회 전달이라 중복 가능 — 수신자(report 워커)가 `job_id`로 멱등 처리한다(아웃박스도 at-least-once).
+- **큐 타입 Standard:** OCR 잡은 독립적·순서 무관이라 표준 큐를 쓴다(FIFO 불필요). 발행 재시도는 아웃박스 `attempts`(MAX 5) 초과 시 FAILED로 파킹.
+- **DLQ는 큐 redrive policy로:** 앱 코드가 아니라 큐 설정(maxReceiveCount → DLQ)이며 프로비저닝(IaC) 몫이다.
+- **apiCallTimeout:** `SqsConfig`가 5s로 걸어 릴레이 폴러 스레드의 SKIP LOCKED 락 점유를 짧게 묶는다(relay tx timeout 30s가 백스톱).
+
+```java
+// infra/sqs/SqsConfig.java — 핵심만
+SqsClient.builder()
+    .region(Region.of(region))
+    .overrideConfiguration(o -> o.apiCallTimeout(Duration.ofSeconds(5)))
+    // endpoint 있으면 LocalStack(더미 크리덴셜), 없으면 DefaultCredentialsProvider(IAM Role)
+    .credentialsProvider(hasEndpoint ? dummyStatic : DefaultCredentialsProvider.create())
+    .build();
 ```
 
-로컬 브로커는 **KRaft 모드(zookeeper 불필요)**로 compose에 올리고, 호스트/컨테이너 이중 리스너로 붙게 한다. 운영은 **MSK Provisioned(IAM 인증, 9098/SASL_SSL)**로 오버라이드하며, `KAFKA_BOOTSTRAP_SERVERS`·`KAFKA_SECURITY_PROTOCOL`만 교체하면 된다(consumer ocr_worker는 `aws-msk-iam-sasl-signer`로 접속).
+로컬 브로커는 **LocalStack(SQS)**를 compose에 올리고, ready 훅(`deploy/localstack/init-sqs.sh`)이 `ocr-job-queue`를 생성한다. 운영/스테이징은 **관리형 AWS SQS**(컨테이너 없음)로 IAM Role로 접속한다 — `AWS_SQS_ENDPOINT`를 비우면 실제 SQS로 붙는다.
 
 ```yaml
-  kafka:
-    image: apache/kafka:4.3.1
+  localstack:
+    image: localstack/localstack:3
     ports:
-      - "${KAFKA_PORT:-9092}:9092"      # EXTERNAL → 호스트 bootRun
+      - "${LOCALSTACK_PORT:-4566}:4566"
     environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      # 호스트 생략(://:포트) 표기 필수 — 리터럴 0.0.0.0은 컨트롤러 광고 주소 폴백 검증에 걸려 기동 실패(#93)
-      KAFKA_LISTENERS: CONTROLLER://:9093,INTERNAL://:9094,EXTERNAL://:9092
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9094,EXTERNAL://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      SERVICES: sqs
+    volumes:
+      - ./deploy/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name ocr-job-queue >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 15s
 ```
 
-- **이중 리스너 이유:** 컨테이너 내부는 `kafka:9094`(INTERNAL), 호스트 bootRun은 `localhost:9092`(EXTERNAL). advertised listener가 한 개면 한쪽이 못 붙는다.
-- app 서비스에 `KAFKA_BOOTSTRAP_SERVERS: kafka:9094`(env_file보다 우선) + `depends_on: kafka(healthy)` 추가.
-- 단일 브로커 → 복제 계수 1. 운영(MSK)에서는 3으로.
-- **producer 안전설정은 브로커 위치와 무관하게 유효** — 로컬↔MSK 전환 시 이 값은 안 바꾼다.
+- app 서비스에 `AWS_SQS_ENDPOINT: http://localstack:4566` + `AWS_REGION` + `depends_on: localstack(healthy)` 추가(호스트 bootRun은 `application-local.yml`이 `localhost:4566` 기본).
+- **IAM 권한:** app 태스크/인스턴스 Role = `sqs:SendMessage` + `sqs:GetQueueUrl`. 워커 Role = `sqs:ReceiveMessage`·`DeleteMessage`·`GetQueueAttributes`.
+- **`app.outbox.enabled=false`면 릴레이 no-op**(테스트·SQS 미가용 로컬). `@EnableScheduling`은 유지해 다른 스케줄러(OutboxProcessor)를 보존한다.
 
 ## 5. PII-안전 로깅
 
@@ -200,4 +186,4 @@ logging:
 - 변경 파일 목록
 - 각 설정 값과 **근거**(왜 이 값인지)
 - 검증 결과(컴파일/compose config 통과 여부, 라이브 스모크 실행/미실행)
-- 남은 TODO (예: 실제 KafkaProducer 컴포넌트 구현은 backend-developer)
+- 남은 TODO (예: SQS 큐·DLQ 프로비저닝·IAM 정책은 IaC 몫; 발행 컴포넌트 OutboxRelay·SqsConfig는 구현됨)

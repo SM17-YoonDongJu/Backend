@@ -21,6 +21,11 @@ management:
     # 로컬엔 Tempo가 없다 — 트레이싱을 꺼서 OTLP export 시도·연결실패 경고를 막는다.
     enabled: false
 
+aws:
+  sqs:
+    # 로컬 SQS는 LocalStack(docker compose)로 띄운다. 미기동 시 아웃박스 발행만 실패하고 앱 기동엔 영향 없다.
+    endpoint: ${AWS_SQS_ENDPOINT:http://localhost:4566}
+
 logging:
   level:
     org.springframework.security: DEBUG

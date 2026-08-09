@@ -42,7 +42,7 @@ com.soma.backend
 │   └── service/               # 비즈니스 유스케이스 + @Transactional 경계
 ├── domain/common/             # 공유 기반 (BaseEntity, JpaConfig) — 컨텍스트 아님
 ├── global/                    # 전 컨텍스트 공통 (config, exception, response, security)
-└── infra/                     # 전역 공유 인프라 (redis, s3, fcm, kafka, outbox)
+└── infra/                     # 전역 공유 인프라 (redis, s3, fcm, sqs, outbox)
 ```
 
 > **도메인 현황(문서-코드 정합):** 실제 구현된 컨텍스트는 `auth·user·adjuster·report·chat·notification` + S3 presigned 업로드 파사드 `upload`(POST /uploads, Aggregate 없는 얇은 컨텍스트) + 공유 기반 `common`이다. `match`는 빈 placeholder이며 **매칭(제안 요청·수락) 로직은 현재 `report` 도메인(proposal)에 있다**. `payment`·`subscription`은 **계획된 컨텍스트로 아직 미구현**(예약 에러코드 `PAYMENT_FAILED`·`SUBSCRIPTION_NOT_FOUND`만 존재).
@@ -68,7 +68,7 @@ com.soma.backend
 
 **infra/s3** — `S3Client`·`S3Presigner` Bean은 `infra/s3/S3Config`에서 구성한다 — 리전만 `aws.region` 프로퍼티로 주입하고 자격증명은 `DefaultCredentialsProvider`(IAM Role·`~/.aws`)로 위임한다 (Spring Cloud AWS 미사용). presigned URL은 채팅 첨부 다운로드에 사용한다.
 
-**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 `outbox`/`kafka_outbox` 테이블에 적재하고, `OutboxProcessor`가 `FOR UPDATE SKIP LOCKED`로 폴링해 Kafka로 릴레이한다 (OCR 트리거 등 발행의 원자성·재시도 보장).
+**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 `outbox`/`kafka_outbox` 테이블에 적재하고, `OutboxProcessor`가 `FOR UPDATE SKIP LOCKED`로 폴링해 SQS로 릴레이한다 (OCR 트리거 등 발행의 원자성·재시도 보장). 발행 대상은 아웃박스 `topic` 컬럼(=SQS 큐 이름)이며, 브로커는 관리형 AWS SQS다(리네임 없이 `kafka_outbox_events` 테이블·엔티티 유지).
 
 ## Key Configuration
 
@@ -175,18 +175,18 @@ Checkstyle(`config/checkstyle/checkstyle.xml`)가 강제하는 규칙 — 위반
 FastAPI가 담당하는 영역 (Spring Boot 범위 외):
 - AI 챗봇 WebSocket
 - OCR 실행, LangGraph 멀티에이전트, RAG (AI 리포트 생성 파이프라인)
-- Kafka consumer 측 내부 처리 (OCR 트리거 메시지 소비 이후)
+- SQS consumer 측 내부 처리 (OCR 트리거 메시지 소비 이후)
 
 Spring Boot가 담당하는 영역:
 - 인증·회원 (JWT, OAuth2, RBAC)
-- 사고 상황 입력 수신 + 진단서 S3 업로드 + OCR 트리거 Kafka producer 발행 (리포트 생성 요청의 진입점)
+- 사고 상황 입력 수신 + 진단서 S3 업로드 + OCR 트리거 SQS producer 발행 (리포트 생성 요청의 진입점)
 - 손해사정사 매칭·상담 플로우 (제안 요청·수락·거절 — 현재 report/chat 도메인의 proposal로 구현, 별도 match 도메인 아님)
 - 검수 리포트 등록(서명 포함 PATCH), review_feedback 수집
 - 구독·결제 (PG사 연동) — **계획, 아직 미구현** (예약 에러코드만 존재)
 - FCM Push + 인앱 알림 (notification 도메인, 검수 완료 등)
 - WebSocket(STOMP) 채팅 (ChatRoom, ChatMessage, 오프라인 FCM 푸시)
 
-> **OCR 처리 경계:** Spring Boot가 사고 정보·진단서를 받아 S3에 저장하고 Kafka로 OCR 트리거 메시지를 **발행(producer)**한다. FastAPI가 이 메시지를 **소비(consumer)**하여 OCR·AI 리포트 생성을 수행한다. OCR 알고리즘 자체는 Spring 범위 외.
+> **OCR 처리 경계:** Spring Boot가 사고 정보·진단서를 받아 S3에 저장하고 SQS로 OCR 트리거 메시지를 **발행(producer)**한다. FastAPI가 이 메시지를 **소비(consumer)**하여 OCR·AI 리포트 생성을 수행한다. OCR 알고리즘 자체는 Spring 범위 외.
 
 ## 하네스: Spring Boot Backend
 
@@ -214,3 +214,4 @@ Spring Boot가 담당하는 영역:
 | 2026-07-27 | **하네스 드리프트 동기화** — 현재 코드 대비 harness 정합 점검. CLAUDE.md 도메인 목록에 실제 구현된 `upload`(S3 presigned 파사드) 컨텍스트 반영. git-workflow scope 표: `match`를 placeholder(로직은 report/proposal)로·`payment`를 계획/미구현으로 표기, 실제 구현 컨텍스트 `notification`·`upload` 행 추가, user/adjuster/report 설명을 최근 기능(보험 정보·공개 목록·제안 수락/거절)에 맞춰 보정, 미구현 코드 참조 예시(`test(payment)`·`fix(match)`)를 실재 예시로 교체. 이슈 생성 `--assignee "이동형"`(유효하지 않은 GitHub 로그인)을 `@me`로 정정 | CLAUDE.md, .claude/skills/git-workflow | "현재 코드 보고 harness 수정할 부분 있으면 수정" 요청 — develop 기준 드리프트 감사 |
 | 2026-08-06 | **OpenAPI(@Schema) required/nullable 컨벤션 신설·전체 DTO 적용** — springdoc-openapi 3.0.3(OpenAPI 3.1 생성)이 있었는데도 어떤 DTO에도 `@Schema`가 없어 required/nullable 정보가 전혀 문서화되지 않던 문제 해결. CLAUDE.md Constraints에 `requiredMode`/`nullable` 사용 규칙과 swagger-core의 중첩 객체(`$ref`) nullable 렌더링 한계(`anyOf`로도 우회 불가)를 명문화. 7개 도메인(auth·user·adjuster·report·chat·notification·upload) 58개 DTO에 컨트롤러·서비스·엔티티 코드를 근거로 적용(추측 아님) — 4개 파일(전 필드 primitive)·2개 파일(이미 Bean Validation)은 의도적으로 미변경. `/v3/api-docs` 실기동 검증으로 확인 | CLAUDE.md, domain/{auth,user,adjuster,report,chat,notification,upload}/dto/* | 사용자의 "OpenAPI json에 nullable/required 표기 가능한가" 질문에서 출발 — 컨벤션 부재 확인 후 이슈 #197로 소급 적용 결정 |
 | 2026-08-09 | **OCR 트리거 브로커 self-hosted Kafka → MSK Provisioned(IAM 인증) 이전** — producer `KafkaProducerConfig`가 `security.protocol=SASL_SSL`일 때만 `AWS_MSK_IAM` 배선(PLAINTEXT는 no-op), `build.gradle`에 `aws-msk-iam-auth` 추가, `.env.example`·prod compose(`report`에 `AWS_REGION`) 반영. spring-kafka·OutboxRelay·OcrJob·아웃박스·`kafka_outbox_events`·테스트 불변(Kafka API 유지, 리네임 없음). consumer(ocr_worker, Python)는 `aws-msk-iam-sasl-signer`+OAUTHBEARER로 접속만 교체(별도 처리). spring-infra §4 stale 서술("이 클래스 불변"·"운영 MSK 추후"·consumer FastAPI) 정정 | build.gradle, infra/kafka/KafkaProducerConfig(+Test), .env.example, deploy/docker-compose.prod.yml, skills/spring-infra | 비용·이식성·성능·k8s 비교 끝에 Kafka 유지 위해 MSK 선택(PR #205) |
+| 2026-08-09 | **OCR 트리거 브로커 MSK(Kafka) → AWS SQS 전환** — `spring-kafka`·`aws-msk-iam-auth` 제거 후 `awssdk:sqs` 도입, `KafkaProducerConfig` 삭제·신규 `infra/sqs/SqsConfig`(SqsClient; S3Config 패턴 = region + DefaultCredentialsProvider, 로컬은 `aws.sqs.endpoint` LocalStack override + 더미 크리덴셜, apiCallTimeout). `OutboxRelay`가 `KafkaTemplate`→`SqsClient.sendMessage`(아웃박스 `topic`=SQS 큐 이름 → GetQueueUrl 캐시), `app.outbox.enabled` 런타임 게이트. 아웃박스 테이블/엔티티(`kafka_outbox_events`/`KafkaOutboxEvent`)·`topic`/`message_key` 컬럼·OCR 계약(`OcrJob` JSON) 불변(전송 계층만 교체, 리네임·마이그레이션 없음). 설정(`spring.kafka.*` 제거)·`.env.example`·로컬 compose(kafka 컨테이너→LocalStack sqs + 큐 생성 init)·dev/prod compose(kafka·kafka-ui 제거, app·report 워커 env→SQS)·배포 env 예시 반영. 큐 타입 Standard(소비자 멱등·순서 무관). ⚠️ 운영 컷오버는 SQS 큐+DLQ 프로비저닝·IAM(app=`SendMessage`+`GetQueueUrl`, 워커=`Receive`/`Delete`)·**AI report 워커의 SQS 소비자 전환과 동시 배포**가 전제(코드 외부). | build.gradle, infra/sqs/*, application{,-test,-local}.yml, .env.example, docker-compose.yml, deploy/{docker-compose.dev,docker-compose.prod}.yml·.env.{dev,prod}.example·localstack/init-sqs.sh, skills/spring-infra, deploy/README.md, CLAUDE.md | 비용·단순성(관리형·상시 브로커 불필요) 위해 SQS 선택 — MSK 결정 번복(이슈 #208, 브랜치 fix/208-msk-to-sqs) |

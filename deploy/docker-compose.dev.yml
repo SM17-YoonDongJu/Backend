@@ -1,7 +1,7 @@
 # dev EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
 # 사용: docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
 # CD는 backend만 bounce: ... up -d --no-deps backend
-# 인프라(redis/kafka)는 최초 1회 full up 후 restart 정책으로 상주한다.
+# 인프라(redis)는 최초 1회 full up 후 restart 정책으로 상주한다. OCR 트리거 브로커는 AWS SQS(관리형, 컨테이너 없음).
 name: brbs
 
 services:
@@ -23,8 +23,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
+      # OCR 트리거는 SQS로 발행한다. 큐 URL은 큐 이름(ocr-job-queue)에서 런타임 해석하므로 별도 env 불필요.
+      # 접속은 dev 인스턴스 IAM Role 위임(AWS_REGION 필요, 아래 참조) — 정적 키 미주입.
       JWT_SECRET: ${JWT_SECRET}
       AWS_REGION: ${AWS_REGION}
       S3_BUCKET: ${S3_BUCKET}
@@ -71,7 +71,7 @@ services:
     networks:
       - brbs-net
 
-  # Kafka 워커(report-job 소비 · LangGraph · RAG). HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  # SQS 워커(OCR 트리거 소비 · LangGraph · RAG). HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
   report:
     image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-dev}
     container_name: brbs-report
@@ -86,12 +86,11 @@ services:
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
       RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
-      KAFKA_REPORT_JOB_TOPIC: ${KAFKA_REPORT_JOB_TOPIC}
-      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP}
-      KAFKA_DLQ_SUFFIX: ${KAFKA_DLQ_SUFFIX:-.dlq}
-      KAFKA_MAX_RETRIES: ${KAFKA_MAX_RETRIES:-3}
+      # OCR 트리거 SQS 소비 (Kafka→SQS 전환, #208). ⚠️ 변수명·튜닝값은 AI report 워커의 SQS 소비자 구현과 합의 후 확정.
+      # (튜닝 후보: 롱폴링 wait-time·visibility-timeout·배치 max-messages. DLQ는 큐 redrive policy로 구성 — 앱 env 아님.)
+      SQS_OCR_JOB_QUEUE_URL: ${SQS_OCR_JOB_QUEUE_URL}
+      # SQS 접속·큐 URL 해석에 리전 필요 — 자격증명은 dev 인스턴스 IAM Role 위임(정적 키 미주입)
+      AWS_REGION: ${AWS_REGION}
       AI_BASE_URL: ${AI_BASE_URL}
       AI_API_KEY: ${AI_API_KEY}
       AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
@@ -113,7 +112,7 @@ services:
     networks:
       - brbs-net
 
-  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). Kafka·S3 없음, Redis 필수.
+  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). SQS·S3 없음, Redis 필수.
   chatbot:
     image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-dev}
     container_name: brbs-chatbot
@@ -171,66 +170,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - brbs-net
-
-  kafka:
-    image: apache/kafka:3.9.0
-    container_name: brbs-kafka
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:9092:9092"
-      - "${BACKEND_PRIVATE_IP}:9094:9094"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://${BACKEND_PRIVATE_IP}:9094
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_RETENTION_HOURS: 168
-      # 단일 브로커 → 내부 토픽 복제 계수 1 (apache 이미지는 기본값 3이라 명시 필요)
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_HEAP_OPTS: "-Xms512m -Xmx1g"
-    volumes:
-      - kafka-data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    networks:
-      - brbs-net
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: brbs-kafka-ui
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8090:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: brbs-kafka
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      DYNAMIC_CONFIG_ENABLED: "true"
-    depends_on:
-      kafka:
-        condition: service_healthy
     logging:
       driver: json-file
       options:
@@ -459,7 +398,6 @@ services:
 
 volumes:
   redis-data:
-  kafka-data:
   prometheus-data:
   grafana-data:
   loki-data:

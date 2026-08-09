@@ -54,10 +54,8 @@ dependencies {
 	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3'
 
-	// Kafka (OCR 트리거 producer)
-	implementation 'org.springframework.kafka:spring-kafka'
-	// MSK IAM 인증(SASL_SSL + AWS_MSK_IAM) — 운영 MSK 접속용. 자격증명은 IAM Role 위임, 로컬 PLAINTEXT엔 미사용
-	implementation 'software.amazon.msk:aws-msk-iam-auth:2.3.7'
+	// SQS (OCR 트리거 producer) — AWS SDK v2. S3와 동일하게 spring-cloud-aws 미사용, 자격증명은 DefaultCredentialsProvider 위임
+	implementation 'software.amazon.awssdk:sqs:2.26.0'
 
 	// Security & Auth
 	implementation 'org.springframework.boot:spring-boot-starter-security'
