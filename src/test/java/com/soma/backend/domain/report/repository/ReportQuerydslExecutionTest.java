@@ -78,4 +78,17 @@ class ReportQuerydslExecutionTest {
     assertThat(page).isNotNull();
     assertThat(page.getContent()).isEmpty();
   }
+
+  /**
+   * design.md §12.4 C30 — PII 암호화(V34) 이후에도 이 projection이 그대로 실행되는지 확인한다.
+   * 셀렉트 대상 배열 3종은 {@code report_reviews}(사정사 검수본, 1단계 평문 유지)라 스코프 밖이고,
+   * {@code reports}의 동명 컬럼은 PR-2 게이트 대상이다.
+   */
+  @Test
+  @DisplayName("findCustomerReportDetail — report_reviews 배열 3종 projection SQL이 실행된다(PII 스코프 밖 확인)")
+  void customerReportDetailExecutes() {
+    CustomerReportDetailRow row = reportRepository.findCustomerReportDetail(UUID.randomUUID());
+
+    assertThat(row).isNull();
+  }
 }

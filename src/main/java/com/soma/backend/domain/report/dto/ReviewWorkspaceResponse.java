@@ -54,10 +54,14 @@ public record ReviewWorkspaceResponse(
     boolean started,
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Progress progress) {
 
+  /**
+   * 검수 워크스페이스 응답 조립. additionalInformation은 암호화 컬럼이라 native 프로젝션(context)이 아니라
+   * UserClaim 엔티티에서 읽어 별도 인자로 받는다(응답 JSON 계약은 그대로).
+   */
   public static ReviewWorkspaceResponse from(
       Report report, ReviewContextRow context, List<String> region, ClaimDetails claimDetails,
-      List<ReportIssue> aiIssues, ReportReview review, List<ReportAttachment> attachments,
-      UnaryOperator<String> urlResolver) {
+      String additionalInformation, List<ReportIssue> aiIssues, ReportReview review,
+      List<ReportAttachment> attachments, UnaryOperator<String> urlResolver) {
     boolean started = review != null;
     String regionText = ReportResponseSupport.joinRegion(region);
     List<IssueItem> issues = mergeIssues(aiIssues, review);
@@ -80,7 +84,7 @@ public record ReviewWorkspaceResponse(
         Boolean.TRUE.equals(report.getIsMasked()),
         report.getOfferedAmount(),
         Client.from(context, regionText),
-        ClaimContext.from(context, claimDetails),
+        ClaimContext.from(context, claimDetails, additionalInformation),
         attachmentItems,
         aiEstimate,
         adjusterEstimate,
@@ -188,7 +192,7 @@ public record ReviewWorkspaceResponse(
       @Schema(nullable = true) String productName,
       @Schema(nullable = true) String insurerName) {
 
-    public static ClaimContext from(ReviewContextRow context, ClaimDetails details) {
+    public static ClaimContext from(ReviewContextRow context, ClaimDetails details, String additionalInformation) {
       if (context == null) {
         return null;
       }
@@ -196,7 +200,7 @@ public record ReviewWorkspaceResponse(
           context.getClaimAccidentType(), context.getAccidentDate(),
           ReportResponseSupport.joinText(details == null ? null : details.diagnosis(), ", "),
           formatHospitalization(details == null ? null : details.hospitalizations()),
-          context.getClaimDescription(), context.getAdditionalInformation(),
+          context.getClaimDescription(), additionalInformation,
           context.getProductName(), context.getInsurerName());
     }
   }
