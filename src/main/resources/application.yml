@@ -37,7 +37,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    schemas: public
+    schemas: core, public
+    default-schema: public
   
   data:
     redis:
