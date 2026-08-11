@@ -57,6 +57,9 @@ dependencies {
 	// SQS (OCR 트리거 producer) — AWS SDK v2. S3와 동일하게 spring-cloud-aws 미사용, 자격증명은 DefaultCredentialsProvider 위임
 	implementation 'software.amazon.awssdk:sqs:2.26.0'
 
+	// KMS (PII 봉투암호화 DEK 발급·해제) — S3·SQS와 동일 라인. 자격증명은 DefaultCredentialsProvider 위임
+	implementation 'software.amazon.awssdk:kms:2.26.0'
+
 	// Security & Auth
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'

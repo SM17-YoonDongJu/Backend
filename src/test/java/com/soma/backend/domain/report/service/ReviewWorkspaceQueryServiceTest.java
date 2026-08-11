@@ -238,11 +238,6 @@ class ReviewWorkspaceQueryServiceTest {
       }
 
       @Override
-      public String getAdditionalInformation() {
-        return null;
-      }
-
-      @Override
       public String getProductName() {
         return "행복드림";
       }

@@ -50,6 +50,9 @@ public enum ErrorCode {
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
   DATABASE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "데이터베이스 오류가 발생했습니다."),
   EXTERNAL_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "외부 API 연동에 실패했습니다."),
+  // PII_CRYPTO_ERROR: 민감정보 컬럼 암복호화 실패(키 불일치·봉투 변조·AAD 불일치·포맷 오류).
+  //   원인값(키·평문·암호문)은 절대 응답·로그에 싣지 않는다.
+  PII_CRYPTO_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "민감정보 처리 중 오류가 발생했습니다."),
 
   // 503 Service Unavailable — 일시적 서비스 불가
   SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "서비스를 일시적으로 이용할 수 없습니다."),

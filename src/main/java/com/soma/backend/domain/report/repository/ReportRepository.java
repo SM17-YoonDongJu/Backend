@@ -95,12 +95,13 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
    *   - findReviewContext : user_claims / insurance_products / insurers (미매핑)
    * diagnosis·hospitalization은 user_claims details(jsonb) 전환으로 컬럼에서 제거됨(추후 details 기반 노출).
    * region(text[])은 findRegionByReportId(QueryDSL)로 별도 조회하므로 여기서는 선택하지 않는다.
+   * additional_information은 암호화(bytea)로 전환돼 컨버터가 적용되는 엔티티(UserClaim) 경유 조회로 옮겼다 —
+   * native 결과에는 컨버터가 적용되지 않아 여기서 셀렉트하면 복호화되지 않은 봉투 바이트가 나온다.
    */
   @Query(value = "SELECT u.nickname AS nickname, u.gender AS gender, u.birth_date AS birthDate, "
       + "u.created_at AS joinedAt, "
       + "uc.accident_type AS claimAccidentType, uc.accident_date AS accidentDate, "
       + "uc.description AS claimDescription, "
-      + "uc.additional_information AS additionalInformation, "
       + "ip.product_name AS productName, ins.name AS insurerName "
       + "FROM reports r "
       + "JOIN users u ON u.id = r.user_id "

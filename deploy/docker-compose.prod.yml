@@ -40,6 +40,9 @@ services:
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
       APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY}
+      # PII 컬럼(user_claims·user_insurances) 암호화 — 운영은 KMS 봉투암호화 경로만 허용(PII_ENC_KEY 미주입).
+      # CMK 없이 배포하면 PiiCryptoProdGuard가 기동을 막는다 — 값은 CMK 생성 후 .env.prod에서 주입.
+      PII_KMS_KEY_ID: ${PII_KMS_KEY_ID}
       # OAuth redirect_uri {baseUrl} 치환값 = 백엔드 API 도메인
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://api.brbosang.com}
       # 프론트가 콜백에 넘긴 redirect_uri를 허용할 오리진 = 프론트 도메인(API 아님)

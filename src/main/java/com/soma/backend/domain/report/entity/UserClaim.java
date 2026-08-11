@@ -20,6 +20,7 @@ import com.soma.backend.domain.common.entity.BaseEntity;
 import com.soma.backend.domain.report.entity.claim.ClaimDetails;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.global.security.crypto.converter.UserClaimAdditionalInformationConverter;
 
 /**
  * USER_CLAIMS Aggregate Root — 사용자가 입력한 사고 상황(리포트 생성 요청의 원본 입력, design.md §3).
@@ -62,6 +63,7 @@ public class UserClaim extends BaseEntity {
   @Column(name = "description")
   private String description;
 
+  @Convert(converter = UserClaimAdditionalInformationConverter.class)
   @Column(name = "additional_information")
   private String additionalInformation;
 
