@@ -6,6 +6,11 @@
 app:
   crypto:
     apple-token-key: ${APPLE_TOKEN_ENC_KEY:}
+    pii:
+      # 운영은 raw DEK를 쓰지 않는다 — 값이 있으면 PiiCryptoProdGuard가 기동을 막는다.
+      key: ${PII_ENC_KEY:}
+      # 필수. 미설정 시 PiiCryptoProdGuard가 IllegalStateException으로 기동 차단(fail-fast).
+      kms-key-id: ${PII_KMS_KEY_ID:}
 
 spring:
   jpa:
