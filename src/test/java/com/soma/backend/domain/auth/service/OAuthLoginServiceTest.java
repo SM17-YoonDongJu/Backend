@@ -123,7 +123,9 @@ class OAuthLoginServiceTest {
     given(oAuthClient.fetchProfile("apple", "code", null, null)).willReturn(profile);
     given(socialAccountRepository.findByProviderAndProviderUserId("apple", "apple-1"))
         .willReturn(Optional.empty());
-    given(aesGcmCipher.encrypt("raw-refresh")).willReturn("enc-refresh");
+    given(aesGcmCipher.encrypt(
+        "raw-refresh", AesGcmCipher.appleRefreshTokenAad("apple", "apple-1")))
+        .willReturn("enc-refresh");
     given(signupTicketProvider.issue("apple", "apple-1")).willReturn("ticket-jwt");
 
     // When

@@ -84,6 +84,10 @@ public class OutboxProcessor {
   private void handleAppleRevoke(String payloadJson) {
     AppleRevokePayload payload = jsonMapper.readValue(payloadJson, AppleRevokePayload.class);
     // 복호화는 revoke 호출 직전에만 수행한다(평문 at-rest 0). 실패는 그대로 전파해 백오프 재시도한다.
-    appleTokenRevoker.revoke(aesGcmCipher.decrypt(payload.encryptedRefreshToken()));
+    // AAD 도입(#225) 전 적재된 legacy payload는 행 식별자가 null인데, 그 암호문은 구버전이라 AAD 불필요.
+    String aad = payload.providerUserId() == null
+        ? null
+        : AesGcmCipher.appleRefreshTokenAad(payload.provider(), payload.providerUserId());
+    appleTokenRevoker.revoke(aesGcmCipher.decrypt(payload.encryptedRefreshToken(), aad));
   }
 }

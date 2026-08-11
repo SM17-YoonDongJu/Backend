@@ -63,10 +63,13 @@ public class OAuthLoginService {
   private OAuthCallbackResponse issueSignupTicket(OAuthProfile profile) {
     if (profile.providerRefreshToken() != null) {
       // Apple만 non-null. 평문을 즉시 암호화해 스테이징하고, 가입 시점에 SocialAccount로 옮긴다.
+      // AAD는 행 자연키(provider, providerUserId) 바인딩 — 다른 계정 행에 잘못 들어가면 복호화가 실패한다.
       appleRefreshStagingRepository.stage(
           profile.provider(),
           profile.providerUserId(),
-          aesGcmCipher.encrypt(profile.providerRefreshToken()));
+          aesGcmCipher.encrypt(
+              profile.providerRefreshToken(),
+              AesGcmCipher.appleRefreshTokenAad(profile.provider(), profile.providerUserId())));
     }
     String ticket = signupTicketProvider.issue(profile.provider(), profile.providerUserId());
     return OAuthCallbackResponse.newUser(ticket);
