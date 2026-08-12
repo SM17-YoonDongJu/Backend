@@ -32,7 +32,7 @@ com.soma.backend.domain.match
 ```
 
 - 한 컨텍스트 = `domain/` 아래 한 패키지. 컨텍스트 간 직접 참조는 피하고, 꼭 필요하면 service 레이어에서 조합하거나 도메인 이벤트로 연결한다.
-- `global/`(config·exception·security), `infra/`(redis·s3·fcm·kafka)는 전역 공유로 유지한다.
+- `global/`(config·exception·security), `infra/`(redis·s3·fcm·sqs·outbox)는 전역 공유로 유지한다.
 - 엔티티가 많아지면 `entity/` 아래 하위 패키지(`entity/vo`)로 나눠도 되지만, 처음엔 평평하게 둔다.
 
 ## 2. 레이어 의존 규칙
@@ -215,7 +215,7 @@ class MatchAcceptedListener {
 }
 ```
 
-- 커밋 후 부수효과(FCM 푸시, Kafka 발행 등)는 `AFTER_COMMIT` 리스너로. 실패해도 메인 트랜잭션은 이미 커밋됨.
+- 커밋 후 부수효과(FCM 푸시, SQS 발행 등)는 `AFTER_COMMIT` 리스너로. 실패해도 메인 트랜잭션은 이미 커밋됨.
 
 ## 8. 안티패턴 (리뷰에서 잡을 것)
 
@@ -235,4 +235,4 @@ class MatchAcceptedListener {
 - **`open-in-view: false`**: 지연로딩은 service 트랜잭션 안에서 초기화. Response 매핑은 트랜잭션 종료 전에 끝내거나 필요한 데이터를 Response에 담아 나온다.
 - **응답 포맷**: 성공 `ApiResponse.ok(...)`, 실패는 `BusinessException(ErrorCode)` → `GlobalExceptionHandler`. 도메인 규칙 위반도 `BusinessException`으로 던진다.
 - **snake_case**: dto의 Request/Response 필드에 적용(Jackson 전역).
-- **OCR 트리거 경계**: 사고 입력 수신·S3 업로드·Kafka producer 발행은 report 컨텍스트의 service(+ infra 공유)에 위치. OCR 실행·consumer는 FastAPI(범위 외).
+- **OCR 트리거 경계**: 사고 입력 수신·S3 업로드·SQS producer 발행은 report 컨텍스트의 service(+ infra 공유)에 위치. OCR 실행·consumer는 FastAPI(범위 외).

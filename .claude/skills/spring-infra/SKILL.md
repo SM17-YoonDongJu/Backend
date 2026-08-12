@@ -95,8 +95,13 @@ spring:
 > `OutboxRelay`가 폴링해 **`SqsClient.sendMessage`** 로 발행한다. `SqsClient` 빈은 `infra/sqs/SqsConfig`가
 > **S3Config와 동일 패턴**으로 구성한다 — `aws.region` + `DefaultCredentialsProvider`(IAM Role 위임, 정적 키 미주입).
 > `aws.sqs.endpoint`가 있으면(로컬 LocalStack) `endpointOverride` + 더미 StaticCredentials로 로컬에 붙는다.
-> 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름 `ocr-job-queue`)이며, 큐 URL은 `GetQueueUrl`로 1회 해석해 캐시한다.
-> 아웃박스 테이블/엔티티 이름(`kafka_outbox_events`/`KafkaOutboxEvent`)은 역사적 이름으로 **유지**한다(전송 계층만 SQS로 교체).
+> 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름)이며, 큐 URL은 `GetQueueUrl`로 1회 해석해 캐시한다.
+> 큐 이름은 고정값이 아니라 `app.sqs.ocr-queue-name`(`${SQS_OCR_QUEUE_NAME:ocr-job-queue}`)으로 **환경별 주입**한다 —
+> 로컬/test는 기본값 `ocr-job-queue`, dev·prod는 `.env`의 `SQS_OCR_QUEUE_NAME`(`brbs-ocr-job-queue-{env}`)이다.
+> **엔티티는 `OcrOutboxEvent`, 테이블은 `kafka_outbox_events`로 이름이 다르다** — 전송 계층을 SQS로 교체하면서
+> 클래스만 `OcrOutbox*`(`OcrOutboxEvent`·`OcrOutboxStatus`·`OcrOutboxRepository`)로 정리했고, 테이블 리네임은
+> **보류**했다. `ALTER TABLE ... RENAME TO`가 `public` 스키마 `CREATE` 권한을 요구하는데 운영 DB 유저에 그 권한이
+> 없어 마이그레이션이 실패하기 때문이다. 문서·쿼리에서 둘을 섞어 쓰지 말 것(테이블명은 `kafka_outbox_events` 그대로).
 
 SQS 안전값은 브로커 위치와 무관하게 유효하다:
 - **at-least-once + 수신측 멱등:** SQS 표준 큐는 최소 1회 전달이라 중복 가능 — 수신자(report 워커)가 `job_id`로 멱등 처리한다(아웃박스도 at-least-once).

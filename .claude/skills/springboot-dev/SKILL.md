@@ -1,6 +1,6 @@
 ---
 name: springboot-dev
-description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC, WebSocket 채팅 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 인프라·관측성·배포 하드닝(actuator 헬스체크, JVM/GC, DB 커넥션 풀, Kafka producer 설정·배선, docker healthcheck, PII 로깅, smoke test)도 이 스킬로 조율(infra-developer 담당). 
+description: "Spring Boot 백엔드 피처 개발, API 구현, 버그 수정을 에이전트 팀으로 조율하는 메인 오케스트레이터. 손해사정사 매칭, 리포트, 결제, 인증, FCM Push, RBAC, WebSocket 채팅 관련 구현·수정·추가 요청 시 반드시 이 스킬을 사용. 인프라·관측성·배포 하드닝(actuator 헬스체크, JVM/GC, DB 커넥션 풀, SQS producer 설정·배선, docker healthcheck, PII 로깅, smoke test)도 이 스킬로 조율(infra-developer 담당). 
 후속 작업: 결과 수정, 부분 재실행, 업데이트, 보완, 다시 구현, 이전 구현 개선 요청 시에도 사용."
 ---
 
@@ -24,13 +24,13 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 | backend-developer | general-purpose | 비즈니스 로직, 리포트·FCM (전술적 DDD 구현) | ddd-tactical |
 | security-developer | general-purpose | JWT, OAuth2, Spring Security, RBAC, Redis RT | spring-security-impl |
 | realtime-developer | general-purpose | WebSocket(STOMP) 채팅, ChatRoom·ChatMessage, FCM 오프라인 | websocket-impl |
-| infra-developer | general-purpose | 관측성(actuator)·JVM/GC·DB 풀·Kafka producer 배선·docker 하드닝·PII 로깅·smoke test | spring-infra |
+| infra-developer | general-purpose | 관측성(actuator)·JVM/GC·DB 풀·SQS producer 배선·docker 하드닝·PII 로깅·smoke test | spring-infra |
 | qa-reviewer | general-purpose | 코드 리뷰, 테스트 작성, CodeRabbit | spring-qa, coderabbit-review |
 
 ## OCR 트리거 경계
-- **범위 내 (Spring):** 사고 상황 입력 수신, 진단서 S3 업로드, OCR 트리거 Kafka **producer** 발행
-- **범위 외 (FastAPI):** OCR 실행·LangGraph·RAG 등 AI 처리, Kafka **consumer** 측 내부 처리
-> 즉 "S3 저장 + Kafka로 OCR 트리거 발행"까지는 이 스킬로 구현하고, 그 이후 AI 파이프라인은 FastAPI 담당이다.
+- **범위 내 (Spring):** 사고 상황 입력 수신, 진단서 S3 업로드, OCR 트리거 SQS **producer** 발행
+- **범위 외 (FastAPI):** OCR 실행·LangGraph·RAG 등 AI 처리, SQS **consumer** 측 내부 처리
+> 즉 "S3 저장 + SQS로 OCR 트리거 발행"까지는 이 스킬로 구현하고, 그 이후 AI 파이프라인은 FastAPI 담당이다.
 
 ## 워크플로우
 
@@ -57,7 +57,7 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 4. 구현에 필요한 전문가 판단:
    - 인증/권한/Redis RT 변경 포함 → security-developer 포함
    - WebSocket(STOMP) 채팅 포함 → realtime-developer 포함
-   - 인프라/관측성/배포/JVM·GC/DB 풀/Kafka producer 설정·배선/docker·헬스체크/PII 로깅/smoke test → infra-developer 포함
+   - 인프라/관측성/배포/JVM·GC/DB 풀/SQS producer 설정·배선/docker·헬스체크/PII 로깅/smoke test → infra-developer 포함
    - 비즈니스 로직만 → backend-developer 단독
    > 순수 인프라 하드닝 요청(피처 아님)은 분석(Phase 1)·QA(Phase 3)를 축약하고 infra-developer 단독 실행 후 컴파일·`docker compose config`로 검증할 수 있다.
 
@@ -79,7 +79,7 @@ Spring Boot 백엔드 피처 구현을 위해 전문 에이전트 팀을 조율�
 
    // 인프라/관측성/배포 하드닝 포함 시 — infra-developer 추가 (spring-infra 스킬 참조)
    Agent(subagent_type: "infra-developer", model: "opus",
-     prompt: "spring-infra 스킬을 참조해 관측성·JVM·DB풀·Kafka producer 배선·docker 하드닝을 구현하라. 완료 후 _workspace/02_infra/summary.md에 변경 파일 목록과 설정 값 근거를 기록하라.")
+     prompt: "spring-infra 스킬을 참조해 관측성·JVM·DB풀·SQS producer 배선·docker 하드닝을 구현하라. 완료 후 _workspace/02_infra/summary.md에 변경 파일 목록과 설정 값 근거를 기록하라.")
 
    // 비즈니스 로직만 — backend-developer 단독
    Agent(subagent_type: "backend-developer", model: "opus",

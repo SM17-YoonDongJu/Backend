@@ -130,7 +130,7 @@ mockMvc.perform(get("/api/adjuster/matching")
 
 ## 테스트 DB 설정
 
-이 프로젝트는 TestContainers를 쓰지 않는다(의존성 미포함). 테스트는 `application-test.yml`이 가리키는 **외부 PostgreSQL `test_db`**(localhost:5432, user/pw `test`)에 붙고, `ddl-auto: create-drop`으로 스키마를 만들며 Flyway는 끈다. Redis·Kafka도 로컬 인스턴스(docker compose)를 그대로 쓴다. 로컬에서 처음 돌릴 때 `test_db`/`test` 롤을 한 번 만들어 둔다:
+이 프로젝트는 TestContainers를 쓰지 않는다(의존성 미포함). 테스트는 `application-test.yml`이 가리키는 **외부 PostgreSQL `test_db`**(localhost:5432, user/pw `test`)에 붙고, `ddl-auto: create-drop`으로 스키마를 만들며 Flyway는 끈다. Redis·SQS(LocalStack)도 로컬 인스턴스(docker compose)를 그대로 쓴다. 로컬에서 처음 돌릴 때 `test_db`/`test` 롤을 한 번 만들어 둔다:
 
 ```sql
 CREATE ROLE test LOGIN PASSWORD 'test' CREATEDB;
