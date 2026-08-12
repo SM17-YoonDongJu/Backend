@@ -43,11 +43,11 @@ import com.soma.backend.global.security.CustomUserDetails;
 /**
  * 검수 워크스페이스 조회 회귀 테스트(design.md §12.4 C28, §7.3 변경 경로).
  *
- * <p>{@code user_claims.additional_information}이 {@code bytea}가 되면서 native 프로젝션
- * ({@code ReportRepository.findReviewContext})에서 빠지고 {@code UserClaim} 엔티티 경유로 옮겨졌다.
+ * <p>{@code user_claims.additional_information}·{@code description}이 {@code bytea}가 되면서 native
+ * 프로젝션({@code ReportRepository.findReviewContext})에서 빠지고 {@code UserClaim} 엔티티 경유로 옮겨졌다.
  * native 결과에는 컨버터가 적용되지 않으므로, 셀렉트가 남아 있으면 봉투 바이트가 문자열로 새어 나온다 —
  * 이 테스트는 (1) native 프로젝션이 실제 test_db에서 실행되고, (2) API 응답의
- * {@code claim.additional_information}이 복호화된 평문으로 내려오는지를 함께 고정한다.
+ * {@code claim.additional_information}·{@code claim.description}이 복호화된 평문으로 내려오는지를 함께 고정한다.
  *
  * <p>{@code insurance_products}·{@code insurers}는 아직 엔티티로 매핑되지 않아 {@code ddl-auto: create-drop}
  * 스키마에 생성되지 않는다. native 쿼리가 참조하므로 테스트에서 최소 형태로 만들어 준다(운영은 Flyway 관리).
@@ -138,25 +138,27 @@ class ReviewWorkspacePiiRegressionTest {
   }
 
   @Test
-  @DisplayName("C28 서비스 계층에서도 additional_information이 봉투 바이트가 아니라 평문으로 조립된다")
+  @DisplayName("C28 서비스 계층에서도 additional_information·description이 봉투 바이트가 아니라 평문으로 조립된다")
   void reviewWorkspaceService_assemblesPlaintext() {
     ReviewWorkspaceResponse response = reviewWorkspaceQueryService.getReviewWorkspace(reportId, adjusterId);
 
     assertThat(response.claim()).isNotNull();
     assertThat(response.claim().additionalInformation()).isEqualTo(ADDITIONAL_INFORMATION);
+    assertThat(response.claim().description()).isEqualTo("사고 경위입니다");
     assertThat(response.region()).isEqualTo("서울");
   }
 
   @Test
-  @DisplayName("C28 native 프로젝션(findReviewContext)은 additional_information을 더 이상 셀렉트하지 않는다")
-  void findReviewContext_doesNotExposeAdditionalInformation() {
+  @DisplayName("C28 native 프로젝션(findReviewContext)은 additional_information·description을 더 이상 셀렉트하지 않는다")
+  void findReviewContext_doesNotExposeEncryptedColumns() {
     ReviewContextRow context = reportRepository.findReviewContext(reportId);
 
     assertThat(context).isNotNull();
-    assertThat(context.getClaimDescription()).isEqualTo("사고 경위입니다");
     assertThat(context.getProductName()).isEqualTo("무배당 행복드림 종합보험");
-    // 프로젝션 인터페이스에 getAdditionalInformation()이 남아 있으면 컴파일되지 않아야 한다.
+    // 프로젝션 인터페이스에 getAdditionalInformation()·getClaimDescription()이 남아 있으면 컴파일되지 않아야 한다.
     assertThat(ReviewContextRow.class.getMethods())
         .noneMatch(method -> method.getName().equals("getAdditionalInformation"));
+    assertThat(ReviewContextRow.class.getMethods())
+        .noneMatch(method -> method.getName().equals("getClaimDescription"));
   }
 }

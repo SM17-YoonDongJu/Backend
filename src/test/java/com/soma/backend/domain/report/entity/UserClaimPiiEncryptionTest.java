@@ -77,7 +77,8 @@ class UserClaimPiiEncryptionTest {
     UserClaim found = userClaimRepository.findById(claimId).orElseThrow();
 
     assertThat(found.getAdditionalInformation()).isEqualTo(ADDITIONAL_INFORMATION);
-    // 보류 컬럼(2단계)은 평문 유지 — 이번 스코프가 아님을 함께 고정한다.
+    // description·question(이슈 #228)도 암호화 대상이지만, 엔티티 경유 조회라 컨버터가 투명하게
+    // 복호화한다 — 값 자체는 그대로 왕복된다.
     assertThat(found.getDescription()).isEqualTo("사고 경위");
     assertThat(found.getQuestion()).isEqualTo("질문");
   }
@@ -103,14 +104,22 @@ class UserClaimPiiEncryptionTest {
   }
 
   @Test
-  @DisplayName("C25 description(2단계 보류 컬럼)은 여전히 평문으로 저장된다(스코프 경계 확인)")
-  void description_remainsPlaintext() {
+  @DisplayName("이슈 #228 description·question도 raw 컬럼을 직접 읽으면 봉투 바이트이고 평문이 남지 않는다")
+  void descriptionAndQuestion_areStoredAsEncryptedEnvelope() {
     UUID claimId = persistClaim(ADDITIONAL_INFORMATION);
 
-    String stored = jdbcTemplate.queryForObject(
-        "SELECT description FROM user_claims WHERE id = ?", String.class, claimId);
+    byte[] storedDescription = jdbcTemplate.queryForObject(
+        "SELECT description FROM user_claims WHERE id = ?", byte[].class, claimId);
+    byte[] storedQuestion = jdbcTemplate.queryForObject(
+        "SELECT question FROM user_claims WHERE id = ?", byte[].class, claimId);
 
-    assertThat(stored).isEqualTo("사고 경위");
+    assertThat(storedDescription).isNotNull();
+    assertThat(storedDescription[0]).isEqualTo(PiiEnvelope.VERSION_1);
+    assertThat(new String(storedDescription, StandardCharsets.UTF_8)).doesNotContain("사고 경위");
+
+    assertThat(storedQuestion).isNotNull();
+    assertThat(storedQuestion[0]).isEqualTo(PiiEnvelope.VERSION_1);
+    assertThat(new String(storedQuestion, StandardCharsets.UTF_8)).doesNotContain("질문");
   }
 
   @Test

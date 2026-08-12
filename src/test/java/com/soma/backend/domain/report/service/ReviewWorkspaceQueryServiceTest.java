@@ -233,11 +233,6 @@ class ReviewWorkspaceQueryServiceTest {
       }
 
       @Override
-      public String getClaimDescription() {
-        return "사고 경위";
-      }
-
-      @Override
       public String getProductName() {
         return "행복드림";
       }
