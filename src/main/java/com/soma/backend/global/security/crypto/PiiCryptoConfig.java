@@ -29,12 +29,25 @@ import com.soma.backend.infra.kms.KmsEnvelopePiiDataKeyProvider;
  * <p>{@link KmsClient}는 {@code S3Config}·{@code SqsConfig}와 동일하게 정적 키를 주입하지 않고
  * {@link DefaultCredentialsProvider}(IAM Role·{@code ~/.aws})에 위임한다. 필요한 IAM 액션은
  * {@code kms:GenerateDataKey}·{@code kms:Decrypt}이며 CMK 생성·정책 적용은 이 코드의 범위 밖이다.
+ *
+ * <p><b>두 번째 DEK(HMAC 블라인드 인덱스, 이슈 #232):</b> {@code phone_number}·{@code provider_user_id}처럼
+ * 조회 조건(WHERE 동등비교)으로 쓰이는 컬럼은 GCM 암호문이 매번 달라져(nonce) 인덱스 조회가 안 되므로,
+ * 별도 purpose({@code PII_HMAC})의 DEK로 HMAC-SHA256 블라인드 인덱스를 만든다. 알고리즘 목적이 다른 키는
+ * 재사용하지 않는다는 원칙에 따라 AES DEK와 완전히 분리하되(용도별 키 분리), CMK(운영)는 같은 것을 공유한다
+ * ({@code encryption_keys}에 purpose만 다르게 저장). {@link PiiCipher}·{@link PiiHmac}는 각자
+ * {@code @Qualifier}로 자신의 DEK 공급자 빈만 주입받는다.
  */
 @Configuration
 public class PiiCryptoConfig {
 
+  private static final String PURPOSE_PII = "PII";
+  private static final String PURPOSE_PII_HMAC = "PII_HMAC";
+
   @Value("${app.crypto.pii.key:}")
   private String base64Key;
+
+  @Value("${app.crypto.pii.hmac-key:}")
+  private String hmacBase64Key;
 
   @Value("${app.crypto.pii.kms-key-id:}")
   private String kmsKeyId;
@@ -43,18 +56,33 @@ public class PiiCryptoConfig {
   private String region;
 
   /**
-   * DEK 공급자. 어느 구현이든 키 해석은 지연(lazy)이라 이 메서드에서는 KMS·DB를 호출하지 않는다 —
-   * 이 빈은 EntityManagerFactory 부트스트랩 중 생성되는 컨버터 경로에 물려 있다.
+   * AES-256-GCM 암복호화({@link PiiCipher})용 DEK 공급자. 어느 구현이든 키 해석은 지연(lazy)이라
+   * 이 메서드에서는 KMS·DB를 호출하지 않는다 — 이 빈은 EntityManagerFactory 부트스트랩 중 생성되는
+   * 컨버터 경로에 물려 있다.
    */
   @Bean
   public PiiDataKeyProvider piiDataKeyProvider(JdbcTemplate jdbcTemplate) {
     if (!StringUtils.hasText(kmsKeyId)) {
       return new RawPiiDataKeyProvider(base64Key);
     }
-    KmsClient kmsClient = KmsClient.builder()
+    return new KmsEnvelopePiiDataKeyProvider(
+        newKmsClient(), kmsKeyId, new EncryptionKeyStore(jdbcTemplate), PURPOSE_PII);
+  }
+
+  /** HMAC-SHA256 블라인드 인덱스({@link PiiHmac})용 DEK 공급자. AES용과 알고리즘·키가 완전히 분리된다. */
+  @Bean
+  public PiiDataKeyProvider piiHmacDataKeyProvider(JdbcTemplate jdbcTemplate) {
+    if (!StringUtils.hasText(kmsKeyId)) {
+      return new RawPiiDataKeyProvider(hmacBase64Key);
+    }
+    return new KmsEnvelopePiiDataKeyProvider(
+        newKmsClient(), kmsKeyId, new EncryptionKeyStore(jdbcTemplate), PURPOSE_PII_HMAC);
+  }
+
+  private KmsClient newKmsClient() {
+    return KmsClient.builder()
         .region(Region.of(region))
         .credentialsProvider(DefaultCredentialsProvider.create())
         .build();
-    return new KmsEnvelopePiiDataKeyProvider(kmsClient, kmsKeyId, new EncryptionKeyStore(jdbcTemplate));
   }
 }

@@ -82,8 +82,12 @@ app:
       # 운영은 이 값을 비우고 kms-key-id로 KMS 봉투암호화 경로를 탄다(PiiCryptoProdGuard가 강제).
       # Apple 토큰 키와 반드시 다른 값을 쓴다(용도별 키 분리).
       key: ${PII_ENC_KEY:ZGV2LWxvY2FsLXBpaS1lbmNyeXB0aW9uLWtleS0zMmI=}
+      # HMAC-SHA256 블라인드 인덱스(phone_number·provider_user_id 조회용, 이슈 #232)용 DEK.
+      # AES 키(위 key)와 반드시 다른 값을 쓴다(알고리즘 목적별 키 분리). kms-key-id가 비어 있을 때만 쓰인다.
+      hmac-key: ${PII_HMAC_KEY:ZGV2LWxvY2FsLXBpaS1obWFjLWluZGV4LWtleS0zMmI=}
       # PII 전용 KMS CMK(키 ID 또는 ARN). 값이 있으면 봉투암호화 경로로 전환되고 실제 KMS를 호출한다.
       # 로컬·CI에서는 반드시 비워 둔다. RDS 볼륨 키·APPLE_TOKEN_ENC_KEY와 공유 금지.
+      # PII·PII_HMAC 두 purpose가 같은 CMK를 공유하고, encryption_keys에 purpose별로 다른 wrapped DEK를 둔다.
       kms-key-id: ${PII_KMS_KEY_ID:}
   oauth:
     # 토큰 교환 시 provider(카카오·네이버)로 보내는 redirect_uri의 {baseUrl} 치환값.

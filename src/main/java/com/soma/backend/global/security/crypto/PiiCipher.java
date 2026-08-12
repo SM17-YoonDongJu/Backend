@@ -8,6 +8,7 @@ import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import com.soma.backend.global.exception.BusinessException;
@@ -42,7 +43,7 @@ public class PiiCipher {
   private final PiiDataKeyProvider keyProvider;
   private final SecureRandom secureRandom = new SecureRandom();
 
-  public PiiCipher(PiiDataKeyProvider keyProvider) {
+  public PiiCipher(@Qualifier("piiDataKeyProvider") PiiDataKeyProvider keyProvider) {
     this.keyProvider = keyProvider;
   }
 

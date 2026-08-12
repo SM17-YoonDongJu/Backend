@@ -74,7 +74,7 @@ class PiiKeyProviderTest {
   @Test
   @DisplayName("C22 운영에서 kms-key-id가 비어 있으면 가드가 기동을 막는다")
   void prodGuard_missingKmsKeyId_throws() {
-    assertThatThrownBy(() -> new PiiCryptoProdGuard("", ""))
+    assertThatThrownBy(() -> new PiiCryptoProdGuard("", "", ""))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("kms-key-id");
   }
@@ -84,16 +84,27 @@ class PiiKeyProviderTest {
   void prodGuard_rawKeyPresent_throws() {
     String rawKey = base64Of("dev-local-pii-encryption-key-32b");
 
-    assertThatThrownBy(() -> new PiiCryptoProdGuard("arn:aws:kms:ap-northeast-2:1:key/abc", rawKey))
+    assertThatThrownBy(() -> new PiiCryptoProdGuard("arn:aws:kms:ap-northeast-2:1:key/abc", rawKey, ""))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("app.crypto.pii.key")
         .hasMessageNotContaining(rawKey);
   }
 
   @Test
+  @DisplayName("이슈 #232 운영에서 raw hmac key가 설정돼 있으면 kms-key-id가 있어도 기동을 막는다")
+  void prodGuard_rawHmacKeyPresent_throws() {
+    String rawHmacKey = base64Of("dev-local-pii-hmac-index-key-32b");
+
+    assertThatThrownBy(() -> new PiiCryptoProdGuard("arn:aws:kms:ap-northeast-2:1:key/abc", "", rawHmacKey))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("app.crypto.pii.hmac-key")
+        .hasMessageNotContaining(rawHmacKey);
+  }
+
+  @Test
   @DisplayName("운영에서 kms-key-id만 설정되면 가드를 통과한다")
   void prodGuard_kmsOnly_passes() {
-    assertThatCode(() -> new PiiCryptoProdGuard("arn:aws:kms:ap-northeast-2:1:key/abc", ""))
+    assertThatCode(() -> new PiiCryptoProdGuard("arn:aws:kms:ap-northeast-2:1:key/abc", "", ""))
         .doesNotThrowAnyException();
   }
 }
