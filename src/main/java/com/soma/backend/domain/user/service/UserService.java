@@ -81,7 +81,8 @@ public class UserService {
     // 링크 삭제 전에, Apple 계정은 저장된 refresh_token(암호문)으로 revoke 이벤트를 적재한다(App Store 정책).
     socialAccountRepository.findByUserId(userId).stream()
         .filter(account -> APPLE.equals(account.getProvider()) && account.getRefreshToken() != null)
-        .forEach(account -> outboxEventPublisher.publishAppleRevoke(userId, account.getRefreshToken()));
+        .forEach(account -> outboxEventPublisher.publishAppleRevoke(
+            userId, account.getProvider(), account.getProviderUserId(), account.getRefreshToken()));
     socialAccountRepository.deleteByUserId(userId);
     outboxEventPublisher.publishAuthCleanup(userId);
     authTokenService.expireCookies(response);

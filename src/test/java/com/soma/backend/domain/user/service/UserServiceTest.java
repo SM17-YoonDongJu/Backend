@@ -221,6 +221,7 @@ class UserServiceTest {
     User user = activeUser();
     SocialAccount apple = mock(SocialAccount.class);
     given(apple.getProvider()).willReturn("apple");
+    given(apple.getProviderUserId()).willReturn("apple-1");
     given(apple.getRefreshToken()).willReturn("enc-token");
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(apple));
@@ -229,7 +230,7 @@ class UserServiceTest {
     userService.withdraw(userId, response);
 
     // Then
-    then(outboxEventPublisher).should().publishAppleRevoke(userId, "enc-token");
+    then(outboxEventPublisher).should().publishAppleRevoke(userId, "apple", "apple-1", "enc-token");
     then(socialAccountRepository).should().deleteByUserId(userId);
   }
 
@@ -248,6 +249,7 @@ class UserServiceTest {
     userService.withdraw(userId, response);
 
     // Then
-    then(outboxEventPublisher).should(never()).publishAppleRevoke(any(), anyString());
+    then(outboxEventPublisher).should(never())
+        .publishAppleRevoke(any(), anyString(), anyString(), anyString());
   }
 }
