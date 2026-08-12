@@ -42,6 +42,9 @@ services:
       # PII 컬럼(user_claims·user_insurances) 암호화 키. dev도 fallback 없이 .env.dev에서 반드시 주입한다
       # (Apple 키와 달리 dev가 실 배포 환경이라 레포에 커밋된 기본값을 그대로 쓰면 DB 덤프 유출 시 무의미해짐).
       PII_ENC_KEY: ${PII_ENC_KEY}
+      # phone_number·provider_user_id HMAC 블라인드 인덱스 키(이슈 #232). report_worker는 이 조회를 하지
+      # 않으므로 report 서비스에는 주입하지 않는다(backend 전용).
+      PII_HMAC_KEY: ${PII_HMAC_KEY}
       # OAuth redirect_uri {baseUrl} 치환값(프론트 인가요청·provider 콘솔 등록 redirect_uri와 일치해야 함)
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-http://localhost:8080}
       OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-http://localhost:8080,http://localhost:3000,https://brbosang.com}

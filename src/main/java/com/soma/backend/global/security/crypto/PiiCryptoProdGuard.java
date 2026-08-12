@@ -15,6 +15,7 @@ import org.springframework.util.StringUtils;
  * <ul>
  *   <li>{@code app.crypto.pii.kms-key-id} 미설정 → 기동 차단(KMS 경로 미구성)</li>
  *   <li>{@code app.crypto.pii.key} 설정됨 → 기동 차단(운영에서 raw DEK 사용 금지)</li>
+ *   <li>{@code app.crypto.pii.hmac-key} 설정됨 → 기동 차단(HMAC 블라인드 인덱스도 raw DEK 사용 금지)</li>
  * </ul>
  *
  * <p>예외 메시지에는 프로퍼티 <b>이름</b>만 넣고 값은 절대 넣지 않는다.
@@ -24,7 +25,8 @@ import org.springframework.util.StringUtils;
 public class PiiCryptoProdGuard {
 
   public PiiCryptoProdGuard(@Value("${app.crypto.pii.kms-key-id:}") String kmsKeyId,
-      @Value("${app.crypto.pii.key:}") String rawKey) {
+      @Value("${app.crypto.pii.key:}") String rawKey,
+      @Value("${app.crypto.pii.hmac-key:}") String rawHmacKey) {
     if (!StringUtils.hasText(kmsKeyId)) {
       throw new IllegalStateException(
           "운영은 app.crypto.pii.kms-key-id(PII_KMS_KEY_ID)가 필수입니다 — KMS 봉투암호화 경로 미설정");
@@ -32,6 +34,10 @@ public class PiiCryptoProdGuard {
     if (StringUtils.hasText(rawKey)) {
       throw new IllegalStateException(
           "운영에서 app.crypto.pii.key(PII_ENC_KEY) 사용은 금지입니다 — 값을 비우고 KMS 경로만 쓰세요");
+    }
+    if (StringUtils.hasText(rawHmacKey)) {
+      throw new IllegalStateException(
+          "운영에서 app.crypto.pii.hmac-key(PII_HMAC_KEY) 사용은 금지입니다 — 값을 비우고 KMS 경로만 쓰세요");
     }
   }
 }

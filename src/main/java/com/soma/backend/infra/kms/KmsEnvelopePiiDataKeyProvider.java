@@ -40,8 +40,6 @@ import com.soma.backend.global.security.crypto.PiiDataKeyProvider;
  */
 public class KmsEnvelopePiiDataKeyProvider implements PiiDataKeyProvider, DisposableBean {
 
-  /** 이 provider가 관리하는 키 용도. 다른 용도(예: 파일 암호화)가 생기면 같은 테이블에 다른 purpose로 공존한다. */
-  private static final String PURPOSE = "PII";
   private static final int FIRST_KEY_VERSION = 1;
   private static final String KEY_ALGORITHM = "AES";
 
@@ -50,15 +48,18 @@ public class KmsEnvelopePiiDataKeyProvider implements PiiDataKeyProvider, Dispos
   private final KmsClient kmsClient;
   private final String cmkId;
   private final EncryptionKeyStore keyStore;
+  /** 이 provider 인스턴스가 관리하는 키 용도(예: {@code PII}·{@code PII_HMAC}). 같은 CMK를 공유해도 용도별로 별도 DEK를 쓴다. */
+  private final String purpose;
   private final Map<Integer, SecretKey> cache = new ConcurrentHashMap<>();
 
   /** 활성 DEK. 첫 사용 시점에 한 번만 해석한다(이중 체크 락킹). */
   private volatile ActiveDataKey active;
 
-  public KmsEnvelopePiiDataKeyProvider(KmsClient kmsClient, String cmkId, EncryptionKeyStore keyStore) {
+  public KmsEnvelopePiiDataKeyProvider(KmsClient kmsClient, String cmkId, EncryptionKeyStore keyStore, String purpose) {
     this.kmsClient = kmsClient;
     this.cmkId = cmkId;
     this.keyStore = keyStore;
+    this.purpose = purpose;
   }
 
   @Override
@@ -82,7 +83,7 @@ public class KmsEnvelopePiiDataKeyProvider implements PiiDataKeyProvider, Dispos
     if (cached != null) {
       return cached;
     }
-    byte[] wrapped = keyStore.findWrappedDek(PURPOSE, keyVersion)
+    byte[] wrapped = keyStore.findWrappedDek(purpose, keyVersion)
         .orElseThrow(() -> new IllegalStateException(
             "요청한 키 버전의 DEK가 encryption_keys에 없습니다 — keyVersion=" + keyVersion));
     SecretKey key = unwrap(wrapped);
@@ -101,10 +102,10 @@ public class KmsEnvelopePiiDataKeyProvider implements PiiDataKeyProvider, Dispos
    * 조회</b>해 실제 저장된 wrapped DEK를 푼다.
    */
   private ActiveDataKey bootstrap() {
-    Optional<EncryptionKeyStore.WrappedKey> found = keyStore.findActive(PURPOSE);
+    Optional<EncryptionKeyStore.WrappedKey> found = keyStore.findActive(purpose);
     if (found.isEmpty()) {
       issueFirstKey();
-      found = keyStore.findActive(PURPOSE);
+      found = keyStore.findActive(purpose);
     }
     EncryptionKeyStore.WrappedKey row = found.orElseThrow(() -> new IllegalStateException(
         "PII 활성 DEK를 확보하지 못했습니다 — encryption_keys 등록·조회 실패"));
@@ -129,7 +130,7 @@ public class KmsEnvelopePiiDataKeyProvider implements PiiDataKeyProvider, Dispos
     byte[] plaintextDek = response.plaintext().asByteArray();
     try {
       boolean inserted = keyStore.insertActiveIfAbsent(
-          PURPOSE, FIRST_KEY_VERSION, response.ciphertextBlob().asByteArray(), cmkId);
+          purpose, FIRST_KEY_VERSION, response.ciphertextBlob().asByteArray(), cmkId);
       log.info("PII DEK 최초 발급 시도 — keyVersion={}, inserted={}", FIRST_KEY_VERSION, inserted);
     } finally {
       Arrays.fill(plaintextDek, (byte) 0);

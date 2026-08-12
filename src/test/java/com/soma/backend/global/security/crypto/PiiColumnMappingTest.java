@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -45,6 +46,13 @@ class PiiColumnMappingTest {
 
   @Autowired
   private PiiDataKeyProvider piiDataKeyProvider;
+
+  @Autowired
+  @Qualifier("piiHmacDataKeyProvider")
+  private PiiDataKeyProvider piiHmacDataKeyProvider;
+
+  @Autowired
+  private PiiHmac piiHmac;
 
   @Autowired
   private UserClaimAdditionalInformationConverter additionalInformationConverter;
@@ -147,5 +155,17 @@ class PiiColumnMappingTest {
         descriptionConverter.convertToDatabaseColumn("사고 경위"))).isEqualTo("사고 경위");
     assertThat(claimQuestionConverter.convertToEntityAttribute(
         claimQuestionConverter.convertToDatabaseColumn("질문 있습니다"))).isEqualTo("질문 있습니다");
+  }
+
+  @Test
+  @DisplayName("이슈 #232 AES DEK와 HMAC DEK는 서로 다른 빈·다른 키 material로 배선된다(용도별 키 분리)")
+  void hmacDataKeyProvider_isSeparateFromAesDataKeyProvider() {
+    assertThat(piiHmacDataKeyProvider).isInstanceOf(RawPiiDataKeyProvider.class);
+    assertThat(piiHmacDataKeyProvider).isNotSameAs(piiDataKeyProvider);
+    assertThat(piiHmacDataKeyProvider.active().key().getEncoded())
+        .isNotEqualTo(piiDataKeyProvider.active().key().getEncoded());
+
+    byte[] digest = piiHmac.hmac("01012345678", PiiAad.ofColumn("users", "phone_number"));
+    assertThat(digest).hasSize(32);
   }
 }

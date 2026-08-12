@@ -9,6 +9,8 @@ app:
     pii:
       # 운영은 raw DEK를 쓰지 않는다 — 값이 있으면 PiiCryptoProdGuard가 기동을 막는다.
       key: ${PII_ENC_KEY:}
+      # HMAC 블라인드 인덱스도 동일하게 raw DEK 금지 — 값이 있으면 PiiCryptoProdGuard가 기동을 막는다.
+      hmac-key: ${PII_HMAC_KEY:}
       # 필수. 미설정 시 PiiCryptoProdGuard가 IllegalStateException으로 기동 차단(fail-fast).
       kms-key-id: ${PII_KMS_KEY_ID:}
 
