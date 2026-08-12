@@ -91,6 +91,10 @@ services:
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
       RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
+      # PII 컬럼(user_claims.additional_information·description·question 등) 복호화 키. dev는 KMS를 안 쓰고
+      # backend와 report가 같은 raw 키를 공유한다(같은 .env.dev에서 주입되는 같은 값) — report_worker가
+      # 이 컬럼들을 직접 SQL로 읽으므로 복호화가 필요하다. 상세: docs/pii-encryption-report-worker-handoff.md
+      PII_ENC_KEY: ${PII_ENC_KEY}
       # OCR 트리거 SQS 소비 (Kafka→SQS 전환, #208). ⚠️ 변수명·튜닝값은 AI report 워커의 SQS 소비자 구현과 합의 후 확정.
       # (튜닝 후보: 롱폴링 wait-time·visibility-timeout·배치 max-messages. DLQ는 큐 redrive policy로 구성 — 앱 env 아님.)
       SQS_OCR_JOB_QUEUE_URL: ${SQS_OCR_JOB_QUEUE_URL}
