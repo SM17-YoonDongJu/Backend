@@ -21,6 +21,8 @@ import com.soma.backend.domain.report.entity.claim.ClaimDetails;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.crypto.converter.UserClaimAdditionalInformationConverter;
+import com.soma.backend.global.security.crypto.converter.UserClaimDescriptionConverter;
+import com.soma.backend.global.security.crypto.converter.UserClaimQuestionConverter;
 
 /**
  * USER_CLAIMS Aggregate Root — 사용자가 입력한 사고 상황(리포트 생성 요청의 원본 입력, design.md §3).
@@ -57,9 +59,11 @@ public class UserClaim extends BaseEntity {
   @Column(name = "details", columnDefinition = "jsonb")
   private ClaimDetails details;
 
+  @Convert(converter = UserClaimQuestionConverter.class)
   @Column(name = "question")
   private String question;
 
+  @Convert(converter = UserClaimDescriptionConverter.class)
   @Column(name = "description")
   private String description;
 

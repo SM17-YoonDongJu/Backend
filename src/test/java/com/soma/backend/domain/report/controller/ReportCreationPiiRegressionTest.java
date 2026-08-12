@@ -153,7 +153,7 @@ class ReportCreationPiiRegressionTest {
   }
 
   @Test
-  @DisplayName("C27 저장된 청구는 엔티티 재조회 시 평문으로 복원되고 보류 컬럼은 평문 그대로다")
+  @DisplayName("C27 저장된 청구는 엔티티 재조회 시 평문으로 복원되고 description도 암호화(bytea)로 저장된다")
   void createReport_claimRoundTripsThroughConverter() throws Exception {
     UUID claimId = claimIdOf(createReport(ADDITIONAL_INFORMATION));
 
@@ -161,9 +161,11 @@ class ReportCreationPiiRegressionTest {
 
     assertThat(claim.getAdditionalInformation()).isEqualTo(ADDITIONAL_INFORMATION);
     assertThat(claim.getDescription()).isEqualTo("사고 경위입니다");
-    assertThat(jdbcTemplate.queryForObject(
-        "SELECT description FROM user_claims WHERE id = ?", String.class, claimId))
-        .isEqualTo("사고 경위입니다");
+    byte[] storedDescription = jdbcTemplate.queryForObject(
+        "SELECT description FROM user_claims WHERE id = ?", byte[].class, claimId);
+    assertThat(storedDescription).isNotNull();
+    assertThat(storedDescription[0]).isEqualTo(PiiEnvelope.VERSION_1);
+    assertThat(new String(storedDescription, StandardCharsets.UTF_8)).doesNotContain("사고 경위입니다");
   }
 
   @Test

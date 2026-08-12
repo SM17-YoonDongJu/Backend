@@ -25,6 +25,7 @@ import lombok.NoArgsConstructor;
 import com.soma.backend.domain.common.entity.BaseEntity;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.global.security.crypto.converter.ReportQuestionConverter;
 
 /**
  * REPORTS Aggregate Root. AI 초안 리포트와 사정사 검수 확정 상태를 함께 관리한다.
@@ -108,6 +109,7 @@ public class Report extends BaseEntity {
   @Column(name = "treatment")
   private String treatment;
 
+  @Convert(converter = ReportQuestionConverter.class)
   @Column(name = "question")
   private String question;
 

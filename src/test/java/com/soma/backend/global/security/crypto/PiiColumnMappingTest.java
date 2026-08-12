@@ -11,7 +11,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.soma.backend.global.security.crypto.converter.ReportQuestionConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimAdditionalInformationConverter;
+import com.soma.backend.global.security.crypto.converter.UserClaimDescriptionConverter;
+import com.soma.backend.global.security.crypto.converter.UserClaimQuestionConverter;
 import com.soma.backend.global.security.crypto.converter.UserInsuranceCoveragesConverter;
 import com.soma.backend.global.security.crypto.converter.UserInsuranceEnrolledAtConverter;
 import com.soma.backend.global.security.crypto.converter.UserInsuranceInsurerNameConverter;
@@ -61,6 +64,15 @@ class PiiColumnMappingTest {
   @Autowired
   private UserInsuranceCoveragesConverter coveragesConverter;
 
+  @Autowired
+  private ReportQuestionConverter reportQuestionConverter;
+
+  @Autowired
+  private UserClaimDescriptionConverter descriptionConverter;
+
+  @Autowired
+  private UserClaimQuestionConverter claimQuestionConverter;
+
   private String dataTypeOf(String table, String column) {
     return jdbcTemplate.queryForObject(
         "SELECT data_type FROM information_schema.columns WHERE table_name = ? AND column_name = ?",
@@ -81,6 +93,17 @@ class PiiColumnMappingTest {
     assertThat(dataTypeOf(table, column)).isEqualTo("bytea");
   }
 
+  @ParameterizedTest(name = "{0}.{1} → bytea")
+  @CsvSource({
+    "reports, question",
+    "user_claims, description",
+    "user_claims, question"
+  })
+  @DisplayName("이슈 #228 대상 3개 컬럼은 엔티티 매핑상 bytea다")
+  void issue228Columns_areMappedAsBytea(String table, String column) {
+    assertThat(dataTypeOf(table, column)).isEqualTo("bytea");
+  }
+
   /**
    * 스코프 밖 컬럼이 실수로 함께 암호화되지 않았는지 고정한다. 기대 타입은 <b>엔티티 매핑이 만드는 타입</b>
    * 기준이다 — {@code columnDefinition}이 없는 {@code String} 필드는 Hibernate가
@@ -94,13 +117,10 @@ class PiiColumnMappingTest {
     "reports, basis_terms_precedents, ARRAY",
     "reports, documents, jsonb",
     "reports, treatment, character varying",
-    "reports, question, character varying",
     "report_reviews, applicable_guarantees, ARRAY",
-    "user_claims, details, jsonb",
-    "user_claims, description, character varying",
-    "user_claims, question, character varying"
+    "user_claims, details, jsonb"
   })
-  @DisplayName("스코프 밖(PR-2 게이트·2단계 보류·검수본) 컬럼은 타입이 그대로다")
+  @DisplayName("스코프 밖(PR-2 게이트·jsonb fix 대기·검수본) 컬럼은 타입이 그대로다")
   void outOfScopeColumns_keepOriginalType(String table, String column, String expectedType) {
     assertThat(dataTypeOf(table, column)).isEqualTo(expectedType).isNotEqualTo("bytea");
   }
@@ -121,5 +141,11 @@ class PiiColumnMappingTest {
         policyNoConverter.convertToDatabaseColumn("100-1"))).isEqualTo("100-1");
     assertThat(enrolledAtConverter.convertToDatabaseColumn(null)).isNull();
     assertThat(coveragesConverter.convertToDatabaseColumn(null)).isNull();
+    assertThat(reportQuestionConverter.convertToEntityAttribute(
+        reportQuestionConverter.convertToDatabaseColumn("문의합니다"))).isEqualTo("문의합니다");
+    assertThat(descriptionConverter.convertToEntityAttribute(
+        descriptionConverter.convertToDatabaseColumn("사고 경위"))).isEqualTo("사고 경위");
+    assertThat(claimQuestionConverter.convertToEntityAttribute(
+        claimQuestionConverter.convertToDatabaseColumn("질문 있습니다"))).isEqualTo("질문 있습니다");
   }
 }
