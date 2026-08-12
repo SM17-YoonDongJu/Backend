@@ -82,7 +82,7 @@ class ReportCreationPiiRegressionTest {
   @BeforeEach
   void setUp() {
     userId = userRepository.save(
-        User.create("리포트생성유저", LocalDate.of(1992, 4, 4), "female", null, Role.USER, List.of("서울")))
+        User.create("리포트생성유저", LocalDate.of(1992, 4, 4), "female", null, null, Role.USER, List.of("서울")))
         .getId();
   }
 

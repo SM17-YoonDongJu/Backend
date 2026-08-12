@@ -66,11 +66,11 @@ class ChatConsultationCommandServiceIntegrationTest {
   @BeforeEach
   void setUp() {
     customer = userRepository.save(
-        User.create("고객", LocalDate.of(1990, 1, 1), "F", null, Role.USER, null));
+        User.create("고객", LocalDate.of(1990, 1, 1), "F", null, null, Role.USER, null));
     adjuster1 = userRepository.save(
-        User.create("사정사1", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
+        User.create("사정사1", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
     adjuster2 = userRepository.save(
-        User.create("사정사2", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
+        User.create("사정사2", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
   }
 
   private Report counselingReport() {

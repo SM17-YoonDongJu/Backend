@@ -100,9 +100,9 @@ class ReviewWorkspacePiiRegressionTest {
         productId, insurerId, "무배당 행복드림 종합보험");
 
     User owner = userRepository.save(
-        User.create("의뢰인", LocalDate.of(1993, 7, 7), "female", null, Role.USER, List.of("서울")));
+        User.create("의뢰인", LocalDate.of(1993, 7, 7), "female", null, null, Role.USER, List.of("서울")));
     User adjuster = userRepository.save(
-        User.create("사정사", LocalDate.of(1985, 2, 2), "male", null, Role.CERTIFICATED_ADJUSTER, null));
+        User.create("사정사", LocalDate.of(1985, 2, 2), "male", null, null, Role.CERTIFICATED_ADJUSTER, null));
     adjusterId = adjuster.getId();
 
     ClaimDetails details = new MedicalIndemnityDetails(

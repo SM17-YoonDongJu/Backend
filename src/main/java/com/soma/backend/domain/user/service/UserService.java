@@ -18,6 +18,8 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.crypto.PiiAad;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
 import com.soma.backend.infra.s3.S3UploadService;
 
@@ -32,12 +34,14 @@ import com.soma.backend.infra.s3.S3UploadService;
 public class UserService {
 
   private static final String APPLE = "apple";
+  private static final PiiAad PHONE_NUMBER_AAD = PiiAad.ofColumn("users", "phone_number");
 
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
   private final AuthTokenService authTokenService;
   private final OutboxEventPublisher outboxEventPublisher;
   private final S3UploadService s3UploadService;
+  private final PiiHmac piiHmac;
 
   /**
    * 내 정보를 조회한다. 존재하지 않거나 이미 탈퇴한 계정이면 {@code USER_NOT_FOUND}.
@@ -60,12 +64,13 @@ public class UserService {
     }
     User user = findActiveUser(userId);
     String newPhone = request.phoneNumber();
+    byte[] newPhoneHmac = newPhone == null ? null : piiHmac.hmac(newPhone, PHONE_NUMBER_AAD);
     if (newPhone != null
         && !newPhone.equals(user.getPhoneNumber())
-        && userRepository.existsByPhoneNumber(newPhone)) {
+        && userRepository.existsByPhoneNumberHmac(newPhoneHmac)) {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
-    user.updateProfile(newPhone, request.region(), request.avatarUrl());
+    user.updateProfile(newPhone, newPhoneHmac, request.region(), request.avatarUrl());
     return UserMeResponse.from(user, resolveSocialProvider(userId), s3UploadService::presignedGetUrl);
   }
 

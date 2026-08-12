@@ -82,7 +82,7 @@ class AdjusterProfileCommandServiceTest {
     service.updateProfile(userId, request);
 
     verify(profile).updateProfile(null, null, null, null, null, null);
-    verify(user).updateProfile(isNull(), isNull(), eq("https://cdn.example.com/a.png"));
+    verify(user).updateProfile(isNull(), isNull(), isNull(), eq("https://cdn.example.com/a.png"));
   }
 
   @Test

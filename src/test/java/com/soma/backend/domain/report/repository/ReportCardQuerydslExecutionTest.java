@@ -286,7 +286,7 @@ class ReportCardQuerydslExecutionTest {
 
   private UUID saveUser(String nickname) {
     return userRepository.save(
-        User.create(nickname, LocalDate.of(1990, 1, 1), "", null, Role.CERTIFICATED_ADJUSTER, null)).getId();
+        User.create(nickname, LocalDate.of(1990, 1, 1), "", null, null, Role.CERTIFICATED_ADJUSTER, null)).getId();
   }
 
   /** @CreatedDate(updatable=false)는 JPA로 못 바꾸므로 정렬 검증용으로 네이티브 UPDATE로 created_at을 고정한다. */

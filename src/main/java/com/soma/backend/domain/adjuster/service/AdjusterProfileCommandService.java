@@ -52,7 +52,7 @@ public class AdjusterProfileCommandService {
     if (request.avatarUrl() != null) {
       User user = userRepository.findById(userId)
           .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-      user.updateProfile(null, null, request.avatarUrl());
+      user.updateProfile(null, null, null, request.avatarUrl());
     }
 
     // @LastModifiedDate(updated_at)까지 반영된 최신 값을 응답에 담기 위해 재조립 전에 flush.
