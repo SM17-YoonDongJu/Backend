@@ -19,15 +19,19 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * OCR 트리거 SQS 발행용 트랜잭셔널 아웃박스 이벤트(ocr_outbox_events). 도메인 트랜잭션과 같은 트랜잭션
- * 안에서 저장되고, {@code OutboxRelay}가 별도 스케줄로 폴링해 SQS로 발행한다(at-least-once).
+ * OCR 트리거 SQS 발행용 트랜잭셔널 아웃박스 이벤트. 도메인 트랜잭션과 같은 트랜잭션 안에서 저장되고,
+ * {@code OutboxRelay}가 별도 스케줄로 폴링해 SQS로 발행한다(at-least-once).
  * payload는 호출측(예: OcrJobOutboxPortImpl)이 이미 직렬화한 JSON 문자열을 그대로 저장한다.
  * develop의 {@link OutboxEvent}(회원 탈퇴 Redis 후처리)와 목적·스키마가 달라 별도 엔티티/테이블로 둔다.
- * 테이블은 kafka_outbox_events(V13)로 최초 생성 후 ocr_outbox_events(V40)로 리네임했다 —
- * 브로커가 Kafka→SQS로 바뀌어(#208) 옛 이름이 stale해진 것을 용도 기반으로 교정한 것이다.
+ *
+ * <p><b>클래스 이름과 테이블 이름이 다른 이유:</b> 브로커가 Kafka→SQS로 바뀌어(#208) {@code Kafka*}
+ * 라는 이름이 실제 구현과 어긋나 클래스는 {@code OcrOutbox*}로 정리했지만, 테이블 {@code kafka_outbox_events}
+ * (V13)는 그대로 둔다. PostgreSQL의 {@code ALTER TABLE ... RENAME TO}는 대상 스키마의 {@code CREATE}
+ * 권한을 요구하는데 운영 DB 유저는 {@code public}에 그 권한이 없어(PG15+ 기본 REVOKE, 이슈 #223) 리네임
+ * 마이그레이션이 배포 중 실패하기 때문이다. 테이블 리네임은 권한 정리 후 별도로 다룬다.
  */
 @Entity
-@Table(name = "ocr_outbox_events")
+@Table(name = "kafka_outbox_events")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class OcrOutboxEvent {

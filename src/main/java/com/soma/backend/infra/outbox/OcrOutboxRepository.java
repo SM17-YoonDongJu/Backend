@@ -14,7 +14,8 @@ import org.springframework.data.repository.query.Param;
  */
 public interface OcrOutboxRepository extends JpaRepository<OcrOutboxEvent, UUID> {
 
-  @Query(value = "SELECT * FROM ocr_outbox_events WHERE status = 'PENDING' "
+  // 테이블 이름이 kafka_ 인 이유는 OcrOutboxEvent javadoc 참조(리네임은 권한 문제로 보류).
+  @Query(value = "SELECT * FROM kafka_outbox_events WHERE status = 'PENDING' "
       + "ORDER BY created_at "
       + "FOR UPDATE SKIP LOCKED "
       + "LIMIT :limit", nativeQuery = true)
