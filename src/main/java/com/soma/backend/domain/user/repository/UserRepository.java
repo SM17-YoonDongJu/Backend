@@ -9,7 +9,7 @@ import com.soma.backend.domain.user.entity.User;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
-  boolean existsByPhoneNumber(String phoneNumber);
+  boolean existsByPhoneNumberHmac(byte[] phoneNumberHmac);
 
   Optional<User> findByNickname(String nickname);
 }

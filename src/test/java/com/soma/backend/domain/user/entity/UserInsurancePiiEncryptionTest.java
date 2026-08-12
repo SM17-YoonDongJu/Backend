@@ -62,7 +62,7 @@ class UserInsurancePiiEncryptionTest {
   private UUID persistInsurance(String policyNo, LocalDate enrolledAt, List<String> coverages) {
     jdbcTemplate.execute(UserInsuranceFixture.createdAtDefaultDdl());
     User user = userRepository.save(
-        User.create("보험암호화유저", LocalDate.of(1990, 1, 1), "", null, Role.USER, null));
+        User.create("보험암호화유저", LocalDate.of(1990, 1, 1), "", null, null, Role.USER, null));
     UserInsurance saved = userInsuranceRepository.save(UserInsuranceFixture.of(
         user.getId(), INSURER_NAME, PRODUCT_NAME, policyNo, enrolledAt, coverages, null));
     entityManager.flush();

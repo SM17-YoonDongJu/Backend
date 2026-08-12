@@ -69,7 +69,7 @@ class UserInsuranceApiPiiRegressionTest {
   void setUp() {
     jdbcTemplate.execute(UserInsuranceFixture.createdAtDefaultDdl());
     User user = userRepository.save(
-        User.create("보험조회유저", LocalDate.of(1990, 1, 1), "", null, Role.USER, null));
+        User.create("보험조회유저", LocalDate.of(1990, 1, 1), "", null, null, Role.USER, null));
     userId = user.getId();
 
     userInsuranceRepository.save(UserInsuranceFixture.of(
@@ -131,7 +131,7 @@ class UserInsuranceApiPiiRegressionTest {
   @DisplayName("C29 다른 사용자의 보험은 조회되지 않는다(userId 스코프 유지)")
   void getMyInsurances_otherUser_seesNothing() throws Exception {
     UUID otherUserId = userRepository.save(
-        User.create("타인", LocalDate.of(1991, 1, 1), "", null, Role.USER, null)).getId();
+        User.create("타인", LocalDate.of(1991, 1, 1), "", null, null, Role.USER, null)).getId();
     CustomUserDetails other = new CustomUserDetails(otherUserId, "USER");
 
     mockMvc.perform(get("/users/me/insurances").with(authentication(

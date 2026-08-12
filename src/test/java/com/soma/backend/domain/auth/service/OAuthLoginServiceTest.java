@@ -34,6 +34,7 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
 import com.soma.backend.global.security.crypto.AesGcmCipher;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -65,6 +66,9 @@ class OAuthLoginServiceTest {
   private AppleRefreshStagingRepository appleRefreshStagingRepository;
 
   @Mock
+  private PiiHmac piiHmac;
+
+  @Mock
   private HttpServletResponse response;
 
   @Test
@@ -76,7 +80,7 @@ class OAuthLoginServiceTest {
     SocialAccount account = mock(SocialAccount.class);
     User user = mock(User.class);
     given(oAuthClient.fetchProfile("kakao", "code", "state", null)).willReturn(profile);
-    given(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-1"))
+    given(socialAccountRepository.findByProviderAndProviderUserIdHmac(eq("kakao"), any()))
         .willReturn(Optional.of(account));
     given(account.getUserId()).willReturn(userId);
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
@@ -100,7 +104,7 @@ class OAuthLoginServiceTest {
     // Given
     OAuthProfile profile = new OAuthProfile("naver", "naver-9");
     given(oAuthClient.fetchProfile("naver", "code", null, null)).willReturn(profile);
-    given(socialAccountRepository.findByProviderAndProviderUserId("naver", "naver-9"))
+    given(socialAccountRepository.findByProviderAndProviderUserIdHmac(eq("naver"), any()))
         .willReturn(Optional.empty());
     given(signupTicketProvider.issue("naver", "naver-9")).willReturn("ticket-jwt");
 
@@ -121,7 +125,7 @@ class OAuthLoginServiceTest {
     // Given
     OAuthProfile profile = new OAuthProfile("apple", "apple-1", "raw-refresh");
     given(oAuthClient.fetchProfile("apple", "code", null, null)).willReturn(profile);
-    given(socialAccountRepository.findByProviderAndProviderUserId("apple", "apple-1"))
+    given(socialAccountRepository.findByProviderAndProviderUserIdHmac(eq("apple"), any()))
         .willReturn(Optional.empty());
     given(aesGcmCipher.encrypt(
         "raw-refresh", AesGcmCipher.appleRefreshTokenAad("apple", "apple-1")))
@@ -145,7 +149,7 @@ class OAuthLoginServiceTest {
     OAuthProfile profile = new OAuthProfile("kakao", "kakao-2");
     SocialAccount account = mock(SocialAccount.class);
     given(oAuthClient.fetchProfile("kakao", "code", "state", null)).willReturn(profile);
-    given(socialAccountRepository.findByProviderAndProviderUserId("kakao", "kakao-2"))
+    given(socialAccountRepository.findByProviderAndProviderUserIdHmac(eq("kakao"), any()))
         .willReturn(Optional.of(account));
     given(account.getUserId()).willReturn(userId);
     given(userRepository.findById(userId)).willReturn(Optional.empty());

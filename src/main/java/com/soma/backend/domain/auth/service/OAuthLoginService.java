@@ -16,6 +16,8 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
 import com.soma.backend.global.security.crypto.AesGcmCipher;
+import com.soma.backend.global.security.crypto.PiiAad;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
 /**
@@ -33,6 +35,8 @@ import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 @RequiredArgsConstructor
 public class OAuthLoginService {
 
+  private static final PiiAad PROVIDER_USER_ID_AAD = PiiAad.ofColumn("social_accounts", "provider_user_id");
+
   private final OAuthClient oAuthClient;
   private final SocialAccountRepository socialAccountRepository;
   private final UserRepository userRepository;
@@ -40,6 +44,7 @@ public class OAuthLoginService {
   private final AuthTokenService authTokenService;
   private final AesGcmCipher aesGcmCipher;
   private final AppleRefreshStagingRepository appleRefreshStagingRepository;
+  private final PiiHmac piiHmac;
 
   public OAuthCallbackResponse handleCallback(
       HttpServletResponse response, String provider, String code, String state, String redirectUri) {
@@ -47,8 +52,9 @@ public class OAuthLoginService {
     // 외부 OAuth 프로필 조회는 트랜잭션 밖에서 수행한다(HTTP 지연 시 DB 커넥션 점유·풀 고갈 방지).
     OAuthProfile profile = oAuthClient.fetchProfile(provider, code, state, redirectUri);
 
+    byte[] providerUserIdHmac = piiHmac.hmac(profile.providerUserId(), PROVIDER_USER_ID_AAD);
     return socialAccountRepository
-        .findByProviderAndProviderUserId(profile.provider(), profile.providerUserId())
+        .findByProviderAndProviderUserIdHmac(profile.provider(), providerUserIdHmac)
         .map(account -> loginExisting(response, account))
         .orElseGet(() -> issueSignupTicket(profile));
   }

@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.soma.backend.global.security.crypto.converter.ReportQuestionConverter;
+import com.soma.backend.global.security.crypto.converter.SocialAccountProviderUserIdConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimAdditionalInformationConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimDescriptionConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimQuestionConverter;
@@ -21,6 +22,7 @@ import com.soma.backend.global.security.crypto.converter.UserInsuranceEnrolledAt
 import com.soma.backend.global.security.crypto.converter.UserInsuranceInsurerNameConverter;
 import com.soma.backend.global.security.crypto.converter.UserInsurancePolicyNoConverter;
 import com.soma.backend.global.security.crypto.converter.UserInsuranceProductNameConverter;
+import com.soma.backend.global.security.crypto.converter.UserPhoneNumberConverter;
 
 /**
  * PII 컬럼 매핑·배선의 스코프 경계 고정(design.md §12.4 C32, §12.5-1·2).
@@ -81,6 +83,12 @@ class PiiColumnMappingTest {
   @Autowired
   private UserClaimQuestionConverter claimQuestionConverter;
 
+  @Autowired
+  private UserPhoneNumberConverter phoneNumberConverter;
+
+  @Autowired
+  private SocialAccountProviderUserIdConverter providerUserIdConverter;
+
   private String dataTypeOf(String table, String column) {
     return jdbcTemplate.queryForObject(
         "SELECT data_type FROM information_schema.columns WHERE table_name = ? AND column_name = ?",
@@ -109,6 +117,18 @@ class PiiColumnMappingTest {
   })
   @DisplayName("이슈 #228 대상 3개 컬럼은 엔티티 매핑상 bytea다")
   void issue228Columns_areMappedAsBytea(String table, String column) {
+    assertThat(dataTypeOf(table, column)).isEqualTo("bytea");
+  }
+
+  @ParameterizedTest(name = "{0}.{1} → bytea")
+  @CsvSource({
+    "users, phone_number",
+    "users, phone_number_hmac",
+    "social_accounts, provider_user_id",
+    "social_accounts, provider_user_id_hmac"
+  })
+  @DisplayName("이슈 #232 대상 컬럼(암호문·HMAC 블라인드 인덱스)은 엔티티 매핑상 bytea다")
+  void issue232Columns_areMappedAsBytea(String table, String column) {
     assertThat(dataTypeOf(table, column)).isEqualTo("bytea");
   }
 
@@ -155,6 +175,10 @@ class PiiColumnMappingTest {
         descriptionConverter.convertToDatabaseColumn("사고 경위"))).isEqualTo("사고 경위");
     assertThat(claimQuestionConverter.convertToEntityAttribute(
         claimQuestionConverter.convertToDatabaseColumn("질문 있습니다"))).isEqualTo("질문 있습니다");
+    assertThat(phoneNumberConverter.convertToEntityAttribute(
+        phoneNumberConverter.convertToDatabaseColumn("010-1234-5678"))).isEqualTo("010-1234-5678");
+    assertThat(providerUserIdConverter.convertToEntityAttribute(
+        providerUserIdConverter.convertToDatabaseColumn("kakao-1"))).isEqualTo("kakao-1");
   }
 
   @Test

@@ -10,9 +10,9 @@ import com.soma.backend.domain.auth.entity.SocialAccount;
 
 public interface SocialAccountRepository extends JpaRepository<SocialAccount, UUID> {
 
-  Optional<SocialAccount> findByProviderAndProviderUserId(String provider, String providerUserId);
+  Optional<SocialAccount> findByProviderAndProviderUserIdHmac(String provider, byte[] providerUserIdHmac);
 
-  boolean existsByProviderAndProviderUserId(String provider, String providerUserId);
+  boolean existsByProviderAndProviderUserIdHmac(String provider, byte[] providerUserIdHmac);
 
   List<SocialAccount> findByUserId(UUID userId);
 

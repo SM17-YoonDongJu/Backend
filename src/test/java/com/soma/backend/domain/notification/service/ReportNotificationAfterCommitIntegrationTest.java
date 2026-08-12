@@ -94,9 +94,9 @@ class ReportNotificationAfterCommitIntegrationTest {
   }
 
   private void seedCustomerAdjusterReport(ReportStatus status) {
-    customer = userRepository.save(User.create("고객", LocalDate.of(1990, 1, 1), "F", null, Role.USER, null));
+    customer = userRepository.save(User.create("고객", LocalDate.of(1990, 1, 1), "F", null, null, Role.USER, null));
     adjuster = userRepository.save(
-        User.create("사정사", LocalDate.of(1985, 1, 1), "M", null, Role.CERTIFICATED_ADJUSTER, null));
+        User.create("사정사", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
     Report pending = Report.createPending(customer.getId(), null, null,
         AccidentType.MEDICAL_INDEMNITY, "질문", "INT-" + UUID.randomUUID().toString().substring(0, 12));
     if (status != ReportStatus.AWAITING_INSPECTION) {

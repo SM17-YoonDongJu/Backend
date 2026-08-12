@@ -58,7 +58,7 @@ class UserClaimPiiEncryptionTest {
 
   private UUID persistClaim(String additionalInformation) {
     User user = userRepository.save(
-        User.create("암호화테스트유저", LocalDate.of(1995, 5, 5), "", null, Role.USER, null));
+        User.create("암호화테스트유저", LocalDate.of(1995, 5, 5), "", null, null, Role.USER, null));
     ClaimDetails details = new MedicalIndemnityDetails(
         List.of("급성 충수염"), List.of(), List.of("입원"), List.of("2026-01-10"), "included", "2026-01-02", null);
     UserClaim saved = userClaimRepository.save(UserClaim.create(

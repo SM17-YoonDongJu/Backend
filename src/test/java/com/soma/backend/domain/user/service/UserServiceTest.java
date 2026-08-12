@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -34,12 +35,16 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
 import com.soma.backend.infra.s3.S3UploadService;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserService 단위 테스트")
 class UserServiceTest {
+
+  private static final byte[] PHONE_HMAC = {1, 2, 3};
+  private static final byte[] NEW_PHONE_HMAC = {4, 5, 6};
 
   @InjectMocks
   private UserService userService;
@@ -62,8 +67,11 @@ class UserServiceTest {
   @Mock
   private S3UploadService s3UploadService;
 
+  @Mock
+  private PiiHmac piiHmac;
+
   private User activeUser() {
-    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", Role.USER, null);
+    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", PHONE_HMAC, Role.USER, null);
   }
 
   @Test
@@ -175,7 +183,7 @@ class UserServiceTest {
     assertThat(result.region()).containsExactly("서울");
     assertThat(result.avatarUrl()).isEqualTo("https://img/new.png");
     assertThat(result.phoneNumber()).isEqualTo("010-1234-5678");
-    then(userRepository).should(never()).existsByPhoneNumber("010-1234-5678");
+    then(userRepository).should(never()).existsByPhoneNumberHmac(any());
   }
 
   @Test
@@ -184,7 +192,8 @@ class UserServiceTest {
     // Given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
-    given(userRepository.existsByPhoneNumber("010-9999-8888")).willReturn(true);
+    given(piiHmac.hmac(eq("010-9999-8888"), any())).willReturn(NEW_PHONE_HMAC);
+    given(userRepository.existsByPhoneNumberHmac(NEW_PHONE_HMAC)).willReturn(true);
     UserUpdateRequest request = new UserUpdateRequest("010-9999-8888", null, null);
 
     // When & Then
