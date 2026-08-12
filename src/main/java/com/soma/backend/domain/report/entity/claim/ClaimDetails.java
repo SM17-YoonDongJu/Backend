@@ -8,7 +8,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.soma.backend.domain.report.entity.AccidentType;
 
 /**
- * USER_CLAIMS.details(jsonb) 값 객체 — 사고 유형(AccidentType)별 청구 상세 정보(design.md §3.1).
+ * USER_CLAIMS.details(PII 암호화, 이슈 #235) 값 객체 — 사고 유형(AccidentType)별 청구 상세 정보(design.md §3.1).
  * {@code type} 프로퍼티로 다형성을 식별하며, {@link #type()}은 각 구현체가 자기 {@link AccidentType}
  * 상수를 반환한다(UserClaim.accidentType과 일치해야 하는 불변식은 {@code UserClaim.create}가 검증).
  */
