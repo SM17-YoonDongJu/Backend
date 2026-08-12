@@ -23,8 +23,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
-      # OCR 트리거는 SQS로 발행한다. 큐 URL은 큐 이름(ocr-job-queue)에서 런타임 해석하므로 별도 env 불필요.
-      # 접속은 dev 인스턴스 IAM Role 위임(AWS_REGION 필요, 아래 참조) — 정적 키 미주입.
+      # OCR 트리거는 SQS로 발행. 큐 이름은 .env의 SQS_OCR_QUEUE_NAME(brbs-ocr-job-queue-dev)으로 주입하고,
+      # backend가 그 이름에서 URL을 런타임 해석한다(URL env 불필요). 접속은 dev 인스턴스 IAM Role 위임(AWS_REGION 아래 참조).
+      SQS_OCR_QUEUE_NAME: ${SQS_OCR_QUEUE_NAME}
       JWT_SECRET: ${JWT_SECRET}
       AWS_REGION: ${AWS_REGION}
       S3_BUCKET: ${S3_BUCKET}
