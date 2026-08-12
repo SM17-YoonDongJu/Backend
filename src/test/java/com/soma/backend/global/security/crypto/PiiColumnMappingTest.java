@@ -2,6 +2,8 @@ package com.soma.backend.global.security.crypto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -12,10 +14,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.soma.backend.domain.report.entity.claim.MedicalIndemnityDetails;
 import com.soma.backend.global.security.crypto.converter.ReportQuestionConverter;
 import com.soma.backend.global.security.crypto.converter.SocialAccountProviderUserIdConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimAdditionalInformationConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimDescriptionConverter;
+import com.soma.backend.global.security.crypto.converter.UserClaimDetailsConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimQuestionConverter;
 import com.soma.backend.global.security.crypto.converter.UserInsuranceCoveragesConverter;
 import com.soma.backend.global.security.crypto.converter.UserInsuranceEnrolledAtConverter;
@@ -89,6 +93,9 @@ class PiiColumnMappingTest {
   @Autowired
   private SocialAccountProviderUserIdConverter providerUserIdConverter;
 
+  @Autowired
+  private UserClaimDetailsConverter detailsConverter;
+
   private String dataTypeOf(String table, String column) {
     return jdbcTemplate.queryForObject(
         "SELECT data_type FROM information_schema.columns WHERE table_name = ? AND column_name = ?",
@@ -132,6 +139,12 @@ class PiiColumnMappingTest {
     assertThat(dataTypeOf(table, column)).isEqualTo("bytea");
   }
 
+  @Test
+  @DisplayName("이슈 #235 user_claims.details는 엔티티 매핑상 jsonb가 아니라 bytea다")
+  void issue235Column_isMappedAsBytea() {
+    assertThat(dataTypeOf("user_claims", "details")).isEqualTo("bytea");
+  }
+
   /**
    * 스코프 밖 컬럼이 실수로 함께 암호화되지 않았는지 고정한다. 기대 타입은 <b>엔티티 매핑이 만드는 타입</b>
    * 기준이다 — {@code columnDefinition}이 없는 {@code String} 필드는 Hibernate가
@@ -145,10 +158,9 @@ class PiiColumnMappingTest {
     "reports, basis_terms_precedents, ARRAY",
     "reports, documents, jsonb",
     "reports, treatment, character varying",
-    "report_reviews, applicable_guarantees, ARRAY",
-    "user_claims, details, jsonb"
+    "report_reviews, applicable_guarantees, ARRAY"
   })
-  @DisplayName("스코프 밖(PR-2 게이트·jsonb fix 대기·검수본) 컬럼은 타입이 그대로다")
+  @DisplayName("스코프 밖(PR-2 게이트·검수본) 컬럼은 타입이 그대로다")
   void outOfScopeColumns_keepOriginalType(String table, String column, String expectedType) {
     assertThat(dataTypeOf(table, column)).isEqualTo(expectedType).isNotEqualTo("bytea");
   }
@@ -177,6 +189,10 @@ class PiiColumnMappingTest {
         claimQuestionConverter.convertToDatabaseColumn("질문 있습니다"))).isEqualTo("질문 있습니다");
     assertThat(phoneNumberConverter.convertToEntityAttribute(
         phoneNumberConverter.convertToDatabaseColumn("010-1234-5678"))).isEqualTo("010-1234-5678");
+    MedicalIndemnityDetails details = new MedicalIndemnityDetails(
+        List.of("급성 충수염"), List.of(), List.of("입원"), List.of("2026-01-10"), "included", "2026-01-02", null);
+    assertThat(detailsConverter.convertToEntityAttribute(
+        detailsConverter.convertToDatabaseColumn(details))).isEqualTo(details);
     assertThat(providerUserIdConverter.convertToEntityAttribute(
         providerUserIdConverter.convertToDatabaseColumn("kakao-1"))).isEqualTo("kakao-1");
   }

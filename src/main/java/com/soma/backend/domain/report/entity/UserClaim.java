@@ -3,9 +3,6 @@ package com.soma.backend.domain.report.entity;
 import java.time.LocalDate;
 import java.util.UUID;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -22,12 +19,14 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.crypto.converter.UserClaimAdditionalInformationConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimDescriptionConverter;
+import com.soma.backend.global.security.crypto.converter.UserClaimDetailsConverter;
 import com.soma.backend.global.security.crypto.converter.UserClaimQuestionConverter;
 
 /**
  * USER_CLAIMS Aggregate Root — 사용자가 입력한 사고 상황(리포트 생성 요청의 원본 입력, design.md §3).
- * details(jsonb)는 accidentType별 다형성 값 객체({@link ClaimDetails})이며, 생성 시점에
+ * details는 accidentType별 다형성 값 객체({@link ClaimDetails})이며, 생성 시점에
  * {@code details.type() == accidentType} 불변식을 검증한다(불일치 시 CLAIM_DETAILS_TYPE_MISMATCH).
+ * AES-256-GCM 암호화(봉투) — JSON 문자열로 직렬화한 뒤 통째 암호화해 bytea에 담는다(이슈 #235).
  */
 @Entity
 @Table(name = "user_claims")
@@ -55,8 +54,8 @@ public class UserClaim extends BaseEntity {
   @Column(name = "accident_type", length = 30)
   private AccidentType accidentType;
 
-  @JdbcTypeCode(SqlTypes.JSON)
-  @Column(name = "details", columnDefinition = "jsonb")
+  @Convert(converter = UserClaimDetailsConverter.class)
+  @Column(name = "details")
   private ClaimDetails details;
 
   @Convert(converter = UserClaimQuestionConverter.class)
