@@ -14,8 +14,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
-import com.soma.backend.infra.outbox.KafkaOutboxEvent;
-import com.soma.backend.infra.outbox.KafkaOutboxRepository;
+import com.soma.backend.infra.outbox.OcrOutboxEvent;
+import com.soma.backend.infra.outbox.OcrOutboxRepository;
 
 /**
  * 아웃박스 릴레이. PENDING 이벤트를 고정 지연(fixedDelay) 폴링으로 조회해 SQS로 발행한다(design.md §4).
@@ -38,7 +38,7 @@ public class OutboxRelay {
   // 이 횟수를 넘겨 실패하면 FAILED로 파킹(더 이상 자동 재시도하지 않음) — 무한 재시도로 인한 적체 방지.
   private static final int MAX_ATTEMPTS = 5;
 
-  private final KafkaOutboxRepository outboxRepository;
+  private final OcrOutboxRepository outboxRepository;
   private final SqsClient sqsClient;
 
   // topic(=SQS 큐 이름) → 큐 URL 캐시. GetQueueUrl 호출을 큐당 1회로 줄인다.
@@ -56,13 +56,13 @@ public class OutboxRelay {
     if (!outboxEnabled) {
       return;
     }
-    List<KafkaOutboxEvent> events = outboxRepository.findBatchForRelay(BATCH_SIZE);
-    for (KafkaOutboxEvent event : events) {
+    List<OcrOutboxEvent> events = outboxRepository.findBatchForRelay(BATCH_SIZE);
+    for (OcrOutboxEvent event : events) {
       send(event);
     }
   }
 
-  private void send(KafkaOutboxEvent event) {
+  private void send(OcrOutboxEvent event) {
     try {
       String queueUrl = resolveQueueUrl(event.getTopic());
       sqsClient.sendMessage(builder -> builder.queueUrl(queueUrl).messageBody(event.getPayload()));
@@ -79,7 +79,7 @@ public class OutboxRelay {
         name -> sqsClient.getQueueUrl(builder -> builder.queueName(name)).queueUrl());
   }
 
-  private void markFailed(KafkaOutboxEvent event, Exception ex) {
+  private void markFailed(OcrOutboxEvent event, Exception ex) {
     event.markAttemptFailed(MAX_ATTEMPTS);
     log.warn("아웃박스 이벤트 발행 실패. id={}, queue={}, attempts={}",
         event.getId(), event.getTopic(), event.getAttempts(), ex);
