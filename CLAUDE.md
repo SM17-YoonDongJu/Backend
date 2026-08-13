@@ -68,7 +68,7 @@ com.soma.backend
 
 **infra/s3** — `S3Client`·`S3Presigner` Bean은 `infra/s3/S3Config`에서 구성한다 — 리전만 `aws.region` 프로퍼티로 주입하고 자격증명은 `DefaultCredentialsProvider`(IAM Role·`~/.aws`)로 위임한다 (Spring Cloud AWS 미사용). presigned URL은 채팅 첨부 다운로드에 사용한다.
 
-**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 적재하고, 별도 스케줄러가 `FOR UPDATE SKIP LOCKED`로 폴링해 처리한다 (부수효과의 원자성·재시도 보장, 다중 인스턴스 중복 처리 방지). 용도가 다른 **두 아웃박스가 공존**한다 — `outbox_events`(`OutboxEvent`)는 `OutboxProcessor`가 회원 탈퇴 후처리(Redis 토큰 정리·Apple 토큰 폐기)를 수행하고, `ocr_outbox_events`(`OcrOutboxEvent`)는 `OutboxRelay`가 OCR 트리거를 SQS로 발행한다. 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름, `app.sqs.ocr-queue-name`)이며 브로커는 관리형 AWS SQS다. **클래스는 `OcrOutbox*`인데 테이블은 `kafka_outbox_events`(V13)로 남아 있다** — 브로커 전환(#208) 후 클래스만 용도 기준으로 정리했고, 테이블 리네임은 `ALTER TABLE ... RENAME TO`가 `public` 스키마 `CREATE` 권한을 요구해(운영 유저에 없음, 아래 Key Configuration 참조) 보류했다.
+**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 적재하고, 별도 스케줄러가 `FOR UPDATE SKIP LOCKED`로 폴링해 처리한다 (부수효과의 원자성·재시도 보장, 다중 인스턴스 중복 처리 방지). 용도가 다른 **두 아웃박스가 공존**한다 — `outbox_events`(`OutboxEvent`)는 `OutboxProcessor`가 회원 탈퇴 후처리(Redis 토큰 정리·Apple 토큰 폐기)를 수행하고, `kafka_outbox_events`(`OcrOutboxEvent`)는 `OutboxRelay`가 OCR 트리거를 SQS로 발행한다. 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름, `app.sqs.ocr-queue-name`)이며 브로커는 관리형 AWS SQS다. **클래스는 `OcrOutbox*`인데 테이블은 `kafka_outbox_events`(V13)로 남아 있다** — 브로커 전환(#208) 후 클래스만 용도 기준으로 정리했고, 테이블 리네임은 `ALTER TABLE ... RENAME TO`가 `public` 스키마 `CREATE` 권한을 요구해(운영 유저에 없음, 아래 Key Configuration 참조) 보류했다.
 
 ## Key Configuration
 
