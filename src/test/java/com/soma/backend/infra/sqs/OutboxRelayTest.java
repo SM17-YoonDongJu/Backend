@@ -23,16 +23,16 @@ import software.amazon.awssdk.services.sqs.model.GetQueueUrlResponse;
 import software.amazon.awssdk.services.sqs.model.SendMessageResponse;
 import software.amazon.awssdk.services.sqs.model.SqsException;
 
-import com.soma.backend.infra.outbox.KafkaOutboxEvent;
-import com.soma.backend.infra.outbox.KafkaOutboxRepository;
-import com.soma.backend.infra.outbox.KafkaOutboxStatus;
+import com.soma.backend.infra.outbox.OcrOutboxEvent;
+import com.soma.backend.infra.outbox.OcrOutboxRepository;
+import com.soma.backend.infra.outbox.OcrOutboxStatus;
 
 /** OutboxRelay 검증 — SQS 발행 성공 시 SENT, 실패 시 attempts 증가, 비활성 시 no-op. */
 @ExtendWith(MockitoExtension.class)
 class OutboxRelayTest {
 
   @Mock
-  private KafkaOutboxRepository outboxRepository;
+  private OcrOutboxRepository outboxRepository;
 
   @Mock
   private SqsClient sqsClient;
@@ -40,15 +40,15 @@ class OutboxRelayTest {
   @InjectMocks
   private OutboxRelay outboxRelay;
 
-  private KafkaOutboxEvent pendingEvent() {
-    return KafkaOutboxEvent.pending(
+  private OcrOutboxEvent pendingEvent() {
+    return OcrOutboxEvent.pending(
         "OCR_JOB", UUID.randomUUID(), "ocr-job-queue", "job-1", "{\"job_id\":\"job-1\"}");
   }
 
   @Test
   void relay_marksSent_andSendsToQueue_whenPublishSucceeds() {
     ReflectionTestUtils.setField(outboxRelay, "outboxEnabled", true);
-    KafkaOutboxEvent event = pendingEvent();
+    OcrOutboxEvent event = pendingEvent();
     given(outboxRepository.findBatchForRelay(anyInt())).willReturn(List.of(event));
     given(sqsClient.getQueueUrl(any(Consumer.class)))
         .willReturn(GetQueueUrlResponse.builder().queueUrl("http://localstack:4566/q/ocr-job-queue").build());
@@ -56,21 +56,21 @@ class OutboxRelayTest {
 
     outboxRelay.relay();
 
-    assertThat(event.getStatus()).isEqualTo(KafkaOutboxStatus.SENT);
+    assertThat(event.getStatus()).isEqualTo(OcrOutboxStatus.SENT);
     verify(sqsClient).sendMessage(any(Consumer.class));
   }
 
   @Test
   void relay_incrementsAttempts_andKeepsPending_whenPublishFails() {
     ReflectionTestUtils.setField(outboxRelay, "outboxEnabled", true);
-    KafkaOutboxEvent event = pendingEvent();
+    OcrOutboxEvent event = pendingEvent();
     given(outboxRepository.findBatchForRelay(anyInt())).willReturn(List.of(event));
     given(sqsClient.getQueueUrl(any(Consumer.class)))
         .willThrow(SqsException.builder().message("boom").build());
 
     outboxRelay.relay();
 
-    assertThat(event.getStatus()).isEqualTo(KafkaOutboxStatus.PENDING);
+    assertThat(event.getStatus()).isEqualTo(OcrOutboxStatus.PENDING);
     assertThat(event.getAttempts()).isEqualTo(1);
   }
 

@@ -19,16 +19,22 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * Kafka 발행용 트랜잭셔널 아웃박스 이벤트(V13__kafka_outbox.sql, kafka_outbox_events). 도메인 트랜잭션과
- * 같은 트랜잭션 안에서 저장되고, {@code OutboxRelay}가 별도 스케줄로 폴링해 Kafka로 발행한다(at-least-once).
+ * OCR 트리거 SQS 발행용 트랜잭셔널 아웃박스 이벤트. 도메인 트랜잭션과 같은 트랜잭션 안에서 저장되고,
+ * {@code OutboxRelay}가 별도 스케줄로 폴링해 SQS로 발행한다(at-least-once).
  * payload는 호출측(예: OcrJobOutboxPortImpl)이 이미 직렬화한 JSON 문자열을 그대로 저장한다.
  * develop의 {@link OutboxEvent}(회원 탈퇴 Redis 후처리)와 목적·스키마가 달라 별도 엔티티/테이블로 둔다.
+ *
+ * <p><b>클래스 이름과 테이블 이름이 다른 이유:</b> 브로커가 Kafka→SQS로 바뀌어(#208) {@code Kafka*}
+ * 라는 이름이 실제 구현과 어긋나 클래스는 {@code OcrOutbox*}로 정리했지만, 테이블 {@code kafka_outbox_events}
+ * (V13)는 그대로 둔다. PostgreSQL의 {@code ALTER TABLE ... RENAME TO}는 대상 스키마의 {@code CREATE}
+ * 권한을 요구하는데 운영 DB 유저는 {@code public}에 그 권한이 없어(PG15+ 기본 REVOKE, 이슈 #223) 리네임
+ * 마이그레이션이 배포 중 실패하기 때문이다. 테이블 리네임은 권한 정리 후 별도로 다룬다.
  */
 @Entity
 @Table(name = "kafka_outbox_events")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class KafkaOutboxEvent {
+public class OcrOutboxEvent {
 
   @Id
   @GeneratedValue
@@ -52,7 +58,7 @@ public class KafkaOutboxEvent {
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 20)
-  private KafkaOutboxStatus status;
+  private OcrOutboxStatus status;
 
   @Column(name = "attempts", nullable = false)
   private int attempts;
@@ -64,25 +70,25 @@ public class KafkaOutboxEvent {
   @Column(name = "sent_at")
   private LocalDateTime sentAt;
 
-  private KafkaOutboxEvent(String aggregateType, UUID aggregateId, String topic, String messageKey, String payload) {
+  private OcrOutboxEvent(String aggregateType, UUID aggregateId, String topic, String messageKey, String payload) {
     this.aggregateType = aggregateType;
     this.aggregateId = aggregateId;
     this.topic = topic;
     this.messageKey = messageKey;
     this.payload = payload;
-    this.status = KafkaOutboxStatus.PENDING;
+    this.status = OcrOutboxStatus.PENDING;
     this.attempts = 0;
   }
 
   /** 신규 PENDING 아웃박스 이벤트 생성. 호출자의 트랜잭션 안에서 저장되어야 한다. */
-  public static KafkaOutboxEvent pending(
+  public static OcrOutboxEvent pending(
       String aggregateType, UUID aggregateId, String topic, String messageKey, String payload) {
-    return new KafkaOutboxEvent(aggregateType, aggregateId, topic, messageKey, payload);
+    return new OcrOutboxEvent(aggregateType, aggregateId, topic, messageKey, payload);
   }
 
-  /** Kafka 발행 성공 처리. */
+  /** SQS 발행 성공 처리. */
   public void markSent() {
-    this.status = KafkaOutboxStatus.SENT;
+    this.status = OcrOutboxStatus.SENT;
     this.sentAt = LocalDateTime.now();
   }
 
@@ -90,7 +96,7 @@ public class KafkaOutboxEvent {
   public void markAttemptFailed(int maxAttempts) {
     this.attempts++;
     if (this.attempts >= maxAttempts) {
-      this.status = KafkaOutboxStatus.FAILED;
+      this.status = OcrOutboxStatus.FAILED;
     }
   }
 }

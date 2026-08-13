@@ -68,7 +68,7 @@ com.soma.backend
 
 **infra/s3** — `S3Client`·`S3Presigner` Bean은 `infra/s3/S3Config`에서 구성한다 — 리전만 `aws.region` 프로퍼티로 주입하고 자격증명은 `DefaultCredentialsProvider`(IAM Role·`~/.aws`)로 위임한다 (Spring Cloud AWS 미사용). presigned URL은 채팅 첨부 다운로드에 사용한다.
 
-**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 `outbox`/`kafka_outbox` 테이블에 적재하고, `OutboxProcessor`가 `FOR UPDATE SKIP LOCKED`로 폴링해 SQS로 릴레이한다 (OCR 트리거 등 발행의 원자성·재시도 보장). 발행 대상은 아웃박스 `topic` 컬럼(=SQS 큐 이름)이며, 브로커는 관리형 AWS SQS다(리네임 없이 `kafka_outbox_events` 테이블·엔티티 유지).
+**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 적재하고, 별도 스케줄러가 `FOR UPDATE SKIP LOCKED`로 폴링해 처리한다 (부수효과의 원자성·재시도 보장, 다중 인스턴스 중복 처리 방지). 용도가 다른 **두 아웃박스가 공존**한다 — `outbox_events`(`OutboxEvent`)는 `OutboxProcessor`가 회원 탈퇴 후처리(Redis 토큰 정리·Apple 토큰 폐기)를 수행하고, `kafka_outbox_events`(`OcrOutboxEvent`)는 `OutboxRelay`가 OCR 트리거를 SQS로 발행한다. 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름, `app.sqs.ocr-queue-name`)이며 브로커는 관리형 AWS SQS다. **클래스는 `OcrOutbox*`인데 테이블은 `kafka_outbox_events`(V13)로 남아 있다** — 브로커 전환(#208) 후 클래스만 용도 기준으로 정리했고, 테이블 리네임은 `ALTER TABLE ... RENAME TO`가 `public` 스키마 `CREATE` 권한을 요구해(운영 유저에 없음, 아래 Key Configuration 참조) 보류했다.
 
 ## Key Configuration
 
@@ -80,7 +80,26 @@ com.soma.backend
 
 DB 스키마는 Flyway로 관리한다 (`src/main/resources/db/migration/V{n}__{description}.sql`). JPA `ddl-auto`는 `validate`로 고정.
 
-**신규 마이그레이션이 새 테이블을 만들 때는 반드시 `CREATE TABLE core.테이블명`으로 스키마를 명시한다.** DB 유저(`app_owner`)는 `core` 스키마에는 `CREATE` 권한이 있지만 `public`에는 없다(PostgreSQL 15+부터 `public` 스키마 `CREATE`가 `PUBLIC` 롤에서 기본 제거됨). `application.yml`의 `flyway.schemas: core, public` / `default-schema: public` 설정은 Flyway가 `core`를 알게 하고 기존 이력 테이블(`flyway_schema_history`, `public` 고정)을 계속 찾게 해줄 뿐이지, 스키마 미지정 `CREATE TABLE`을 자동으로 `core`로 보내주지 않는다 — `default-schema`가 `public`이라 스키마 미지정 시 여전히 `public`으로 해석되고 권한 부족으로 배포가 실패한다. (V33이 이 규칙을 안 지켜 배포 실패했고 V35로 `core`로 재이관한 사고가 있었다 — 이슈 #223.) 기존 테이블 `ALTER TABLE`은 스키마 미지정이어도 `app_owner`의 기본 `search_path`(`core, public` 순)가 알아서 찾으므로 문제없다.
+**신규 마이그레이션이 새 테이블을 만들 때는 반드시 `CREATE TABLE core.테이블명`으로 스키마를 명시한다.**
+
+**가장 중요한 이유는 권한이 아니라 앱이 테이블을 찾지 못한다는 것이다.** dev·prod의 앱 테이블은 전부 **`core` 스키마에 있고**(`public`에는 `flyway_schema_history`만 남아 있다), DB 유저 `app_owner`의 `search_path`가 `core, public`이라 **Hibernate가 인식하는 기본 스키마는 `core`다**(기동 로그 `Default catalog/schema: <db>/core`). 그런데 Flyway는 `default-schema: public` 설정 때문에 마이그레이션 실행 시 `public`을 앞에 붙인 `search_path`로 동작한다 — 즉 **스키마 미지정 `CREATE TABLE`은 `public`에 만들어지고, 앱은 `core`에서 찾으므로 못 찾는다.** 결과는 `ddl-auto: validate` 실패로 **앱이 기동하지 못하는 것**이다. 권한이 있는 환경(prod은 `public` `CREATE`가 열려 있다)에서는 **마이그레이션이 조용히 성공한 뒤 배포가 부팅 단계에서 죽으므로 더 위험하다.**
+
+권한 문제도 겹친다. `app_owner`는 `core`에는 `CREATE` 권한이 있지만 dev의 `public`에는 없다(PostgreSQL 15+부터 `public` 스키마 `CREATE`가 `PUBLIC` 롤에서 기본 제거됨). `application.yml`의 `flyway.schemas: core, public` / `default-schema: public` 설정은 Flyway가 `core`를 알게 하고 기존 이력 테이블(`flyway_schema_history`, `public` 고정)을 계속 찾게 해줄 뿐, 스키마 미지정 `CREATE TABLE`을 `core`로 보내주지 않는다. (V33이 이 규칙을 안 지켜 배포 실패했고 V35로 `core`로 재이관한 사고가 있었다 — 이슈 #223.)
+
+> **주의:** 레포의 마이그레이션만으로 빈 DB를 세우면 테이블이 `public`에 생겨 **dev·prod와 다른 배치**가 되고, 그 상태로는 앱이 기동하지 못한다(로컬 재현 확인). 신규 환경·재해복구는 이 점을 고려해야 한다.
+
+**주의: `public` `CREATE` 권한을 요구하는 DDL은 `CREATE TABLE`만이 아니다.** 이름 해석(어느 스키마의 테이블을 가리키는가)과 권한(그 DDL을 실행할 수 있는가)은 별개 문제다 — `search_path`가 테이블을 찾아준다고 해서 DDL이 통과하는 건 아니다. PostgreSQL 16 실측 기준:
+
+| DDL | `public` CREATE 권한 없을 때 |
+|-----|------------------------------|
+| `CREATE TABLE` · `CREATE INDEX` | **실패** |
+| `ALTER TABLE ... RENAME TO` · `ALTER INDEX ... RENAME TO` | **실패** |
+| `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE` (내부적으로 인덱스 생성) | **실패** |
+| `CREATE SCHEMA` (데이터베이스 `CREATE` 권한 필요) | **실패** |
+| `ADD`/`DROP COLUMN` · `RENAME COLUMN` · `RENAME CONSTRAINT` · `DROP CONSTRAINT` · `ALTER COLUMN TYPE` · `SET NOT NULL` · `COMMENT ON` | 통과 |
+| `ALTER TABLE ... SET SCHEMA core` → `core` 안에서 `RENAME` | 통과(`core`엔 권한 있음) |
+
+즉 `public`에 있는 기존 테이블은 **이름·인덱스·UNIQUE 제약을 바꿀 수 없다**. 컬럼 수준 변경만 가능하다. `public` 테이블의 리네임이 필요하면 권한을 먼저 정리하거나 `core`로 옮긴 뒤 처리해야 한다(단 `core`로 옮기면 Hibernate `validate`가 `current_schema`(=`public`) 한 곳만 보므로 해당 엔티티에 `@Table(schema = "core")`가 필요한지 함께 확인할 것).
 
 ## Git Conventions
 
@@ -218,3 +237,4 @@ Spring Boot가 담당하는 영역:
 | 2026-08-09 | **OCR 트리거 브로커 self-hosted Kafka → MSK Provisioned(IAM 인증) 이전** — producer `KafkaProducerConfig`가 `security.protocol=SASL_SSL`일 때만 `AWS_MSK_IAM` 배선(PLAINTEXT는 no-op), `build.gradle`에 `aws-msk-iam-auth` 추가, `.env.example`·prod compose(`report`에 `AWS_REGION`) 반영. spring-kafka·OutboxRelay·OcrJob·아웃박스·`kafka_outbox_events`·테스트 불변(Kafka API 유지, 리네임 없음). consumer(ocr_worker, Python)는 `aws-msk-iam-sasl-signer`+OAUTHBEARER로 접속만 교체(별도 처리). spring-infra §4 stale 서술("이 클래스 불변"·"운영 MSK 추후"·consumer FastAPI) 정정 | build.gradle, infra/kafka/KafkaProducerConfig(+Test), .env.example, deploy/docker-compose.prod.yml, skills/spring-infra | 비용·이식성·성능·k8s 비교 끝에 Kafka 유지 위해 MSK 선택(PR #205) |
 | 2026-08-09 | **OCR 트리거 브로커 MSK(Kafka) → AWS SQS 전환** — `spring-kafka`·`aws-msk-iam-auth` 제거 후 `awssdk:sqs` 도입, `KafkaProducerConfig` 삭제·신규 `infra/sqs/SqsConfig`(SqsClient; S3Config 패턴 = region + DefaultCredentialsProvider, 로컬은 `aws.sqs.endpoint` LocalStack override + 더미 크리덴셜, apiCallTimeout). `OutboxRelay`가 `KafkaTemplate`→`SqsClient.sendMessage`(아웃박스 `topic`=SQS 큐 이름 → GetQueueUrl 캐시), `app.outbox.enabled` 런타임 게이트. 아웃박스 테이블/엔티티(`kafka_outbox_events`/`KafkaOutboxEvent`)·`topic`/`message_key` 컬럼·OCR 계약(`OcrJob` JSON) 불변(전송 계층만 교체, 리네임·마이그레이션 없음). 설정(`spring.kafka.*` 제거)·`.env.example`·로컬 compose(kafka 컨테이너→LocalStack sqs + 큐 생성 init)·dev/prod compose(kafka·kafka-ui 제거, app·report 워커 env→SQS)·배포 env 예시 반영. 큐 타입 Standard(소비자 멱등·순서 무관). ⚠️ 운영 컷오버는 SQS 큐+DLQ 프로비저닝·IAM(app=`SendMessage`+`GetQueueUrl`, 워커=`Receive`/`Delete`)·**AI report 워커의 SQS 소비자 전환과 동시 배포**가 전제(코드 외부). | build.gradle, infra/sqs/*, application{,-test,-local}.yml, .env.example, docker-compose.yml, deploy/{docker-compose.dev,docker-compose.prod}.yml·.env.{dev,prod}.example·localstack/init-sqs.sh, skills/spring-infra, deploy/README.md, CLAUDE.md | 비용·단순성(관리형·상시 브로커 불필요) 위해 SQS 선택 — MSK 결정 번복(이슈 #208, 브랜치 fix/208-msk-to-sqs) |
 | 2026-08-12 | **PII 컬럼 암호화(user_claims·user_insurances) 도입 + Flyway `core` 스키마 신설** — AES-256-GCM 봉투암호화(`PiiCipher`/`PiiAad`/`PiiEnvelope`, dev/local/test는 raw 키, prod는 KMS)로 `user_claims.additional_information`·`user_insurances`(insurer_name/product_name/policy_no/enrolled_at/coverages) 암호화(이슈 #221). 배포 중 `app_owner`가 `public` 스키마 `CREATE` 권한이 없어(PG15+ 기본 REVOKE) V33이 실패하는 사고 발생 → `core` 스키마(권한 있음)로 재이관(V35) + `flyway.schemas: core, public`/`default-schema: public` 영구 반영, **신규 마이그레이션은 `CREATE TABLE core.테이블명`으로 스키마 명시 필수** 규칙을 Key Configuration에 명문화(이슈 #223). `reports`/`report_issues`(writer=report_worker) 암호화는 report_worker QA 미완료로 보류. report_worker 연동 가이드를 `docs/pii-encryption-report-worker-handoff.md`로 신설(봉투 포맷·AAD·DEK 획득·dev·prod 키 경로 차이·CMK 분리 원칙). | CLAUDE.md, docs/pii-encryption-report-worker-handoff.md, global/security/crypto/*, infra/kms/*, domain/report/entity/UserClaim.java, domain/user/entity/UserInsurance.java, db/migration/V33~V35 | PII 컬럼 저장 단계 암호화 요청(이슈 #221) — 진행 중 발견한 스키마 권한 사고(#223) 재발 방지까지 하네스에 반영 |
+| 2026-08-13 | **OCR 아웃박스 클래스 `Kafka*` → `Ocr*` 리네임(테이블은 보류)** — 브로커가 SQS로 바뀌었는데 클래스에 옛 브로커 이름이 남아 stale하던 것을 정리. `KafkaOutboxEvent`/`KafkaOutboxStatus`/`KafkaOutboxRepository`→`OcrOutbox*`, 참조 4곳(`OutboxRelay`·`OcrJobOutboxPort(Impl)`·`OutboxRelayTest`)·stale 주석("Kafka로 발행"·"Kafka 파티션 키") 동반 정리. **테이블 `kafka_outbox_events` 리네임은 되돌렸다** — 처음엔 V40으로 `ocr_outbox_events` 리네임을 넣었으나 스키마 배치가 드리프트된 상태라 정리 전까지 손대지 않기로 했다. (경위: `RENAME TO`가 대상 스키마 `CREATE` 권한을 요구한다는 걸 실측하고 `public` 권한이 없는 dev에서 실패한다고 판단했는데, 실제로는 **그 테이블이 dev·prod 모두 `core`에 있고 거기엔 권한이 있어 통과했을 것**이다 — 테이블 위치를 확인하지 않은 오판이었다.) 이 과정에서 **더 큰 문제를 발견**했다: 앱 테이블이 전부 `core`에 있는데 마이그레이션은 `public`에 만든다 — 다음 신규 테이블 마이그레이션이 배포 시 앱 부팅을 깨뜨린다(이슈로 분리). Key Configuration의 스키마 규칙에 권한 매트릭스(이름 해석≠권한, `RENAME`·`ADD CONSTRAINT UNIQUE`도 `CREATE` 권한 필요)와 **"권한보다 앱이 못 찾는 게 더 큰 이유"** 근거를 반영. CLAUDE.md의 두 아웃박스 혼동 서술도 정정(SQS 릴레이는 `OutboxProcessor`가 아니라 `OutboxRelay`, `outbox_events`=회원 탈퇴 후처리 / `kafka_outbox_events`=OCR 발행). | CLAUDE.md, infra/outbox/OcrOutbox*, infra/sqs/* | 브로커명이 박혀 stale해진 이름 정리 요청 — 클래스만 정리하고 테이블은 권한 정리 후 별도 처리 |
