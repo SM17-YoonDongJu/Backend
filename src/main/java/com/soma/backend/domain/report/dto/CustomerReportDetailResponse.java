@@ -9,6 +9,7 @@ import java.util.UUID;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.repository.CustomerReportDetailRow;
 
@@ -42,16 +43,26 @@ public record CustomerReportDetailResponse(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String reportNo,
     @Schema(nullable = true, description = "채택된 제안이 없으면 null") String reviewComment,
     @Schema(nullable = true, description = "채택된 제안이 없으면 null") LocalDateTime reviewedAt,
-    @Schema(nullable = true, description = "담당 사정사(adjusterId)가 없으면 null") Adjuster adjuster) {
+    @Schema(nullable = true, description = "담당 사정사(adjusterId)가 없으면 null") Adjuster adjuster,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
+        description = "분석(OCR·AI) 처리 상태. REPORTS.status와 다른 축이다. "
+            + "PROCESSING | COMPLETED | FAILED | BLOCKED(AI 입력 가드레일 차단)",
+        allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED"}) String analysisState,
+    @Schema(nullable = true, description = "analysis_state가 FAILED일 때만 non-null(BLOCKED은 null)")
+    String analysisFailureReason,
+    @Schema(nullable = true,
+        description = "analysis_state가 FAILED 또는 BLOCKED일 때만 non-null. 사용자 노출 문구")
+    String analysisFailureMessage) {
 
   /**
    * 조회 결과를 상세 응답으로 조립한다. {@code opinionByIssueId}는 채택 리뷰의 쟁점 오버레이
    * (report_issues_reviews)에서 뽑은 report_issue_id→adjuster_opinion 맵으로, 각 쟁점 opinion을
-   * COALESCE(사정사 의견, AI 초안 description)으로 채우는 데 쓴다.
+   * COALESCE(사정사 의견, AI 초안 description)으로 채우는 데 쓴다. {@code analysis}는 분석 처리 상태
+   * 판정 결과이며, null이면 PROCESSING으로 내린다(실패 저널 조회 degrade 포함 — design.md §8 E14).
    */
   public static CustomerReportDetailResponse from(
       Report report, List<ReportIssue> issues, CustomerReportDetailRow row,
-      Map<UUID, String> opinionByIssueId) {
+      Map<UUID, String> opinionByIssueId, ReportAnalysis analysis) {
     boolean accepted = row.acceptedReviewId() != null;
     List<String> guarantees = accepted ? row.reviewGuarantees() : report.getApplicableGuarantees();
     List<String> special = accepted ? row.reviewSpecial() : report.getOmittedSpecialContract();
@@ -80,7 +91,10 @@ public record CustomerReportDetailResponse(
         report.getCaseNo(),
         accepted ? row.reviewComment() : null,
         accepted ? row.reviewedAt() : null,
-        adjuster);
+        adjuster,
+        ReportResponseSupport.analysisState(analysis),
+        ReportResponseSupport.analysisFailureReason(analysis),
+        ReportResponseSupport.analysisFailureMessage(analysis));
   }
 
   /** confidence_level을 대문자로 정규화한다(LOW|MEDIUM|HIGH). null이면 null 유지. */

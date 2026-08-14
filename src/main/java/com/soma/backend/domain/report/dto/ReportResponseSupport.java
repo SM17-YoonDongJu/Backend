@@ -2,7 +2,12 @@ package com.soma.backend.domain.report.dto;
 
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
+import com.soma.backend.domain.report.entity.AnalysisState;
+import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReuploadGuidance;
 
 /**
  * report 응답 DTO 공통 포맷 헬퍼. 프론트 계약 정합용 — 지역(text[])을 단일 문자열로 조인하고,
@@ -31,6 +36,31 @@ final class ReportResponseSupport {
       return null;
     }
     return status == ReportStatus.CLOSED ? "MATCHED" : status.name();
+  }
+
+  /**
+   * 분석 처리 상태(AnalysisState) 매핑. {@code null}이면 PROCESSING으로 내린다 — 실패 저널({@code ai} 스키마)
+   * 조회가 불가능해 degrade된 경우까지 포함해 이 필드는 항상 non-null이다(design.md §8 E14).
+   * 목록 카드·상세·전용 엔드포인트가 공유하는 단일 매핑 지점이다.
+   */
+  static String analysisState(@Nullable ReportAnalysis analysis) {
+    return analysis == null ? AnalysisState.PROCESSING.name() : analysis.state().name();
+  }
+
+  /** 대표 실패 사유. 실패(FAILED)가 아니면 null. */
+  static @Nullable String analysisFailureReason(@Nullable ReportAnalysis analysis) {
+    return analysis == null || analysis.reason() == null ? null : analysis.reason().name();
+  }
+
+  /** 사용자 노출 실패 문구. 실패(FAILED)가 아니면 null. */
+  static @Nullable String analysisFailureMessage(@Nullable ReportAnalysis analysis) {
+    return analysis == null ? null : analysis.failureMessage();
+  }
+
+  /** 재업로드 안내. 실패(FAILED)가 아니면 null. */
+  static @Nullable String reuploadGuidance(@Nullable ReportAnalysis analysis) {
+    ReuploadGuidance guidance = analysis == null ? null : analysis.reuploadGuidance();
+    return guidance == null ? null : guidance.name();
   }
 
   /** 문자열 리스트를 구분자로 합친다. null/빈 값은 "". */

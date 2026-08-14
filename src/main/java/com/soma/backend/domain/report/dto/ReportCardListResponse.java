@@ -2,12 +2,14 @@ package com.soma.backend.domain.report.dto;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.repository.ReportCardRow;
 
 /**
@@ -20,8 +22,16 @@ public record ReportCardListResponse(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<Card> list,
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Pagination pagination) {
 
-  public static ReportCardListResponse from(Page<ReportCardRow> page) {
-    List<Card> cards = page.getContent().stream().map(Card::from).toList();
+  /**
+   * 카드 목록 조립.
+   *
+   * @param analyses 리포트 id → 분석 처리 상태. 카드 쿼리에 실패 뷰를 조인하면 실패 문서 N건당 카드가 복제되므로
+   *                 배치 조회 결과를 여기서 붙인다. 맵에 없는 리포트(= 조회 degrade 포함)는 PROCESSING으로 내린다
+   */
+  public static ReportCardListResponse from(Page<ReportCardRow> page, Map<UUID, ReportAnalysis> analyses) {
+    List<Card> cards = page.getContent().stream()
+        .map(row -> Card.from(row, analyses.get(row.reportId())))
+        .toList();
     return new ReportCardListResponse(cards, Pagination.from(page));
   }
 
@@ -29,6 +39,10 @@ public record ReportCardListResponse(
    * 카드 항목(리뷰 1건, 리뷰가 없는 미검수 리포트는 리뷰 필드가 빈 카드). status는 고객 노출
    * 매핑(CLOSED→MATCHED), accidentType은 코드값(traffic 등)이다. reviewedAt·adjusterNickname은 그 리뷰
    * 값으로, 리뷰가 없거나 담당 사정사가 없으면 null이다.
+   *
+   * <p>{@code analysisState}·{@code analysisFailureReason}·{@code analysisFailureMessage}는 REPORTS.status와
+   * 다른 축(OCR·AI 처리 파이프라인)이다. 무음 실패(업로드했는데 아무 일도 안 일어남)를 이 목록에서 바로
+   * 드러내기 위한 필드로, 실패가 아니면 사유·문구는 null이다(design.md §5-3).
    */
   public record Card(
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
@@ -43,9 +57,17 @@ public record ReportCardListResponse(
       @Schema(nullable = true) LocalDateTime reviewedAt,
       @Schema(nullable = true) String adjusterNickname,
       @Schema(nullable = true) Integer offeredAmount,
-      @Schema(nullable = true) String treatment) {
+      @Schema(nullable = true) String treatment,
+      @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
+          description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED | BLOCKED(AI 입력 가드레일 차단)",
+          allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED"}) String analysisState,
+      @Schema(nullable = true, description = "analysis_state가 FAILED일 때만 non-null(BLOCKED은 null)")
+      String analysisFailureReason,
+      @Schema(nullable = true,
+          description = "analysis_state가 FAILED 또는 BLOCKED일 때만 non-null. 사용자 노출 문구")
+      String analysisFailureMessage) {
 
-    public static Card from(ReportCardRow row) {
+    public static Card from(ReportCardRow row, ReportAnalysis analysis) {
       return new Card(
           row.reportId(),
           ReportResponseSupport.customerStatus(row.status()),
@@ -59,7 +81,10 @@ public record ReportCardListResponse(
           row.reviewedAt(),
           row.adjusterNickname(),
           row.offeredAmount(),
-          row.treatment());
+          row.treatment(),
+          ReportResponseSupport.analysisState(analysis),
+          ReportResponseSupport.analysisFailureReason(analysis),
+          ReportResponseSupport.analysisFailureMessage(analysis));
     }
   }
 }

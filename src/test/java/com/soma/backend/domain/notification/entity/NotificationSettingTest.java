@@ -64,6 +64,17 @@ class NotificationSettingTest {
   }
 
   @Test
+  @DisplayName("Q9 — ANALYSIS_FAILED는 토글을 전부 꺼도 항상 true다(시스템 실패 통지라 수신 거부 대상 아님)")
+  void allowsAnalysisFailedAlwaysTrue() {
+    NotificationSetting setting = NotificationSetting.createDefault(USER_ID);
+    setting.applyPatch(false, false, false, false, false, false, false, false, false, false);
+
+    assertThat(setting.allows(NotificationType.ANALYSIS_FAILED)).isTrue();
+    // 짝이 되는 성공 알림(analysis_complete)과는 분리돼 있어, 그 토글을 꺼도 실패 통지는 남는다.
+    assertThat(setting.allows(NotificationType.ANALYSIS_COMPLETE)).isFalse();
+  }
+
+  @Test
   @DisplayName("전용 토글이 없는 PROPOSAL_CLOSED는 다른 토글을 모두 꺼도 fail-open(true)이다")
   void allowsProposalClosedIsFailOpenTrue() {
     NotificationSetting setting = NotificationSetting.createDefault(USER_ID);

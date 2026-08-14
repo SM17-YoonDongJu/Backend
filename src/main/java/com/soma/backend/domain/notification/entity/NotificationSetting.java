@@ -84,6 +84,11 @@ public class NotificationSetting {
       case NEW_REVIEW_REQUEST -> newReviewRequest;
       case REVIEW_DEADLINE_SOON -> reviewDeadlineSoon;
       case CHAT_MESSAGE, CONSULT_REQUESTED -> consultMessage;
+      // 마케팅이 아니라 사용자 액션(재업로드 등)이 필요할 수 있는 시스템 실패 통지다. 토글로 끌 수 있게 하면
+      // 이 알림이 없애려는 무음 실패를 다시 만들므로 항상 발송한다(analysis_complete 토글과 분리).
+      case ANALYSIS_FAILED -> true;
+      // AI 입력 가드레일 차단도 같은 이유로 항상 발송한다(§ANALYSIS_FAILED 주석 참고).
+      case REPORT_BLOCKED -> true;
       case PROPOSAL_CLOSED -> true;
       default -> true;
     };

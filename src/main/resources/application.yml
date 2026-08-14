@@ -26,7 +26,12 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
+      # 10 → 15: ReportAnalysisStatusQueryService.resolveAll이 REQUIRES_NEW라, 목록/상세 조회
+      # 요청 하나가 바깥 트랜잭션 커넥션을 쥔 채로 그 안에서 잠깐 커넥션을 하나 더 잡는다(degrade 격리를
+      # 위해 필요 — 같은 트랜잭션에서 예외를 잡으면 Hibernate가 세션을 rollback-only로 표시해 커밋 시점에
+      # 다시 실패한다). 동시 요청이 몰리면 실효 동시성이 사실상 절반이 되어 10에서는 connection-timeout이
+      # 날 수 있어 여유를 뒀다.
+      maximum-pool-size: 15
       minimum-idle: 5
       connection-timeout: 30000
   
@@ -66,6 +71,17 @@ jwt:
   refresh-token-expiry: 1209600000 # 14일
 
 app:
+  report:
+    # 분석(OCR·AI) 확정 실패 알림 스윕 주기(ms). AI 워커가 ai.ocr_job_failures에 남긴 terminal 실패를
+    # 폴링해 인앱 알림 + FCM 푸시로 통지한다(리포트당 1회, reports.analysis_failure_notified_at 가드).
+    # 결정적 실패는 업로드 후 수십 초~수 분에 확정되므로 분 단위면 충분하다.
+    analysis-failure-sweep-interval-ms: ${ANALYSIS_FAILURE_SWEEP_INTERVAL_MS:60000}
+    # false면 스윕을 no-op으로 만든다(테스트·ai 스키마 미가용 환경).
+    analysis-failure-sweep-enabled: ${ANALYSIS_FAILURE_SWEEP_ENABLED:true}
+    # BLOCKED(AI 입력 가드레일 차단) 알림 스윕 주기(ms). reports.status='BLOCKED'를 직접 스캔한다 —
+    # 가드레일이 OCR·초안 생성 이전에 끊겨 ai.ocr_job_failures에는 흔적이 없다(F1 후속).
+    blocked-sweep-interval-ms: ${BLOCKED_SWEEP_INTERVAL_MS:60000}
+    blocked-sweep-enabled: ${BLOCKED_SWEEP_ENABLED:true}
   sqs:
     # OCR 트리거 발행 대상 SQS 큐 이름. dev·prod는 .env의 SQS_OCR_QUEUE_NAME(brbs-ocr-job-queue-{env})으로 주입,
     # 로컬/test는 기본값 ocr-job-queue. OutboxRelay가 이 이름으로 GetQueueUrl 한다.

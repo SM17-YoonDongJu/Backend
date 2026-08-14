@@ -47,6 +47,13 @@ app:
     secure: false
   outbox:
     enabled: false
+  report:
+    # 테스트 컨텍스트에는 ai 스키마(AI 워커 소유)가 없다 — 스윕을 꺼서 폴링 실패 로그와 테스트 간섭을 막는다.
+    # 스윕 자체를 검증하는 테스트는 이 플래그를 켜고 부트스트랩 SQL로 ai.ocr_job_failures를 준비한다.
+    analysis-failure-sweep-enabled: false
+    # BLOCKED 스윕은 ai 스키마와 무관하지만(reports만 스캔), 다른 테스트의 BLOCKED 리포트 픽스처에
+    # 스윕이 끼어들어 알림이 중복 생성되는 걸 막기 위해 기본은 꺼둔다. 검증 테스트는 이 플래그를 켠다.
+    blocked-sweep-enabled: false
 
 jwt:
   secret: testsecretkeyforcitestingonly32chars!!

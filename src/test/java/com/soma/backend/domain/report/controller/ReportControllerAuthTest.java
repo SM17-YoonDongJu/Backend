@@ -31,6 +31,7 @@ import com.soma.backend.domain.report.dto.Pagination;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.service.ProposalQueryService;
+import com.soma.backend.domain.report.service.ReportAnalysisStatusQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
 import com.soma.backend.domain.report.service.ReportQueryService;
 import com.soma.backend.global.exception.BusinessException;
@@ -72,6 +73,9 @@ class ReportControllerAuthTest {
 
   @MockitoBean
   private ProposalQueryService proposalQueryService;
+
+  @MockitoBean
+  private ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
 
   @MockitoBean
   private TokenBlacklistRepository tokenBlacklistRepository;
@@ -126,7 +130,8 @@ class ReportControllerAuthTest {
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-1",
         1_000_000, 2_000_000, 3,
         LocalDateTime.of(2026, 7, 27, 12, 0), "홍사정",
-        8_500_000, "후유장해");
+        8_500_000, "후유장해",
+        "COMPLETED", null, null);
     ReportCardListResponse response =
         new ReportCardListResponse(List.of(card), new Pagination(1, 10, 1, 1, false));
     given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt())).willReturn(response);
@@ -160,7 +165,8 @@ class ReportControllerAuthTest {
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
         null, null, 0,
         null, null,
-        null, null);
+        null, null,
+        "PROCESSING", null, null);
     ReportCardListResponse response =
         new ReportCardListResponse(List.of(card), new Pagination(1, 10, 1, 1, false));
     given(reportQueryService.getUserReports(any(), any(), anyInt(), anyInt())).willReturn(response);
@@ -208,7 +214,8 @@ class ReportControllerAuthTest {
         LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
         1_000_000, 2_000_000, 1,
         LocalDateTime.of(2026, 7, 27, 12, 0), "김사정",
-        null, "후유장해");
+        null, "후유장해",
+        "COMPLETED", null, null);
     given(reportQueryService.getReceivedProposals(any(), anyInt(), anyInt()))
         .willReturn(new ReportCardListResponse(List.of(card), new Pagination(2, 10, 1, 1, false)));
 
@@ -248,7 +255,8 @@ class ReportControllerAuthTest {
         12_000_000, 18_000_000, 8_500_000,
         List.of("상해후유장해"), List.of("일상생활배상책임"), List.of("대법원 2019다12345"),
         List.of(issue), "후유장해 청구가 가능한가요?", adjusterId, "HIGH", "20260727-1",
-        "검수 의견입니다", LocalDateTime.of(2026, 7, 27, 12, 0), adjuster);
+        "검수 의견입니다", LocalDateTime.of(2026, 7, 27, 12, 0), adjuster,
+        "COMPLETED", null, null);
     given(reportQueryService.getReportDetail(any(), any(), any())).willReturn(response);
 
     mockMvc.perform(get("/reports/{id}", reportId).with(authenticatedAs(userId)))
