@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,6 +22,12 @@ import com.soma.backend.domain.report.entity.ReportStatus;
 public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRepositoryCustom {
 
   List<Report> findAllByIdIn(List<UUID> ids);
+
+  /**
+   * BLOCKED 알림 스윕 대상 — reports를 직접 스캔한다(ai.ocr_job_failures 저널에는 흔적이 없어 조인 불필요).
+   * 파생 쿼리로 충분한 단순 조회라 QueryDSL을 쓰지 않는다(하네스 쿼리 규칙).
+   */
+  List<Report> findAllByStatusAndBlockedNotifiedAtIsNull(ReportStatus status, Pageable pageable);
 
   /**
    * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이

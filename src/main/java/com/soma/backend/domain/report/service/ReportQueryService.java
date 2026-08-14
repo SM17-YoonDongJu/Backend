@@ -1,10 +1,12 @@
 package com.soma.backend.domain.report.service;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -13,10 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportReviewIssue;
@@ -33,6 +37,7 @@ import com.soma.backend.global.exception.ErrorCode;
  * 고객 리포트 조회 유스케이스(design.md §6) — 목록·상세. CQRS 조회 전용. 소유자(userId=principal) 스코프로
  * 본인 리포트를 전 상태(AWAITING_INSPECTION 포함) 반환한다. 상세 조회는 소유자(USER) 또는 사정사만 허용한다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -44,13 +49,14 @@ public class ReportQueryService {
   private final ReportRepository reportRepository;
   private final ReportIssueRepository reportIssueRepository;
   private final ReportReviewRepository reportReviewRepository;
+  private final ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
 
   /** userId 소유 리포트 카드 목록. status는 옵션 필터(REPORTS.status), page는 1-based. */
   public ReportCardListResponse getUserReports(UUID userId, String status, int page, int size) {
     ReportStatus statusFilter = parseStatus(status);
     Pageable pageable = PageRequest.of(Math.max(page - 1, 0), clampSize(size));
     Page<ReportCardRow> rows = reportRepository.findUserReportCards(userId, statusFilter, pageable);
-    return ReportCardListResponse.from(rows);
+    return ReportCardListResponse.from(rows, analyses(rows));
   }
 
   /**
@@ -60,7 +66,7 @@ public class ReportQueryService {
   public ReportCardListResponse getReceivedProposals(UUID userId, int page, int size) {
     Pageable pageable = PageRequest.of(Math.max(page - 1, 0), clampSize(size));
     Page<ReportCardRow> rows = reportRepository.findReportsWithProposals(userId, pageable);
-    return ReportCardListResponse.from(rows);
+    return ReportCardListResponse.from(rows, analyses(rows));
   }
 
   /**
@@ -78,7 +84,31 @@ public class ReportQueryService {
     List<ReportIssue> issues = reportIssueRepository.findAllByReportId(reportId);
     CustomerReportDetailRow row = reportRepository.findCustomerReportDetail(reportId);
     Map<UUID, String> opinions = loadAdjusterOpinions(row.acceptedReviewId());
-    return CustomerReportDetailResponse.from(report, issues, row, opinions);
+    ReportAnalysis analysis = analysesOrDegrade(List.of(reportId)).get(reportId);
+    return CustomerReportDetailResponse.from(report, issues, row, opinions, analysis);
+  }
+
+  /** 카드 페이지에 붙일 분석 상태를 리포트 id 배치 조회 1회로 만든다(카드 쿼리 조인 금지 — 행 복제). */
+  private Map<UUID, ReportAnalysis> analyses(Page<ReportCardRow> rows) {
+    return analysesOrDegrade(rows.getContent().stream().map(ReportCardRow::reportId).toList());
+  }
+
+  /**
+   * 분석 상태 배치 조회 + degrade. {@code ai.ocr_job_failures}는 AI 워커 소유라 GRANT 미적용·미배포 상태가
+   * 있을 수 있는데, 목록·상세는 서비스의 핵심 화면이라 그 이유로 통째로 500이 되면 안 된다. 조회에 실패하면
+   * 빈 맵을 반환해 분석 필드만 PROCESSING으로 낮춰 내리고(가용성 우선) 경고 로그를 남긴다(design.md §8 E14).
+   *
+   * <p>{@code resolveAll}이 별도 트랜잭션(REQUIRES_NEW)이라 여기서 예외를 잡아도 이 조회 트랜잭션은
+   * rollback-only로 오염되지 않는다. 로그에는 내부 식별자(s3_key·user_ref)를 남기지 않는다(design.md §12 S4).
+   */
+  private Map<UUID, ReportAnalysis> analysesOrDegrade(Collection<UUID> reportIds) {
+    try {
+      return reportAnalysisStatusQueryService.resolveAll(reportIds);
+    } catch (DataAccessException ex) {
+      log.warn("분석 처리 상태 조회 실패 — PROCESSING으로 degrade한다(대상 {}건). cause={}",
+          reportIds.size(), ex.getMostSpecificCause().getMessage());
+      return Map.of();
+    }
   }
 
   /**

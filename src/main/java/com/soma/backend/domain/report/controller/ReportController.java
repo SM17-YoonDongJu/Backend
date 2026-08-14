@@ -21,8 +21,10 @@ import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
 import com.soma.backend.domain.report.dto.ProposalDecisionRequest;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
+import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.service.ProposalQueryService;
+import com.soma.backend.domain.report.service.ReportAnalysisStatusQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
 import com.soma.backend.domain.report.service.ReportQueryService;
 import com.soma.backend.global.response.ApiResponse;
@@ -44,6 +46,7 @@ public class ReportController {
   private final ReportCommandService reportCommandService;
   private final ReportQueryService reportQueryService;
   private final ProposalQueryService proposalQueryService;
+  private final ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
 
   /**
    * 사건 정보 입력
@@ -90,6 +93,21 @@ public class ReportController {
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
     CustomerReportDetailResponse data =
         reportQueryService.getReportDetail(principal.getUserId(), principal.getRole(), reportId);
+    return ResponseEntity.ok(ApiResponse.ok(data));
+  }
+
+  /**
+   * 리포트 분석(OCR·AI) 처리 상태 조회. POST /reports가 202로 끝나므로 FE가 결과를 폴링하는 얇은 엔드포인트다.
+   *
+   * <p>인가는 상세 조회와 달리 <b>소유자 전용</b>이다(사정사 포함 그 외 403, 없으면 404). 실패 문서 파일명이
+   * 실리는 유일한 응답이라 최소 권한으로 닫았다 — 근거는 {@code ReportAnalysisStatusQueryService}
+   * javadoc(design.md §12 S3). 사정사에게 필요한 분석 상태는 목록·상세의 평면 3필드로 전달된다.
+   */
+  @GetMapping("/reports/{reportId}/analysis-status")
+  public ResponseEntity<ApiResponse<ReportAnalysisStatusResponse>> analysisStatus(
+      @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
+    ReportAnalysisStatusResponse data =
+        reportAnalysisStatusQueryService.getAnalysisStatus(principal.getUserId(), reportId);
     return ResponseEntity.ok(ApiResponse.ok(data));
   }
 
