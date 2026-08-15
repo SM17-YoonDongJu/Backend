@@ -84,7 +84,7 @@ class ReportCommandServiceTest {
 
     CreateReportResponse response = service.createReport(userId, request);
 
-    assertThat(response.status()).isEqualTo(ReportStatus.AWAITING_INSPECTION);
+    assertThat(response.status()).isEqualTo("AWAITING_INSPECTION");
     assertThat(response.reportId()).isNotNull();
     verify(reportAttachmentRepository, times(2)).save(any());
 
@@ -112,7 +112,7 @@ class ReportCommandServiceTest {
 
     CreateReportResponse response = service.createReport(userId, request);
 
-    assertThat(response.status()).isEqualTo(ReportStatus.AWAITING_INSPECTION);
+    assertThat(response.status()).isEqualTo("AWAITING_INSPECTION");
     assertThat(response.reportId()).isNotNull();
     verify(ocrJobOutboxPort, never()).enqueue(any());
   }
