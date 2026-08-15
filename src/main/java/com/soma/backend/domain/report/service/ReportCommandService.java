@@ -7,21 +7,26 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
 
+import com.soma.backend.domain.chat.dto.ConsultationRoomResult;
+import com.soma.backend.domain.chat.service.ChatRoomCommandService;
 import com.soma.backend.domain.report.dto.CreateReportRequest;
 import com.soma.backend.domain.report.dto.CreateReportResponse;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.ReportReview;
+import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.entity.UserClaim;
 import com.soma.backend.domain.report.entity.claim.ClaimDetails;
+import com.soma.backend.domain.report.entity.event.ConsultationRequestedEvent;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
@@ -48,6 +53,8 @@ public class ReportCommandService {
   private final ReportAttachmentRepository reportAttachmentRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final OcrJobOutboxPort ocrJobOutboxPort;
+  private final ChatRoomCommandService chatRoomCommandService;
+  private final ApplicationEventPublisher eventPublisher;
 
   /** POST /reports — 사고 정보 입력 수신 → 저장 → OCR 트리거 발행. 202(비동기). */
   public CreateReportResponse createReport(UUID userId, CreateReportRequest request) {
@@ -106,7 +113,7 @@ public class ReportCommandService {
     return CreateReportResponse.from(report);
   }
 
-  /** PATCH /reports/{reportId}/proposals/{proposalId} — 본인 리포트의 특정 제안 채택/거절. */
+  /** PATCH /reports/{reportId}/proposals/{proposalId} — 본인 리포트의 특정 제안 상담 시작/채택/거절. */
   public ProposalDecisionResponse decide(UUID userId, UUID reportId, UUID proposalId, String status) {
     ReviewStatus decision = parseDecision(status);
 
@@ -122,18 +129,41 @@ public class ReportCommandService {
       throw new BusinessException(ErrorCode.PROPOSAL_NOT_FOUND);
     }
 
+    UUID chatRoomId = null;
     if (decision == ReviewStatus.ACCEPTED) {
       review.accept();
       report.accept(review.getAdjusterId());
+    } else if (decision == ReviewStatus.COUNSELING) {
+      chatRoomId = startCounseling(report, review);
     } else {
       review.reject();
     }
 
     return new ProposalDecisionResponse(
-        reportId, review.getId(), review.getAdjusterId(), report.getStatus(), review.getStatus());
+        reportId, review.getId(), review.getAdjusterId(), report.getStatus(), review.getStatus(), chatRoomId);
   }
 
-  /** ACCEPTED/REJECTED만 허용 — 그 외 값은 400. */
+  /**
+   * 상담 시작(제안 "상담 수락"): 제안 SENT→COUNSELING, 리포트 →COUNSELING 전이를 먼저 끝내고 그 다음
+   * chat 도메인에 방 개설을 위임한다. 순서가 중요하다 — 던질 수 있는 검증(제안 종료 상태·리포트 전이표
+   * 위반)을 방 INSERT 앞에 모아 고아 방이 생기지 않게 한다(ReportReviewCommandService의 스켈레톤 순서와
+   * 같은 사고방식). 방이 새로 열렸을 때만 사정사에게 상담 요청 알림을 발행한다(재요청 스팸 방지).
+   */
+  private UUID startCounseling(Report report, ReportReview review) {
+    review.startCounseling();
+    report.applyReviewTransition(ReportStatus.COUNSELING);
+
+    ConsultationRoomResult room = chatRoomCommandService.openConsultationRoom(
+        report.getUserId(), review.getAdjusterId(), report.getId(), review.getId());
+
+    if (room.created()) {
+      eventPublisher.publishEvent(new ConsultationRequestedEvent(
+          review.getAdjusterId(), report.getUserId(), report.getId(), review.getId(), room.chatRoomId()));
+    }
+    return room.chatRoomId();
+  }
+
+  /** ACCEPTED/REJECTED/COUNSELING만 허용 — 그 외 값(SENT 포함)은 400. */
   private ReviewStatus parseDecision(String status) {
     if (!StringUtils.hasText(status)) {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
@@ -144,7 +174,7 @@ public class ReportCommandService {
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }
-    if (decision != ReviewStatus.ACCEPTED && decision != ReviewStatus.REJECTED) {
+    if (decision == ReviewStatus.SENT) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }
     return decision;

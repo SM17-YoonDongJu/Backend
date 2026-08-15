@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -28,8 +30,11 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
 import com.soma.backend.domain.report.dto.Pagination;
+import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
+import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.service.ProposalQueryService;
 import com.soma.backend.domain.report.service.ReportAnalysisStatusQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
@@ -309,5 +314,95 @@ class ReportControllerAuthTest {
     mockMvc.perform(get("/reports/{id}", UUID.randomUUID()).with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("REPORT_NOT_FOUND"));
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // PATCH /reports/{reportId}/proposals/{proposalId} — 상담 시작/채택/거절 (design.md §8-6 #14~#16)
+  // -----------------------------------------------------------------------------------------
+
+  private String decideBody(String status) {
+    return "{\"status\":\"" + status + "\"}";
+  }
+
+  @Test
+  @DisplayName("status=COUNSELING이면 200 + data.chat_room_id(snake_case)를 non-null로 내려준다")
+  void decideCounselingReturnsChatRoomId() throws Exception {
+    UUID reportId = UUID.randomUUID();
+    UUID proposalId = UUID.randomUUID();
+    UUID adjusterId = UUID.randomUUID();
+    UUID chatRoomId = UUID.randomUUID();
+    given(reportCommandService.decide(any(), any(), any(), eq("COUNSELING")))
+        .willReturn(new ProposalDecisionResponse(reportId, proposalId, adjusterId,
+            ReportStatus.COUNSELING, ReviewStatus.COUNSELING, chatRoomId));
+
+    mockMvc.perform(patch("/reports/{id}/proposals/{pid}", reportId, proposalId)
+            .with(authenticatedAs(UUID.randomUUID()))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(decideBody("COUNSELING")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("200"))
+        .andExpect(jsonPath("$.data.report_id").value(reportId.toString()))
+        .andExpect(jsonPath("$.data.proposal_id").value(proposalId.toString()))
+        .andExpect(jsonPath("$.data.adjuster_id").value(adjusterId.toString()))
+        .andExpect(jsonPath("$.data.report_status").value("COUNSELING"))
+        .andExpect(jsonPath("$.data.review_status").value("COUNSELING"))
+        .andExpect(jsonPath("$.data.chat_room_id").value(chatRoomId.toString()));
+  }
+
+  @Test
+  @DisplayName("status=ACCEPTED면 200이고 data.chat_room_id는 null이다(회귀 방지)")
+  void decideAcceptedReturnsNullChatRoomId() throws Exception {
+    UUID reportId = UUID.randomUUID();
+    UUID proposalId = UUID.randomUUID();
+    given(reportCommandService.decide(any(), any(), any(), eq("ACCEPTED")))
+        .willReturn(new ProposalDecisionResponse(reportId, proposalId, UUID.randomUUID(),
+            ReportStatus.CLOSED, ReviewStatus.ACCEPTED, null));
+
+    mockMvc.perform(patch("/reports/{id}/proposals/{pid}", reportId, proposalId)
+            .with(authenticatedAs(UUID.randomUUID()))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(decideBody("ACCEPTED")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.report_status").value("CLOSED"))
+        .andExpect(jsonPath("$.data.review_status").value("ACCEPTED"))
+        .andExpect(jsonPath("$.data.chat_room_id").value(nullValue()));
+  }
+
+  @Test
+  @DisplayName("비소유자가 상담을 시작하려 하면 서비스가 던진 403 FORBIDDEN을 그대로 전달한다")
+  void decideCounselingByNonOwnerReturns403() throws Exception {
+    given(reportCommandService.decide(any(), any(), any(), any()))
+        .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
+
+    mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
+            .with(authenticatedAs(UUID.randomUUID()))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(decideBody("COUNSELING")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+  }
+
+  @Test
+  @DisplayName("비로그인이면 PATCH /reports/{id}/proposals/{pid}는 401 LOGIN_REQUIRED")
+  void unauthenticatedDecideReturns401() throws Exception {
+    mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(decideBody("COUNSELING")))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
+  }
+
+  @Test
+  @DisplayName("제안이 이미 종료 상태면 서비스가 던진 409 INVALID_STATE_TRANSITION을 그대로 전달한다")
+  void decideCounselingOnTerminalProposalReturns409() throws Exception {
+    given(reportCommandService.decide(any(), any(), any(), any()))
+        .willThrow(new BusinessException(ErrorCode.INVALID_STATE_TRANSITION));
+
+    mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
+            .with(authenticatedAs(UUID.randomUUID()))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(decideBody("COUNSELING")))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVALID_STATE_TRANSITION"));
   }
 }

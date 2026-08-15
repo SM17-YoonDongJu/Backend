@@ -13,14 +13,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.soma.backend.domain.chat.dto.ConsultationRoomResult;
+import com.soma.backend.domain.chat.service.ChatRoomCommandService;
 import com.soma.backend.domain.report.dto.CreateReportRequest;
 import com.soma.backend.domain.report.dto.CreateReportResponse;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
@@ -29,6 +33,7 @@ import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
+import com.soma.backend.domain.report.entity.event.ConsultationRequestedEvent;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
@@ -38,7 +43,7 @@ import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.infra.sqs.OcrJob;
 import com.soma.backend.infra.sqs.OcrJobOutboxPort;
 
-/** ReportCommandService 유스케이스 검증 — 생성(아웃박스 발행 포함) + 제안 채택/거절. */
+/** ReportCommandService 유스케이스 검증 — 생성(아웃박스 발행 포함) + 제안 상담 시작/채택/거절. */
 @ExtendWith(MockitoExtension.class)
 class ReportCommandServiceTest {
 
@@ -52,6 +57,10 @@ class ReportCommandServiceTest {
   private ReportReviewRepository reportReviewRepository;
   @Mock
   private OcrJobOutboxPort ocrJobOutboxPort;
+  @Mock
+  private ChatRoomCommandService chatRoomCommandService;
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
   @InjectMocks
   private ReportCommandService service;
 
@@ -141,18 +150,42 @@ class ReportCommandServiceTest {
     assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
     assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.ACCEPTED);
     assertThat(response.adjusterId()).isEqualTo(adjusterId);
+    // 회귀 방지(design.md §8-2): ACCEPTED 경로는 방을 조회·개설하지 않으므로 chat_room_id는 항상 null이다
+    assertThat(response.chatRoomId()).isNull();
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test
+  @DisplayName("제안 거절은 리포트 상태를 건드리지 않는다")
   void decide_rejected_keepsReportStatus() {
-    given(reportRepository.findById(reportId))
-        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION)));
+    Report report = reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION);
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
 
     ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "REJECTED");
 
     assertThat(response.reportStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
     assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.REJECTED);
+    assertThat(response.chatRoomId()).isNull();
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("회귀: 상담 중(COUNSELING) 제안을 리포트 경로로 채택해도 chat_room_id는 null이고 방을 조회하지 않는다")
+  void decide_accepted_returnsNullChatRoomId_whenReviewAlreadyCounseling() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.COUNSELING)));
+    ReportReview counseling = review();
+    ReflectionTestUtils.setField(counseling, "status", ReviewStatus.COUNSELING);
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(counseling));
+
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "ACCEPTED");
+
+    assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
+    assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.ACCEPTED);
+    assertThat(response.chatRoomId()).isNull();
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test
@@ -206,6 +239,194 @@ class ReportCommandServiceTest {
     assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "REJECTED"))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // status=COUNSELING (상담 시작 → 채팅방 개설) — design.md §8-1 · §8-6 #1~#6
+  // ---------------------------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("COUNSELING: 제안·리포트를 COUNSELING으로 전이하고 개설된 방 id를 응답에 담는다")
+  void decide_counseling_opensRoomAndTransitions() {
+    // Given
+    UUID chatRoomId = UUID.randomUUID();
+    Report report = reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION);
+    ReportReview review = review();
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review));
+    given(chatRoomCommandService.openConsultationRoom(userId, adjusterId, reportId, proposalId))
+        .willReturn(new ConsultationRoomResult(chatRoomId, true));
+
+    // When
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "COUNSELING");
+
+    // Then
+    assertThat(response.chatRoomId()).isEqualTo(chatRoomId);
+    assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.COUNSELING);
+    assertThat(response.reportStatus()).isEqualTo(ReportStatus.COUNSELING);
+    assertThat(review.getStatus()).isEqualTo(ReviewStatus.COUNSELING);
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.COUNSELING);
+    verify(chatRoomCommandService, times(1))
+        .openConsultationRoom(userId, adjusterId, reportId, proposalId);
+  }
+
+  @Test
+  @DisplayName("COUNSELING: 미채택(NOT_SELECTED) 리포트에서도 상담을 재개할 수 있다")
+  void decide_counseling_resumesFromNotSelectedReport() {
+    UUID chatRoomId = UUID.randomUUID();
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.NOT_SELECTED)));
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
+    given(chatRoomCommandService.openConsultationRoom(any(), any(), any(), any()))
+        .willReturn(new ConsultationRoomResult(chatRoomId, true));
+
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "COUNSELING");
+
+    assertThat(response.reportStatus()).isEqualTo(ReportStatus.COUNSELING);
+    assertThat(response.chatRoomId()).isEqualTo(chatRoomId);
+  }
+
+  @Test
+  @DisplayName("COUNSELING: 방이 새로 열렸으면 사정사 수신 CONSULT_REQUESTED 이벤트를 1회 발행한다")
+  void decide_counseling_publishesConsultRequestedEvent_whenRoomCreated() {
+    // Given
+    UUID chatRoomId = UUID.randomUUID();
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION)));
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
+    given(chatRoomCommandService.openConsultationRoom(any(), any(), any(), any()))
+        .willReturn(new ConsultationRoomResult(chatRoomId, true));
+
+    // When
+    service.decide(userId, reportId, proposalId, "COUNSELING");
+
+    // Then
+    ArgumentCaptor<ConsultationRequestedEvent> eventCaptor =
+        ArgumentCaptor.forClass(ConsultationRequestedEvent.class);
+    verify(eventPublisher, times(1)).publishEvent(eventCaptor.capture());
+    ConsultationRequestedEvent event = eventCaptor.getValue();
+    assertThat(event.adjusterId()).isEqualTo(adjusterId);
+    assertThat(event.userId()).isEqualTo(userId);
+    assertThat(event.reportId()).isEqualTo(reportId);
+    assertThat(event.proposalId()).isEqualTo(proposalId);
+    assertThat(event.chatRoomId()).isEqualTo(chatRoomId);
+  }
+
+  @Test
+  @DisplayName("COUNSELING: 이미 방이 있으면(재요청·더블클릭) 같은 방 id를 돌려주고 알림을 재발행하지 않는다")
+  void decide_counseling_doesNotPublish_whenRoomAlreadyExists() {
+    // Given — 제안이 이미 COUNSELING이라 startCounseling은 멱등 no-op이다
+    UUID chatRoomId = UUID.randomUUID();
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.COUNSELING)));
+    ReportReview counseling = review();
+    ReflectionTestUtils.setField(counseling, "status", ReviewStatus.COUNSELING);
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(counseling));
+    given(chatRoomCommandService.openConsultationRoom(any(), any(), any(), any()))
+        .willReturn(new ConsultationRoomResult(chatRoomId, false));
+
+    // When
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "COUNSELING");
+
+    // Then
+    assertThat(response.chatRoomId()).isEqualTo(chatRoomId);
+    assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.COUNSELING);
+    assertThat(response.reportStatus()).isEqualTo(ReportStatus.COUNSELING);
+    verify(eventPublisher, never()).publishEvent(any(ConsultationRequestedEvent.class));
+  }
+
+  @Test
+  @DisplayName("COUNSELING: 검수 전(AWAITING_INSPECTION) 리포트면 409, 방 개설은 시도조차 하지 않는다(고아 방 방지)")
+  void decide_counseling_invalidStateTransition_whenReportAwaitingInspection() {
+    // Given
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_INSPECTION)));
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
+
+    // When & Then — 상태 전이 검증을 방 INSERT 앞에 모아둔 순서 계약(실제 롤백은 트랜잭션이 담당)
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "COUNSELING"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(eventPublisher, never()).publishEvent(any(ConsultationRequestedEvent.class));
+  }
+
+  @Test
+  @DisplayName("COUNSELING: 종결(CLOSED) 리포트면 409, 방 개설을 시도하지 않는다")
+  void decide_counseling_invalidStateTransition_whenReportClosed() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.CLOSED)));
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
+
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "COUNSELING"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("COUNSELING: AI 가드레일 차단(BLOCKED) 리포트면 409, 방 개설을 시도하지 않는다")
+  void decide_counseling_invalidStateTransition_whenReportBlocked() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.BLOCKED)));
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
+
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "COUNSELING"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("COUNSELING: 이미 채택(ACCEPTED)된 제안이면 409, 방 개설을 시도하지 않는다")
+  void decide_counseling_invalidStateTransition_whenProposalAlreadyAccepted() {
+    Report report = reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION);
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    ReportReview decided = review();
+    ReflectionTestUtils.setField(decided, "status", ReviewStatus.ACCEPTED);
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(decided));
+
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "COUNSELING"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+    // 제안 검증이 리포트 전이보다 먼저다 — 리포트 상태도 오염되지 않는다
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("COUNSELING: 이미 거절(REJECTED)된 제안이면 409, 방 개설을 시도하지 않는다")
+  void decide_counseling_invalidStateTransition_whenProposalAlreadyRejected() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION)));
+    ReportReview decided = review();
+    ReflectionTestUtils.setField(decided, "status", ReviewStatus.REJECTED);
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(decided));
+
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "COUNSELING"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("status=SENT는 enum이지만 결정 값이 아니라 400 VALIDATION_ERROR다")
+  void decide_validationError_whenStatusSent() {
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "SENT"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("status가 비어 있으면 400 MISSING_REQUIRED_FIELD")
+  void decide_missingRequiredField_whenStatusBlank() {
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "  "))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD));
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, null))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD));
   }
 
   private Report reportOwnedBy(UUID ownerId, ReportStatus status) {
