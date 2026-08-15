@@ -46,7 +46,8 @@ description: "Spring Boot 코드 리뷰, 테스트 작성(JUnit5·Mockito·@Spri
 
 4. **도메인 Enum 일관성** — 코드의 Enum 값이 ERD 및 `domain-glossary.md`와 일치하는지 확인:
    - `USERS.role`: `USER`, `CERTIFICATED_ADJUSTER`, `UNCERTIFICATED_ADJUSTER`, `ADMIN`
-   - `REPORTS.status`: `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED`
+   - `REPORTS.status`: `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED`, `BLOCKED`(AI 입력 가드레일 차단 — AI 워커가 원시 SQL로 직접 세팅, 종료 상태, `Report.ALLOWED_TRANSITIONS`엔 자기 자신으로만 존재)
+   - `AnalysisState`(REPORTS.status와 별도 축, 분석 파이프라인 처리 상태): `PROCESSING`, `COMPLETED`, `FAILED`, `BLOCKED` — DB 컬럼 아님, `ai.ocr_job_failures`+`REPORTS.status` 조회 시점 파생값(`ReportAnalysis.of`). 저장하는 코드가 있으면 그 자체가 버그다(design.md §8 E2 — 정상 회복 전이를 깨뜨림)
    - `REPORTS.accident_type`: `medical_indemnity`, `traffic`, `disability`, `cancer_diagnosis`, `fire`, `liability`, `other` (영문 소문자, DB 저장값)
    - `SUBSCRIPTIONS.plan`: `none`, `basic`, `premium` / `status`: `ACTIVE`, `EXPIRED`, `CANCELED` — **계획, 미구현** (현재 subscriptions 테이블·엔티티 없음. 구독·결제 도메인 구현 시 검증)
 
