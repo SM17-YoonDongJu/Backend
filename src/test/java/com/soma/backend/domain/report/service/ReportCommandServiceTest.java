@@ -172,6 +172,22 @@ class ReportCommandServiceTest {
   }
 
   @Test
+  @DisplayName("상담 중(COUNSELING) 제안은 리포트 경로로 거절할 수 없다 — 채팅방 정리는 PATCH /chats/{id}/reject에서만")
+  void decide_rejected_invalidStateTransition_whenReviewAlreadyCounseling() {
+    given(reportRepository.findById(reportId))
+        .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.COUNSELING)));
+    ReportReview counseling = review();
+    ReflectionTestUtils.setField(counseling, "status", ReviewStatus.COUNSELING);
+    given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(counseling));
+
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "REJECTED"))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+
+    assertThat(counseling.getStatus()).isEqualTo(ReviewStatus.COUNSELING);
+  }
+
+  @Test
   @DisplayName("회귀: 상담 중(COUNSELING) 제안을 리포트 경로로 채택해도 chat_room_id는 null이고 방을 조회하지 않는다")
   void decide_accepted_returnsNullChatRoomId_whenReviewAlreadyCounseling() {
     given(reportRepository.findById(reportId))

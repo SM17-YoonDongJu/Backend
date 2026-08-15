@@ -136,6 +136,11 @@ public class ReportCommandService {
     } else if (decision == ReviewStatus.COUNSELING) {
       chatRoomId = startCounseling(report, review);
     } else {
+      // COUNSELING 제안은 이 경로가 채팅방을 정리하지 않는다 — 거절을 허용하면 방이 ACTIVE인 채
+      // 영구히 결정 불가 상태(accept·reject 둘 다 409)로 남는다. 거절은 PATCH /chats/{id}/reject로만.
+      if (review.getStatus() == ReviewStatus.COUNSELING) {
+        throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
+      }
       review.reject();
     }
 

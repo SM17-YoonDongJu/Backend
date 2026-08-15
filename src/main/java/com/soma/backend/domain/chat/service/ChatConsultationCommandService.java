@@ -12,10 +12,13 @@ import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 import com.soma.backend.domain.chat.entity.ChatRoom;
+import com.soma.backend.domain.chat.entity.ChatRoomStatus;
 import com.soma.backend.domain.chat.repository.ChatMessageRepository;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
+import com.soma.backend.domain.report.entity.ReportStatus;
+import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -63,7 +66,8 @@ public class ChatConsultationCommandService {
   }
 
   /**
-   * 상담 거절: 내 제안 REJECTED + report COUNSELING→AWAITING_ADOPTION + 방 CLOSED. 다른 제안은 유지.
+   * 상담 거절: 내 제안 REJECTED + 방 CLOSED. 다른 제안은 유지한다. 리포트를 채택 대기로 되돌리는 것은
+   * 이 거절로 리포트의 마지막 상담이 끝났을 때만이다 — 형제 제안이 아직 COUNSELING이면 그대로 둔다.
    * SYSTEM 메시지 브로드캐스트.
    */
   @Transactional
@@ -73,12 +77,26 @@ public class ChatConsultationCommandService {
     Report report = loadReport(room.getReportId());
 
     myReview.reject();
-    report.reopenForAdoption();
+    if (!hasOtherCounselingReview(report.getId(), myReview.getId())
+        && report.getStatus() == ReportStatus.COUNSELING) {
+      report.reopenForAdoption();
+    }
     room.close();
     appendSystemMessage(room, REJECT_SYSTEM_MESSAGE);
 
     return new ConsultationDecisionResponse(
         room.getId(), room.getStatus(), myReview.getStatus(), report.getId(), report.getStatus());
+  }
+
+  /**
+   * 같은 리포트의 다른 제안이 아직 COUNSELING 중인지 — 있으면 리포트를 채택 대기로 되돌리지 않는다
+   * (다른 상담이 살아있는데 리포트가 채택 대기 풀로 새어 나가 스케줄러에 NOT_SELECTED로 잘못 전이되는
+   * 것을 막는다).
+   */
+  private boolean hasOtherCounselingReview(UUID reportId, UUID myReviewId) {
+    return reportReviewRepository.findByReportId(reportId).stream()
+        .anyMatch(sibling -> !sibling.getId().equals(myReviewId)
+            && sibling.getStatus() == ReviewStatus.COUNSELING);
   }
 
   /** 소유자(user)이며 상담 결정이 가능한(파이프라인) 방인지 확인 후 반환한다. */
@@ -121,7 +139,7 @@ public class ChatConsultationCommandService {
   private void closeSiblingRooms(UUID reportId, UUID myRoomId) {
     List<ChatRoom> siblings = chatRoomRepository.findByReportId(reportId);
     for (ChatRoom sibling : siblings) {
-      if (sibling.getId().equals(myRoomId)) {
+      if (sibling.getId().equals(myRoomId) || sibling.getStatus() == ChatRoomStatus.CLOSED) {
         continue;
       }
       sibling.close();
