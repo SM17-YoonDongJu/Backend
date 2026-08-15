@@ -109,7 +109,8 @@ class BlockedReportNotificationSweeperTest {
 
     ArgumentCaptor<ReportStatus> statusCaptor = ArgumentCaptor.forClass(ReportStatus.class);
     ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-    verify(reportRepository).findAllByStatusAndBlockedNotifiedAtIsNull(statusCaptor.capture(), pageableCaptor.capture());
+    verify(reportRepository)
+        .findAllByStatusAndBlockedNotifiedAtIsNull(statusCaptor.capture(), pageableCaptor.capture());
     assertThat(statusCaptor.getValue()).isEqualTo(ReportStatus.BLOCKED);
     assertThat(pageableCaptor.getValue()).isEqualTo(PageRequest.of(0, 100));
   }

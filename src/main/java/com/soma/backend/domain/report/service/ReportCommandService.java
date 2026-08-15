@@ -103,7 +103,7 @@ public class ReportCommandService {
           Instant.now().toString()));
     }
 
-    return new CreateReportResponse(report.getId(), report.getStatus());
+    return CreateReportResponse.from(report);
   }
 
   /** PATCH /reports/{reportId}/proposals/{proposalId} — 본인 리포트의 특정 제안 채택/거절. */
