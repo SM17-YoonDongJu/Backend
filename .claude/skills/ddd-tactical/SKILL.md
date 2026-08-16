@@ -157,6 +157,13 @@ public class MatchService {
 - 서비스는 **얇게** — 흐름(조회→도메인 메서드 호출→저장)만 조율하고, 규칙 판단은 엔티티에 위임한다. `if`로 상태를 검사해서 값을 바꾸고 있다면 그 로직은 엔티티로 내려야 한다는 신호다(anemic domain 경고).
 - 컨텍스트 간 협력은 상대 컨텍스트의 `service`를 주입해 쓰되, 순환 의존이 생기면 도메인 이벤트로 끊는다.
 
+### REQUIRES_NEW로 실패를 격리할 때 흔한 함정
+
+다른 팀 소유 스키마 조회(`ai.*`)처럼 실패할 수 있는 조회를 `@Transactional(propagation = REQUIRES_NEW)`로 감싸는 이유는 그 실패가 호출자 트랜잭션을 오염시키지 않게 하기 위해서다. 아래 둘을 지키지 않으면 격리가 무의미해진다(NEEDS_REUPLOAD degrade 버그, PR #251에서 실제로 겪음).
+
+1. **같은 클래스 안에서 자가 호출(self-invocation)하면 `@Transactional`이 안 걸린다.** Spring AOP 프록시는 외부에서 들어오는 호출만 가로채므로, `this.foo()`로 부르면 새 트랜잭션이 열리지 않고 호출자의 트랜잭션을 그대로 쓴다. 격리하려면 **별도 Bean**(`@Component`/`@Service`)으로 분리해 주입해서 호출해야 한다(`ReportHoldInitializer`·`TerminalFailureJournalReader` 참고).
+2. **격리된 트랜잭션 안에서 예외를 삼키면 안 된다.** PostgreSQL은 트랜잭션 안에서 문장 하나가 실패하면 커밋·롤백 전까지 이후 모든 문장이 "current transaction is aborted"로 연쇄 실패한다. `REQUIRES_NEW` 메서드 **안에서** try/catch로 예외를 삼키면, Spring은 메서드가 정상 종료했다고 보고 그 트랜잭션을 커밋하려 드는데 DB 세션은 이미 aborted 상태라 커밋 자체가 실패한다. 예외는 메서드 밖으로 그대로 던져 Spring이 트랜잭션을 롤백하게 하고, **호출자가 그 호출 지점에서(자기 트랜잭션 안에서) 잡아야** 한다.
+
 ## 6. Controller · DTO 매핑
 
 컨트롤러는 얇게. HTTP ↔ 유스케이스 변환만 한다.

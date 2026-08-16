@@ -82,6 +82,10 @@ app:
     # 가드레일이 OCR·초안 생성 이전에 끊겨 ai.ocr_job_failures에는 흔적이 없다(F1 후속).
     blocked-sweep-interval-ms: ${BLOCKED_SWEEP_INTERVAL_MS:60000}
     blocked-sweep-enabled: ${BLOCKED_SWEEP_ENABLED:true}
+    # NEEDS_REUPLOAD(OCR 품질 미달로 AI가 리포트 생성을 건너뜀) 알림 스윕 주기(ms). reports.status를 직접
+    # 스캔한다 — 실패가 아니라 품질 판정이라 ai.ocr_job_failures에 흔적이 없다.
+    needs-reupload-sweep-interval-ms: ${NEEDS_REUPLOAD_SWEEP_INTERVAL_MS:60000}
+    needs-reupload-sweep-enabled: ${NEEDS_REUPLOAD_SWEEP_ENABLED:true}
   sqs:
     # OCR 트리거 발행 대상 SQS 큐 이름. dev·prod는 .env의 SQS_OCR_QUEUE_NAME(brbs-ocr-job-queue-{env})으로 주입,
     # 로컬/test는 기본값 ocr-job-queue. OutboxRelay가 이 이름으로 GetQueueUrl 한다.

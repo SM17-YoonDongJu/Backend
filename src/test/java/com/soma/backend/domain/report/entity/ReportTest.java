@@ -118,6 +118,38 @@ class ReportTest {
   }
 
   @Test
+  @DisplayName("NEEDS_REUPLOAD는 종료 상태라 검수 착수·채택·미채택·재채택 전이가 전부 막힌다")
+  void needsReuploadIsTerminal() {
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).applyReviewStart())
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).accept(UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).markNotSelected())
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).reopenForAdoption())
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD로는 어떤 상태에서도 applyReviewTransition으로 전이할 수 없다(AI 워커가 직접 쓰는 값)")
+  void nothingTransitionsIntoNeedsReuploadViaDomainMethod() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+
+    assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.NEEDS_REUPLOAD))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
   @DisplayName("검수 단계(AWAITING_INSPECTION)에서는 임의로 CLOSED로 건너뛸 수 없다(상태머신 우선, design.md §2.5)")
   void cannotSkipToClosedFromInspection() {
     Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
@@ -298,6 +330,23 @@ class ReportTest {
     assertThat(notifiedAt).isNotNull();
     assertThat(second).isFalse();
     assertThat(ReflectionTestUtils.getField(report, "blockedNotifiedAt")).isEqualTo(notifiedAt);
+  }
+
+  @Test
+  @DisplayName("markNeedsReuploadNotified: 최초 1회만 true를 반환하고 시각을 기록한다(단방향 멱등 가드)")
+  void markNeedsReuploadNotifiedIsOneWayGuard() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+
+    boolean first = report.markNeedsReuploadNotified();
+    LocalDateTime notifiedAt = (LocalDateTime) ReflectionTestUtils.getField(report, "needsReuploadNotifiedAt");
+    boolean second = report.markNeedsReuploadNotified();
+
+    assertThat(first).isTrue();
+    assertThat(notifiedAt).isNotNull();
+    assertThat(second).isFalse();
+    assertThat(ReflectionTestUtils.getField(report, "needsReuploadNotifiedAt")).isEqualTo(notifiedAt);
+    // BLOCKED 가드와 컬럼을 공유하지 않는다.
+    assertThat(ReflectionTestUtils.getField(report, "blockedNotifiedAt")).isNull();
   }
 
   @Test

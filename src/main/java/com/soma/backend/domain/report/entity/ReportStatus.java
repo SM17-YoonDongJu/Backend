@@ -7,6 +7,10 @@ package com.soma.backend.domain.report.entity;
  * 유지되고, 이후 상담이 잡히면 COUNSELING으로 재개될 수 있다(종료 상태 아님, CLOSED 직행은 없음).
  * BLOCKED는 AI 워커의 입력 가드레일(보험·법률 외 주제, PII 복호화 실패 등)이 접수를 차단했을 때 AI
  * 레포가 원시 SQL로 직접 기록하는 값이다(Backend 도메인 메서드를 거치지 않음) — 종료 상태로 취급한다.
+ * NEEDS_REUPLOAD는 OCR 품질 판정(신뢰도 미달 + 이름/도메인 정보 미검출)으로 AI 워커가 리포트 생성을
+ * 건너뛸 때 마찬가지로 원시 SQL로 직접 기록하는 값이다 — 실패가 아니라 품질 판정이라
+ * {@code ai.ocr_job_failures}(OCR 실패 저널)에 흔적이 남지 않는다. 종료 상태이며 회복 경로는 재시도가
+ * 아니라 재업로드(POST /reports로 새 리포트 생성)뿐이다.
  * 전이 허용 여부는 {@link Report#applyReviewTransition(ReportStatus)} 참고.
  */
 public enum ReportStatus {
@@ -15,5 +19,6 @@ public enum ReportStatus {
   COUNSELING,
   CLOSED,
   NOT_SELECTED,
-  BLOCKED
+  BLOCKED,
+  NEEDS_REUPLOAD
 }

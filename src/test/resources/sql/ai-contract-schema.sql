@@ -37,3 +37,23 @@ CREATE TABLE IF NOT EXISTS ai.ocr_job_failures (
 
 CREATE INDEX IF NOT EXISTS ocr_job_failures_terminal_idx
     ON ai.ocr_job_failures (last_failed_at) WHERE terminal;
+
+-- =====================================================================
+-- ai.ocr_results 테스트 부트스트랩 (AI 워커 소유 계약 테이블의 미러) — 문서별 OCR 품질 판정.
+--
+-- GRANT SELECT (id, report_id, claim_id, attachment_id, doc_type, doc_index, ocr_quality)
+--   ON ai.ocr_results TO app_owner (AI 레포 PR #66, 아직 미배포 — id 컬럼은 OcrResultView의
+--   Hibernate 식별자 요구사항 때문에 Backend QA 피드백으로 추가됨).
+--
+-- Backend는 이 테이블을 만들지 않는다(운영·개발 DB엔 절대 적용 금지) — OcrResultView가 @Subselect라
+-- Hibernate DDL 생성 대상이 아니므로, 조회를 검증하는 테스트만 이 스크립트로 직접 준비한다.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ai.ocr_results (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id    uuid,
+    claim_id     text,
+    attachment_id uuid,
+    doc_type     text,
+    doc_index    int,
+    ocr_quality  text NOT NULL
+);

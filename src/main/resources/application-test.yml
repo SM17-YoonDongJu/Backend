@@ -54,6 +54,9 @@ app:
     # BLOCKED 스윕은 ai 스키마와 무관하지만(reports만 스캔), 다른 테스트의 BLOCKED 리포트 픽스처에
     # 스윕이 끼어들어 알림이 중복 생성되는 걸 막기 위해 기본은 꺼둔다. 검증 테스트는 이 플래그를 켠다.
     blocked-sweep-enabled: false
+    # NEEDS_REUPLOAD 스윕도 같은 이유로 기본은 꺼둔다(다른 테스트의 NEEDS_REUPLOAD 픽스처에 스윕이 끼어들어
+    # 알림이 중복 생성되는 걸 막는다). 검증 테스트는 이 플래그를 켠다.
+    needs-reupload-sweep-enabled: false
 
 jwt:
   secret: testsecretkeyforcitestingonly32chars!!

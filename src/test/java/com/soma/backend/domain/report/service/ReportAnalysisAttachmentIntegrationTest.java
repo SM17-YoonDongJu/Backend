@@ -71,6 +71,7 @@ class ReportAnalysisAttachmentIntegrationTest {
   @AfterEach
   void cleanUp() {
     jdbcTemplate.update("DELETE FROM ai.ocr_job_failures");
+    jdbcTemplate.update("DELETE FROM ai.ocr_results");
     reportRepository.deleteAll();
   }
 
@@ -91,6 +92,22 @@ class ReportAnalysisAttachmentIntegrationTest {
         VALUES (?, ?, ?, ?, 'ValueError', 2, ?, ?, ?)
         """,
         UUID.randomUUID(), reportId, UUID.randomUUID(), failureClass, terminal, FAILED_AT, FAILED_AT);
+  }
+
+  /** 품질 미달(needs_reupload) 판정 행 삽입 — ai.ocr_results, PR #66 GRANT 대상. */
+  private UUID insertNeedsReuploadDocument(UUID reportId) {
+    UUID attachmentId = UUID.randomUUID();
+    jdbcTemplate.update("""
+        INSERT INTO ai.ocr_results (id, report_id, claim_id, attachment_id, doc_type, doc_index, ocr_quality)
+        VALUES (?, ?, 'claim-1', ?, 'diagnosis', 0, 'needs_reupload')
+        """,
+        UUID.randomUUID(), reportId, attachmentId);
+    return attachmentId;
+  }
+
+  /** AI 워커가 원시 SQL로 세팅하는 종료 상태를 같은 값으로 만든다(전이표를 거치지 않는 진입). */
+  private void markStatus(UUID reportId, String status) {
+    jdbcTemplate.update("UPDATE reports SET status = ? WHERE id = ?", status, reportId);
   }
 
   private Map<UUID, ReportCardListResponse.Card> cardsByReportId() {
@@ -180,5 +197,26 @@ class ReportAnalysisAttachmentIntegrationTest {
     assertThat(analyses).containsOnlyKeys(failed, clean);
     assertThat(analyses.get(failed).isFailed()).isTrue();
     assertThat(analyses.get(clean).state().name()).isEqualTo("PROCESSING");
+  }
+
+  @Test
+  @DisplayName("resolveAll — 개별 문서 품질 게이트(ai.ocr_results)로 걸린 NEEDS_REUPLOAD는 REQUIRES_NEW 격리를 넘어 문서를 특정한다")
+  void resolveAllExposesQualityGateDocumentAcrossRequiresNewBoundary() {
+    // Given: PR #65/#66 — OCR은 성공했지만 신뢰도 낮음+도메인 정보 미검출로 ocr_quality='needs_reupload'.
+    // NeedsReuploadDocumentReader가 REQUIRES_NEW(별도 커넥션)라 실제 커밋 경로로만 이 조회가 검증된다.
+    UUID reportId = saveReport(false);
+    UUID attachmentId = insertNeedsReuploadDocument(reportId);
+    markStatus(reportId, "NEEDS_REUPLOAD");
+
+    // When
+    Map<UUID, ReportAnalysis> analyses = reportAnalysisStatusQueryService.resolveAll(List.of(reportId));
+
+    // Then
+    ReportAnalysis analysis = analyses.get(reportId);
+    assertThat(analysis.state().name()).isEqualTo("NEEDS_REUPLOAD");
+    assertThat(analysis.documents()).singleElement().satisfies(document -> {
+      assertThat(document.attachmentId()).isEqualTo(attachmentId);
+      assertThat(document.reason()).isNull();
+    });
   }
 }

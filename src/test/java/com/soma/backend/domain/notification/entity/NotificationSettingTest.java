@@ -75,6 +75,15 @@ class NotificationSettingTest {
   }
 
   @Test
+  @DisplayName("REPORT_NEEDS_REUPLOAD는 토글을 전부 꺼도 항상 true다(재업로드라는 사용자 액션이 필요한 시스템 통지)")
+  void allowsNeedsReuploadAlwaysTrue() {
+    NotificationSetting setting = NotificationSetting.createDefault(USER_ID);
+    setting.applyPatch(false, false, false, false, false, false, false, false, false, false);
+
+    assertThat(setting.allows(NotificationType.REPORT_NEEDS_REUPLOAD)).isTrue();
+  }
+
+  @Test
   @DisplayName("전용 토글이 없는 PROPOSAL_CLOSED는 다른 토글을 모두 꺼도 fail-open(true)이다")
   void allowsProposalClosedIsFailOpenTrue() {
     NotificationSetting setting = NotificationSetting.createDefault(USER_ID);

@@ -24,5 +24,16 @@ public enum AnalysisState {
    * {@code ai.ocr_job_failures}에 행이 남지 않으므로, 이 신호만은 저널이 아니라 {@code reports.status}에서
    * 직접 판정한다(REPORTS.status 축 위반이지만, 그러지 않으면 이 상태가 PROCESSING으로 영원히 오표시된다).
    */
-  BLOCKED
+  BLOCKED,
+
+  /**
+   * {@link ReportStatus#NEEDS_REUPLOAD}(OCR 품질 미달 — 문서를 다시 올려야 진행된다). 실패가 아니라 품질
+   * 판정이라 {@code ai.ocr_job_failures}에 행이 남지 않으므로, {@code BLOCKED}와 같은 예외로 저널이 아니라
+   * {@code reports.status}에서 직접 판정한다.
+   *
+   * <p>{@link #FAILED}로 뭉치지 않는다 — FAILED는 계약상 대표 사유(failure_reason)와 실패 시각이 non-null인데
+   * 둘 다 저널 파생값이라 채울 수 없고, 무엇보다 사용자 액션이 정반대다(FAILED의 대표 사유는 대부분 재업로드가
+   * 무의미한 HOLD·NOT_SUPPORTED인 반면 이 상태는 재업로드가 유일한 해결책이다).
+   */
+  NEEDS_REUPLOAD
 }
