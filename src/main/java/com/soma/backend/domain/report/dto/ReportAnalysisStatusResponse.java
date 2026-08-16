@@ -55,8 +55,9 @@ public record ReportAnalysisStatusResponse(
     LocalDateTime failedAt,
 
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
-        description = "실패 문서 목록. FAILED가 아니면 빈 배열(null 아님). NEEDS_REUPLOAD는 현재 빈 배열이며 "
-            + "문서 단위 상세는 후속 과제다")
+        description = "실패 문서 목록. FAILED는 항상 채워진다. NEEDS_REUPLOAD는 청구 fan-in으로 걸린 경우"
+            + "(ai.ocr_job_failures에 흔적 있음)만 채워지고, 개별 문서 품질 게이트로 걸린 경우는 저널에 흔적이 "
+            + "없어 빈 배열이다(문서 단위 상세는 후속 과제). 그 외 상태는 빈 배열(null 아님)")
     List<FailedDocument> failedDocuments) {
 
   /**

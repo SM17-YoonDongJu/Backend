@@ -175,6 +175,37 @@ class ReportAnalysisTest {
     // Then: AnalysisFailureNotificationSweeper는 isFailed()로 통지 대상을 고르므로 중복 알림이 나가지 않는다.
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
     assertThat(analysis.isFailed()).isFalse();
+  }
+
+  @Test
+  @DisplayName("청구 fan-in으로 걸린 NEEDS_REUPLOAD는 저널에 흔적이 있으면 문서를 특정해 보여준다")
+  void needsReuploadFromClaimFanInExposesFailedDocuments() {
+    // Given: PR #67 — 필수 문서 미인식·비필수 문서 결정적 실패는 개별 문서 품질 게이트와 달리 저널에 남는다.
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    UUID attachmentId = UUID.randomUUID();
+    OcrJobFailureView fanInFailure =
+        OcrJobFailureViewFixture.terminal(UUID.randomUUID(), attachmentId, "unreadable_file", FAILED_AT);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(fanInFailure));
+
+    // Then: 상태·문구·isFailed()는 그대로지만(모순 없음), 문서 목록은 저널에서 채워진다.
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.isFailed()).isFalse();
+    assertThat(analysis.reason()).isNull();
+    assertThat(analysis.failedAt()).isNull();
+    assertThat(analysis.documents()).hasSize(1);
+    assertThat(analysis.documents().getFirst().attachmentId()).isEqualTo(attachmentId);
+    assertThat(analysis.documents().getFirst().reason()).isEqualTo(AnalysisFailureReason.UNREADABLE_FILE);
+  }
+
+  @Test
+  @DisplayName("개별 문서 품질 게이트로 걸린 NEEDS_REUPLOAD는 저널에 흔적이 없어 문서 목록이 빈 배열이다")
+  void needsReuploadFromQualityGateHasEmptyDocuments() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
     assertThat(analysis.documents()).isEmpty();
   }
 

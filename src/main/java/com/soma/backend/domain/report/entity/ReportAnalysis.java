@@ -83,7 +83,14 @@ public record ReportAnalysis(
     // AI 초안 검사보다 앞이다(클래스 javadoc 참고): 초안이 있어도 품질 미달 판정이 이기고, 저널 검사보다
     // 앞이라 isFailed()가 false가 되어 저널 기반 스윕과의 중복 알림이 구조적으로 차단된다.
     if (report != null && report.getStatus() == ReportStatus.NEEDS_REUPLOAD) {
-      return NEEDS_REUPLOAD;
+      // 청구 fan-in으로 걸린 NEEDS_REUPLOAD(#67)는 개별 문서 품질 게이트와 달리 ai.ocr_job_failures에
+      // 흔적이 남는다 — 이미 GRANT된 저널이라 있으면 문서를 특정해 보여준다(§8 E9와 동일하게 attachment_id
+      // 없는 행은 null). 대표 사유·failed_at은 여전히 null이다(§4-2 — 문서별 사유는 있어도 리포트 단위
+      // 대표 사유·시각 개념은 이 상태에 없다). 개별 문서 품질 게이트로 걸린 경우는 저널에 흔적이 없어(A1)
+      // 이전처럼 빈 배열이다.
+      return terminalFailures == null || terminalFailures.isEmpty()
+          ? NEEDS_REUPLOAD
+          : new ReportAnalysis(AnalysisState.NEEDS_REUPLOAD, null, null, toFailedDocuments(terminalFailures));
     }
     if (report != null && report.isAiDraftGenerated()) {
       return COMPLETED;
@@ -91,9 +98,7 @@ public record ReportAnalysis(
     if (terminalFailures == null || terminalFailures.isEmpty()) {
       return PROCESSING;
     }
-    List<FailedDocument> documents = terminalFailures.stream()
-        .map(failure -> new FailedDocument(failure.getAttachmentId(), failure.reason()))
-        .toList();
+    List<FailedDocument> documents = toFailedDocuments(terminalFailures);
     AnalysisFailureReason representative =
         AnalysisFailureReason.representative(documents.stream().map(FailedDocument::reason).toList());
     LocalDateTime failedAt = terminalFailures.stream()
@@ -102,6 +107,12 @@ public record ReportAnalysis(
         .min(Comparator.naturalOrder())
         .orElse(null);
     return new ReportAnalysis(AnalysisState.FAILED, representative, failedAt, documents);
+  }
+
+  private static List<FailedDocument> toFailedDocuments(List<OcrJobFailureView> terminalFailures) {
+    return terminalFailures.stream()
+        .map(failure -> new FailedDocument(failure.getAttachmentId(), failure.reason()))
+        .toList();
   }
 
   /** 분석 진행 중(기본값). ai 저널 조회가 불가능할 때의 degrade 값이기도 하다(§8 E14). */

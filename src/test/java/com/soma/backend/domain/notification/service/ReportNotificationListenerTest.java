@@ -10,7 +10,9 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -20,14 +22,20 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.InvalidDataAccessResourceUsageException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.soma.backend.domain.notification.entity.NotificationType;
 import com.soma.backend.domain.report.entity.AnalysisFailureReason;
+import com.soma.backend.domain.report.entity.OcrJobFailureViewFixture;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
+import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
 import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
 import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
+import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
+import com.soma.backend.domain.report.service.TerminalFailureJournalReader;
 
 /**
  * ReportNotificationListener 단위 테스트.
@@ -47,6 +55,10 @@ class ReportNotificationListenerTest {
   private NotificationDispatchService notificationDispatchService;
   @Mock
   private PushNotificationService pushNotificationService;
+  @Mock
+  private TerminalFailureJournalReader terminalFailureJournalReader;
+  @Mock
+  private ReportAttachmentRepository reportAttachmentRepository;
 
   @Test
   @DisplayName("record가 true면 sendToUser로 푸시하며 data{type,reportId}를 담아 보낸다")
@@ -239,6 +251,54 @@ class ReportNotificationListenerTest {
     assertThat(dataCaptor.getValue())
         .containsEntry("type", "REPORT_NEEDS_REUPLOAD")
         .containsEntry("reportId", reportId.toString());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 청구 fan-in으로 문서가 한 건 특정되면 문서명을 담은 문구로 발송된다")
+  void onReportNeedsReuploadNamesSingleFailedDocument() {
+    // Given: PR #67 — 저널에 흔적이 남는 케이스라 attachment_id로 특정 문서를 좁힐 수 있다.
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    UUID attachmentId = UUID.randomUUID();
+    given(terminalFailureJournalReader.findTerminalFailures(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(
+            OcrJobFailureViewFixture.terminal(reportId, attachmentId, "unreadable_file", null))));
+    ReportAttachment attachment = ReportAttachment.of(reportId, "보험증권.pdf", "https://example.test/doc",
+        "application/pdf", "policy");
+    ReflectionTestUtils.setField(attachment, "id", attachmentId);
+    given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
+    given(notificationDispatchService.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    // Then
+    ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(pushNotificationService).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"),
+        eq("업로드하신 [보험증권.pdf] 문서를 알아보기 어려워요. 다시 촬영해서 올려주세요."), dataCaptor.capture());
+    assertThat(dataCaptor.getValue())
+        .containsEntry("type", "REPORT_NEEDS_REUPLOAD")
+        .containsEntry("reportId", reportId.toString())
+        .containsEntry("attachmentId", attachmentId.toString());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 저널 조회가 실패하면 일반 문구로 degrade한다(예외 전파 없음)")
+  void onReportNeedsReuploadFallsBackToGenericWhenJournalLookupFails() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(terminalFailureJournalReader.findTerminalFailures(List.of(reportId)))
+        .willThrow(new InvalidDataAccessResourceUsageException("GRANT 미적용"));
+    given(notificationDispatchService.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    assertThatCode(() -> listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId)))
+        .doesNotThrowAnyException();
+
+    verify(pushNotificationService).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
   }
 
   @Test
