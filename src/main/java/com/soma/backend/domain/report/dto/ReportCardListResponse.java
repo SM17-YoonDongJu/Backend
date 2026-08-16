@@ -59,12 +59,14 @@ public record ReportCardListResponse(
       @Schema(nullable = true) Integer offeredAmount,
       @Schema(nullable = true) String treatment,
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
-          description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED | BLOCKED(AI 입력 가드레일 차단)",
-          allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED"}) String analysisState,
-      @Schema(nullable = true, description = "analysis_state가 FAILED일 때만 non-null(BLOCKED은 null)")
+          description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED | BLOCKED(AI 입력 가드레일 차단) "
+              + "| NEEDS_REUPLOAD(OCR 품질 미달 — 문서를 다시 올려야 진행된다)",
+          allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED", "NEEDS_REUPLOAD"}) String analysisState,
+      @Schema(nullable = true,
+          description = "analysis_state가 FAILED일 때만 non-null(BLOCKED·NEEDS_REUPLOAD는 null)")
       String analysisFailureReason,
       @Schema(nullable = true,
-          description = "analysis_state가 FAILED 또는 BLOCKED일 때만 non-null. 사용자 노출 문구")
+          description = "analysis_state가 FAILED·BLOCKED·NEEDS_REUPLOAD일 때만 non-null. 사용자 노출 문구")
       String analysisFailureMessage) {
 
     public static Card from(ReportCardRow row, ReportAnalysis analysis) {

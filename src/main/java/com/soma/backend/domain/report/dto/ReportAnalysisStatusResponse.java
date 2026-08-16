@@ -27,32 +27,36 @@ public record ReportAnalysisStatusResponse(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID reportId,
 
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
-        description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED | BLOCKED"
-            + "(BLOCKED는 AI 입력 가드레일 차단 — OCR·AI 파이프라인이 시작되지 않는다)",
-        allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED"})
+        description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED | BLOCKED | NEEDS_REUPLOAD"
+            + "(BLOCKED는 AI 입력 가드레일 차단 — OCR·AI 파이프라인이 시작되지 않는다. "
+            + "NEEDS_REUPLOAD는 OCR 품질 미달 — 문서를 다시 올려야 진행된다)",
+        allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED", "NEEDS_REUPLOAD"})
     String analysisState,
 
     @Schema(nullable = true,
-        description = "대표 실패 사유. analysis_state가 FAILED일 때만 non-null(BLOCKED은 저널 기반 사유가 없어 null). "
+        description = "대표 실패 사유. analysis_state가 FAILED일 때만 non-null"
+            + "(BLOCKED·NEEDS_REUPLOAD는 저널 기반 사유가 없어 null). "
             + "MASKING_RESIDUAL | SCHEMA_INVALID | OCR_ERROR | UNKNOWN | UNREADABLE_FILE")
     String failureReason,
 
     @Schema(nullable = true,
-        description = "사용자 노출 문구. analysis_state가 FAILED 또는 BLOCKED일 때만 non-null")
+        description = "사용자 노출 문구. analysis_state가 FAILED·BLOCKED·NEEDS_REUPLOAD일 때만 non-null")
     String failureMessage,
 
     @Schema(nullable = true,
-        description = "재업로드 안내. analysis_state가 FAILED 또는 BLOCKED일 때만 non-null(BLOCKED은 항상 "
-            + "NOT_SUPPORTED — 문서 문제가 아니라 재업로드가 무의미하다). "
+        description = "재업로드 안내. analysis_state가 FAILED·BLOCKED·NEEDS_REUPLOAD일 때만 non-null"
+            + "(BLOCKED은 항상 NOT_SUPPORTED — 문서 문제가 아니라 재업로드가 무의미하다. "
+            + "NEEDS_REUPLOAD는 항상 RECOMMENDED — 재업로드가 유일한 해결책이다). "
             + "RECOMMENDED(재업로드로 해결 가능) | NOT_SUPPORTED(재업로드해도 동일) | HOLD(확인 중)")
     String reuploadGuidance,
 
     @Schema(nullable = true, description = "대표 실패 시각(최초 실패 기준). analysis_state가 FAILED일 때만 non-null. "
-        + "BLOCKED은 저널 기반 시각이 없어 null")
+        + "BLOCKED·NEEDS_REUPLOAD는 저널 기반 시각이 없어 null")
     LocalDateTime failedAt,
 
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
-        description = "실패 문서 목록. FAILED가 아니면 빈 배열(null 아님)")
+        description = "실패 문서 목록. FAILED가 아니면 빈 배열(null 아님). NEEDS_REUPLOAD는 현재 빈 배열이며 "
+            + "문서 단위 상세는 후속 과제다")
     List<FailedDocument> failedDocuments) {
 
   /**

@@ -26,6 +26,7 @@ import com.soma.backend.domain.report.entity.AnalysisFailureReason;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
 import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
+import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
 
 /**
@@ -215,6 +216,50 @@ class ReportNotificationListenerTest {
         .given(pushNotificationService).sendToUser(any(), any(), any(), any());
 
     assertThatCode(() -> listener.onReportBlocked(new ReportBlockedEvent(UUID.randomUUID(), UUID.randomUUID())))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — ReportAnalysis.needsReupload()와 동일한 문구로 발송된다(조회 API·푸시 단일 진실)")
+  void onReportNeedsReuploadUsesSameCopyAsAnalysisStatus() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(notificationDispatchService.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    // Then
+    ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(pushNotificationService).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"),
+        eq(ReportAnalysis.needsReupload().failureMessage()), dataCaptor.capture());
+    assertThat(dataCaptor.getValue())
+        .containsEntry("type", "REPORT_NEEDS_REUPLOAD")
+        .containsEntry("reportId", reportId.toString());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 토글이 꺼져 record()가 false면 푸시하지 않는다")
+  void onReportNeedsReuploadSkipsPushWhenNotAllowed() {
+    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(false);
+
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(UUID.randomUUID(), UUID.randomUUID()));
+
+    verify(pushNotificationService, never()).sendToUser(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — FCM이 실패해도 예외가 전파되지 않는다(스윕 커밋에 영향 없음)")
+  void onReportNeedsReuploadSwallowsPushException() {
+    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    willThrow(new RuntimeException("FCM down"))
+        .given(pushNotificationService).sendToUser(any(), any(), any(), any());
+
+    assertThatCode(() ->
+        listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(UUID.randomUUID(), UUID.randomUUID())))
         .doesNotThrowAnyException();
   }
 }

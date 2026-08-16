@@ -89,6 +89,8 @@ public class NotificationSetting {
       case ANALYSIS_FAILED -> true;
       // AI 입력 가드레일 차단도 같은 이유로 항상 발송한다(§ANALYSIS_FAILED 주석 참고).
       case REPORT_BLOCKED -> true;
+      // OCR 품질 미달은 재업로드라는 사용자 액션이 있어야 진행되는 통지라 더더욱 끌 수 없다.
+      case REPORT_NEEDS_REUPLOAD -> true;
       case PROPOSAL_CLOSED -> true;
       default -> true;
     };

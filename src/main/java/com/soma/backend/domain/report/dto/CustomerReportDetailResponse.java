@@ -46,12 +46,14 @@ public record CustomerReportDetailResponse(
     @Schema(nullable = true, description = "담당 사정사(adjusterId)가 없으면 null") Adjuster adjuster,
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
         description = "분석(OCR·AI) 처리 상태. REPORTS.status와 다른 축이다. "
-            + "PROCESSING | COMPLETED | FAILED | BLOCKED(AI 입력 가드레일 차단)",
-        allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED"}) String analysisState,
-    @Schema(nullable = true, description = "analysis_state가 FAILED일 때만 non-null(BLOCKED은 null)")
+            + "PROCESSING | COMPLETED | FAILED | BLOCKED(AI 입력 가드레일 차단) "
+            + "| NEEDS_REUPLOAD(OCR 품질 미달 — 문서를 다시 올려야 진행된다)",
+        allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED", "NEEDS_REUPLOAD"}) String analysisState,
+    @Schema(nullable = true,
+        description = "analysis_state가 FAILED일 때만 non-null(BLOCKED·NEEDS_REUPLOAD는 null)")
     String analysisFailureReason,
     @Schema(nullable = true,
-        description = "analysis_state가 FAILED 또는 BLOCKED일 때만 non-null. 사용자 노출 문구")
+        description = "analysis_state가 FAILED·BLOCKED·NEEDS_REUPLOAD일 때만 non-null. 사용자 노출 문구")
     String analysisFailureMessage) {
 
   /**

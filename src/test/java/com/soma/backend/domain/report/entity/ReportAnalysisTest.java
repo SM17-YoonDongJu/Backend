@@ -135,6 +135,50 @@ class ReportAnalysisTest {
   }
 
   @Test
+  @DisplayName("report.status가 NEEDS_REUPLOAD면 저널과 무관하게 NEEDS_REUPLOAD로 판정하고 문구·재업로드 안내를 채운다")
+  void needsReuploadStatusIsDerivedFromReportStatus() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.isFailed()).isFalse();
+    assertThat(analysis.reason()).isNull();
+    assertThat(analysis.failedAt()).isNull();
+    assertThat(analysis.failureMessage()).isEqualTo("업로드하신 문서를 알아보기 어려워요. 더 선명하게 다시 올려주세요.");
+    assertThat(analysis.reuploadGuidance()).isEqualTo(ReuploadGuidance.RECOMMENDED);
+    assertThat(analysis.documents()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("핵심 — AI 초안이 있어도 NEEDS_REUPLOAD가 이긴다(COMPLETED로 내리면 무음 정지가 재현된다)")
+  void needsReuploadBeatsAiDraft() {
+    // Given: AI가 일부 문서로 초안을 만든 뒤 품질 판정을 늦게 쓴 모순 상태
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    ReflectionTestUtils.setField(report, "applicableGuarantees", List.of("상해후유장해"));
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+  }
+
+  @Test
+  @DisplayName("핵심 — NEEDS_REUPLOAD는 확정 실패 행이 공존해도 isFailed()가 false다(저널 스윕 중복 알림 차단)")
+  void needsReuploadKeepsIsFailedFalseWhenJournalRowsCoexist() {
+    // Given: 품질 판정에는 저널 행이 안 생긴다는 가정이 틀린 경우(방어적 고정)
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    OcrJobFailureView lingering =
+        OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering));
+
+    // Then: AnalysisFailureNotificationSweeper는 isFailed()로 통지 대상을 고르므로 중복 알림이 나가지 않는다.
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.isFailed()).isFalse();
+    assertThat(analysis.documents()).isEmpty();
+  }
+
+  @Test
   @DisplayName("Q4 — 실패 행이 삭제되면(정상 회복) 같은 리포트가 PROCESSING으로 되돌아간다")
   void recoveryReturnsToProcessing() {
     // Given
@@ -239,7 +283,7 @@ class ReportAnalysisTest {
   }
 
   @Test
-  @DisplayName("정적 팩터리 processing()·completed()·blocked()는 실패 필드가 비어 있고 documents는 null이 아닌 빈 리스트다")
+  @DisplayName("정적 팩터리(processing·completed·blocked·needsReupload)는 실패 필드가 비고 documents는 빈 리스트다")
   void staticFactoriesAreEmptyAndNonNull() {
     assertThat(ReportAnalysis.processing().state()).isEqualTo(AnalysisState.PROCESSING);
     assertThat(ReportAnalysis.processing().documents()).isNotNull().isEmpty();
@@ -247,6 +291,8 @@ class ReportAnalysisTest {
     assertThat(ReportAnalysis.completed().documents()).isNotNull().isEmpty();
     assertThat(ReportAnalysis.blocked().state()).isEqualTo(AnalysisState.BLOCKED);
     assertThat(ReportAnalysis.blocked().documents()).isNotNull().isEmpty();
+    assertThat(ReportAnalysis.needsReupload().state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(ReportAnalysis.needsReupload().documents()).isNotNull().isEmpty();
   }
 
   @Test

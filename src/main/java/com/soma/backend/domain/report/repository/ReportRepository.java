@@ -30,6 +30,14 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
   List<Report> findAllByStatusAndBlockedNotifiedAtIsNull(ReportStatus status, Pageable pageable);
 
   /**
+   * NEEDS_REUPLOAD(OCR 품질 미달) 알림 스윕 대상 — BLOCKED와 같은 이유로 reports를 직접 스캔한다
+   * (품질 판정이라 ai.ocr_job_failures 저널에 흔적이 없어 조인 불필요). 멱등 가드 컬럼이 달라 BLOCKED
+   * 조회와 합칠 수 없다 — 파생 쿼리는 컬럼명이 메서드 이름에 박혀 파라미터화가 불가능하다.
+   * 파생 쿼리로 충분한 단순 조회라 QueryDSL을 쓰지 않는다(하네스 쿼리 규칙).
+   */
+  List<Report> findAllByStatusAndNeedsReuploadNotifiedAtIsNull(ReportStatus status, Pageable pageable);
+
+  /**
    * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이
    * 원자 증가하므로, count-then-insert 경쟁으로 인한 case_no UNIQUE 위반(→500)을 원천 차단한다(ReportHold 관례).
    */

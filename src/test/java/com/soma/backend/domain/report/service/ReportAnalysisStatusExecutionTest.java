@@ -19,10 +19,15 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAttachment;
+import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
+import com.soma.backend.domain.report.repository.PendingAnalysisFailureRow;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -53,7 +58,11 @@ class ReportAnalysisStatusExecutionTest {
   @Autowired
   private ReportAttachmentRepository reportAttachmentRepository;
   @Autowired
+  private OcrJobFailureViewRepository ocrJobFailureViewRepository;
+  @Autowired
   private JdbcTemplate jdbcTemplate;
+  @PersistenceContext
+  private EntityManager entityManager;
 
   private UUID ownerId;
   private UUID reportId;
@@ -284,5 +293,54 @@ class ReportAnalysisStatusExecutionTest {
   void resolveAllShortCircuitsOnEmptyInput() {
     assertThat(reportAnalysisStatusQueryService.resolveAll(List.of())).isEmpty();
     assertThat(reportAnalysisStatusQueryService.resolveAll(null)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("status='NEEDS_REUPLOAD'를 실제로 저장·조회해도 enum 매핑이 깨지지 않고 재업로드 안내가 나간다")
+  void needsReuploadStatusRoundTrips() {
+    // Given: AI 워커가 원시 SQL로 세팅하는 값을 같은 문자열로 저장한다(varchar(30), CHECK 없음).
+    markStatus(reportId, "NEEDS_REUPLOAD");
+
+    // When
+    ReportAnalysisStatusResponse response =
+        reportAnalysisStatusQueryService.getAnalysisStatus(ownerId, reportId);
+
+    // Then
+    assertThat(response.analysisState()).isEqualTo("NEEDS_REUPLOAD");
+    assertThat(response.failureReason()).isNull();
+    assertThat(response.failureMessage()).isEqualTo("업로드하신 문서를 알아보기 어려워요. 더 선명하게 다시 올려주세요.");
+    assertThat(response.reuploadGuidance()).isEqualTo("RECOMMENDED");
+    assertThat(response.failedAt()).isNull();
+    // 문서 단위 상세(ai.ocr_results)는 이번 스코프 밖이라 빈 배열이다.
+    assertThat(response.failedDocuments()).isNotNull().isEmpty();
+  }
+
+  @Test
+  @DisplayName("종료 상태(BLOCKED·NEEDS_REUPLOAD) 리포트는 실패 통지 스윕 대상에서 제외된다(배치 슬롯 점유 방지)")
+  void terminalStatusesAreExcludedFromPendingNotification() {
+    // Given: 세 리포트 모두 확정 실패 행을 갖지만 두 건은 전용 스윕이 통지하는 종료 상태다.
+    UUID blockedReportId = saveReport(ownerId);
+    UUID needsReuploadReportId = saveReport(ownerId);
+    insertFailure(reportId, UUID.randomUUID(), "ocr_error", true, FAILED_AT);
+    insertFailure(blockedReportId, UUID.randomUUID(), "ocr_error", true, FAILED_AT);
+    insertFailure(needsReuploadReportId, UUID.randomUUID(), "ocr_error", true, FAILED_AT);
+    markStatus(blockedReportId, "BLOCKED");
+    markStatus(needsReuploadReportId, "NEEDS_REUPLOAD");
+
+    // When
+    List<PendingAnalysisFailureRow> pending =
+        ocrJobFailureViewRepository.findPendingNotification(FAILED_AT.minusDays(1), 100);
+
+    // Then
+    assertThat(pending).extracting(PendingAnalysisFailureRow::reportId)
+        .contains(reportId)
+        .doesNotContain(blockedReportId, needsReuploadReportId);
+  }
+
+  /** AI 워커의 원시 SQL 세팅을 모사한다 — 전이표를 거치지 않는 진입이라 도메인 메서드로는 만들 수 없다. */
+  private void markStatus(UUID targetReportId, String status) {
+    reportRepository.flush();
+    jdbcTemplate.update("UPDATE reports SET status = ? WHERE id = ?", status, targetReportId);
+    entityManager.clear();
   }
 }

@@ -89,6 +89,18 @@ class AnalysisStatusOpenApiDocsTest {
   }
 
   @Test
+  @DisplayName("analysis_state의 enum 값 목록에 5개 상태가 모두 실린다(3개 스키마 — allowableValues 드리프트 방지)")
+  void analysisStateEnumCoversAllStates() throws Exception {
+    String[] states = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED", "NEEDS_REUPLOAD"};
+
+    mockMvc.perform(get("/v3/api-docs"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath(ANALYSIS_STATUS + ".properties.analysis_state.enum", hasItems(states)))
+        .andExpect(jsonPath(CARD + ".properties.analysis_state.enum", hasItems(states)))
+        .andExpect(jsonPath(DETAIL + ".properties.analysis_state.enum", hasItems(states)));
+  }
+
+  @Test
   @DisplayName("신규 엔드포인트가 문서에 등록된다(GET /reports/{reportId}/analysis-status)")
   void analysisStatusEndpointIsDocumented() throws Exception {
     mockMvc.perform(get("/v3/api-docs"))

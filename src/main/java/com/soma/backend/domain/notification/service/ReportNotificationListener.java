@@ -15,6 +15,7 @@ import com.soma.backend.domain.report.entity.AnalysisFailureReason;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
 import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
+import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
 
 /**
@@ -63,6 +64,18 @@ public class ReportNotificationListener {
     String body = ReportAnalysis.blocked().failureMessage();
     dispatch(event.userId(), NotificationType.REPORT_BLOCKED, "처리할 수 없는 요청이에요", body,
         Map.of("type", NotificationType.REPORT_BLOCKED.name(), "reportId", event.reportId().toString()));
+  }
+
+  /**
+   * OCR 품질 미달(재업로드 필요) 통지. 문구는 {@link ReportAnalysis#needsReupload()}의 것을 그대로 재사용해
+   * 조회 API 응답과 푸시가 같은 문구를 쓰게 한다(단일 진실). 사용자 과실을 단정하지 않고 다음 행동만
+   * 서술한다.
+   */
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onReportNeedsReupload(ReportNeedsReuploadEvent event) {
+    String body = ReportAnalysis.needsReupload().failureMessage();
+    dispatch(event.userId(), NotificationType.REPORT_NEEDS_REUPLOAD, "문서를 다시 올려주세요", body,
+        Map.of("type", NotificationType.REPORT_NEEDS_REUPLOAD.name(), "reportId", event.reportId().toString()));
   }
 
   private String pushTitle(AnalysisFailureReason reason) {

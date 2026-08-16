@@ -54,6 +54,11 @@ class PendingReviewCountExecutionTest {
     saveReport(ReportStatus.COUNSELING, AccidentType.OTHER, "PC-6");   // 제외
     saveReport(ReportStatus.CLOSED, AccidentType.OTHER, "PC-7");       // 제외
     saveReport(ReportStatus.NOT_SELECTED, AccidentType.OTHER, "PC-8"); // 제외
+    // AI 워커가 원시 SQL로 세팅하는 종료 상태 둘. 사정사가 손댈 수 없는 리포트라 검수 풀에서 빠져야 한다
+    // (design.md §10 E5). 특히 NEEDS_REUPLOAD는 AI 초안이 영영 안 생기므로, 풀에 남으면 사정사가 검수할
+    // 내용이 없는 리포트를 계속 보게 된다.
+    saveReport(ReportStatus.BLOCKED, AccidentType.OTHER, "PC-9");        // 제외
+    saveReport(ReportStatus.NEEDS_REUPLOAD, AccidentType.OTHER, "PC-10"); // 제외
     flushAndClear();
 
     // 보류가 없으면 전역 풀 그대로 5건.
