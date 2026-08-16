@@ -99,9 +99,11 @@ services:
       # backend와 report가 같은 raw 키를 공유한다(같은 .env.dev에서 주입되는 같은 값) — report_worker가
       # 이 컬럼들을 직접 SQL로 읽으므로 복호화가 필요하다. 상세: docs/pii-encryption-report-worker-handoff.md
       PII_ENC_KEY: ${PII_ENC_KEY}
-      # OCR 트리거 SQS 소비 (Kafka→SQS 전환, #208). ⚠️ 변수명·튜닝값은 AI report 워커의 SQS 소비자 구현과 합의 후 확정.
+      # report-worker는 Backend의 OCR 트리거 큐를 직접 소비하지 않는다 — ocr-worker(별도 배포, 이 레포 밖)가
+      # brbs-ocr-job-queue-dev를 소비해 OCR을 수행한 뒤 report-job 큐로 넘기고, report-worker는 그 결과만 받는다
+      # (Backend → ocr-worker → report-worker 2홉). 변수명이 SQS_REPORT_JOB_QUEUE_URL인 이유.
       # (튜닝 후보: 롱폴링 wait-time·visibility-timeout·배치 max-messages. DLQ는 큐 redrive policy로 구성 — 앱 env 아님.)
-      SQS_OCR_JOB_QUEUE_URL: ${SQS_OCR_JOB_QUEUE_URL}
+      SQS_REPORT_JOB_QUEUE_URL: ${SQS_REPORT_JOB_QUEUE_URL}
       # SQS 접속·큐 URL 해석에 리전 필요 — 자격증명은 dev 인스턴스 IAM Role 위임(정적 키 미주입)
       AWS_REGION: ${AWS_REGION}
       AI_BASE_URL: ${AI_BASE_URL}
