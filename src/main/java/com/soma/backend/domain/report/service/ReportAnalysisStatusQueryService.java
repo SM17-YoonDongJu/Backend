@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
 import com.soma.backend.domain.report.entity.OcrJobFailureView;
+import com.soma.backend.domain.report.entity.OcrResultView;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportAttachment;
@@ -43,6 +44,7 @@ public class ReportAnalysisStatusQueryService {
   private final ReportAttachmentRepository reportAttachmentRepository;
   private final OcrJobFailureViewRepository ocrJobFailureViewRepository;
   private final TerminalFailureJournalReader terminalFailureJournalReader;
+  private final NeedsReuploadDocumentReader needsReuploadDocumentReader;
 
   /**
    * GET /reports/{reportId}/analysis-status — 폴링용 단건 조회.
@@ -59,8 +61,11 @@ public class ReportAnalysisStatusQueryService {
    * 이미 목록·상세에 실려 나간다. 즉 사정사에게 열어봐야 추가로 주는 것은 <b>타인의 파일명뿐</b>이라
    * 최소 권한 원칙상 닫는 게 맞다. (신규 엔드포인트라 기존 소비자가 없어 축소에 따른 회귀도 없다.)
    *
-   * <p>목록·상세와 달리 실패 저널 조회 오류를 <b>삼키지 않는다</b>. 이 엔드포인트의 유일한 책임이 분석 상태
-   * 전달이라, 조회에 실패했는데 PROCESSING을 내리면 "영원히 처리 중"이라는 거짓을 말하게 된다(design.md §8 E14).
+   * <p>목록·상세와 달리 실패 저널({@code ai.ocr_job_failures}) 조회 오류를 <b>삼키지 않는다</b>. 이 엔드포인트의
+   * 유일한 책임이 분석 상태 전달이라, 조회에 실패했는데 PROCESSING을 내리면 "영원히 처리 중"이라는 거짓을 말하게
+   * 된다(design.md §8 E14). 반면 품질 미달 문서({@code ai.ocr_results}) 조회는 <b>삼킨다</b> — 이 값이 없어도
+   * 상태 판정({@code reports.status} 기반) 자체는 이미 정확하고, 이 조회는 "어느 문서인지"만 보강하기 때문이다
+   * (GRANT 미배포 상태에선 항상 실패하므로, 여기서도 실패했다고 500을 내면 이 엔드포인트 자체가 못 쓰이게 된다).
    */
   public ReportAnalysisStatusResponse getAnalysisStatus(UUID userId, UUID reportId) {
     Report report = reportRepository.findById(reportId)
@@ -71,7 +76,9 @@ public class ReportAnalysisStatusQueryService {
     }
     List<OcrJobFailureView> failures =
         ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(List.of(reportId));
-    ReportAnalysis analysis = ReportAnalysis.of(report, failures);
+    List<OcrResultView> needsReuploadDocuments =
+        needsReuploadDocumentsOrEmpty(List.of(reportId)).getOrDefault(reportId, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, failures, needsReuploadDocuments);
     return ReportAnalysisStatusResponse.of(reportId, analysis, attachmentNames(reportId, analysis));
   }
 
@@ -105,11 +112,13 @@ public class ReportAnalysisStatusQueryService {
       return Map.of();
     }
     Map<UUID, List<OcrJobFailureView>> failuresByReport = terminalFailuresOrEmpty(targets);
+    Map<UUID, List<OcrResultView>> needsReuploadDocumentsByReport = needsReuploadDocumentsOrEmpty(targets);
 
     Map<UUID, ReportAnalysis> analyses = new HashMap<>();
     for (Report report : reportRepository.findAllByIdIn(targets)) {
-      analyses.put(report.getId(),
-          ReportAnalysis.of(report, failuresByReport.getOrDefault(report.getId(), List.of())));
+      analyses.put(report.getId(), ReportAnalysis.of(report,
+          failuresByReport.getOrDefault(report.getId(), List.of()),
+          needsReuploadDocumentsByReport.getOrDefault(report.getId(), List.of())));
     }
     return analyses;
   }
@@ -120,6 +129,20 @@ public class ReportAnalysisStatusQueryService {
     } catch (DataAccessException ex) {
       log.warn("확정 실패 저널 조회 실패 — FAILED 판정만 PROCESSING으로 degrade한다(대상 {}건). "
           + "BLOCKED·NEEDS_REUPLOAD는 reports.status만으로 판정되므로 영향 없다. cause={}",
+          targets.size(), ex.getMostSpecificCause().getMessage());
+      return Map.of();
+    }
+  }
+
+  /**
+   * 품질 미달 문서 조회 실패는 항상 빈 맵으로 degrade한다(GRANT 미배포면 매번 실패). NEEDS_REUPLOAD 상태
+   * 판정 자체는 {@code reports.status}만으로 이미 정확하므로, 이 조회는 문서 특정만 못 할 뿐이다.
+   */
+  private Map<UUID, List<OcrResultView>> needsReuploadDocumentsOrEmpty(List<UUID> targets) {
+    try {
+      return needsReuploadDocumentReader.findNeedsReuploadDocuments(targets);
+    } catch (DataAccessException ex) {
+      log.debug("품질 미달 문서 조회 실패(대상 {}건, GRANT 미배포 시 정상) — 문서 특정 없이 진행한다. cause={}",
           targets.size(), ex.getMostSpecificCause().getMessage());
       return Map.of();
     }

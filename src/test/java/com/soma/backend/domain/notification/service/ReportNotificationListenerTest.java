@@ -28,6 +28,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.soma.backend.domain.notification.entity.NotificationType;
 import com.soma.backend.domain.report.entity.AnalysisFailureReason;
 import com.soma.backend.domain.report.entity.OcrJobFailureViewFixture;
+import com.soma.backend.domain.report.entity.OcrResultViewFixture;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
@@ -35,6 +36,7 @@ import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
 import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
+import com.soma.backend.domain.report.service.NeedsReuploadDocumentReader;
 import com.soma.backend.domain.report.service.TerminalFailureJournalReader;
 
 /**
@@ -57,6 +59,8 @@ class ReportNotificationListenerTest {
   private PushNotificationService pushNotificationService;
   @Mock
   private TerminalFailureJournalReader terminalFailureJournalReader;
+  @Mock
+  private NeedsReuploadDocumentReader needsReuploadDocumentReader;
   @Mock
   private ReportAttachmentRepository reportAttachmentRepository;
 
@@ -296,6 +300,50 @@ class ReportNotificationListenerTest {
 
     assertThatCode(() -> listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId)))
         .doesNotThrowAnyException();
+
+    verify(pushNotificationService).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 개별 문서 품질 게이트(ai.ocr_results)로 문서가 한 건 특정되면 문서명을 담은 문구로 발송된다")
+  void onReportNeedsReuploadNamesSingleQualityGateDocument() {
+    // Given: 저널(fan-in)엔 흔적이 없고 품질 게이트(ai.ocr_results)에만 흔적이 있는 경우(A1 정상 케이스).
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    UUID attachmentId = UUID.randomUUID();
+    given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(OcrResultViewFixture.needsReupload(reportId, attachmentId, "diagnosis"))));
+    ReportAttachment attachment = ReportAttachment.of(reportId, "진단서.pdf", "https://example.test/doc",
+        "application/pdf", "diagnosis");
+    ReflectionTestUtils.setField(attachment, "id", attachmentId);
+    given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
+    given(notificationDispatchService.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    // Then
+    verify(pushNotificationService).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"),
+        eq("업로드하신 [진단서.pdf] 문서를 알아보기 어려워요. 다시 촬영해서 올려주세요."), any());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 저널·품질 게이트를 합쳐 문서가 2건 이상이면 대표를 못 골라 일반 문구로 degrade한다")
+  void onReportNeedsReuploadFallsBackToGenericWhenMultipleDocumentsCombined() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(terminalFailureJournalReader.findTerminalFailures(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(
+            OcrJobFailureViewFixture.terminal(reportId, UUID.randomUUID(), "unreadable_file", null))));
+    given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(OcrResultViewFixture.needsReupload(reportId, UUID.randomUUID(), "diagnosis"))));
+    given(notificationDispatchService.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
 
     verify(pushNotificationService).sendToUser(
         eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());

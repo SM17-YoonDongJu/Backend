@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.entity;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -71,26 +72,38 @@ public record ReportAnalysis(
   }
 
   /**
-   * 실패 저널(terminal=true 행)과 리포트의 AI 초안 존재 여부로 상태를 판정한다.
-   *
-   * @param report           대상 리포트(성공·차단 신호 판정용)
-   * @param terminalFailures 해당 리포트의 확정 실패 행. 호출자는 반드시 terminal=true만 넘긴다
+   * {@link #of(Report, List, List)}에 품질 미달 문서 없이 위임한다(개별 문서 품질 게이트 GRANT가 아직
+   * 없거나 호출자가 그 데이터를 다루지 않는 경우).
    */
   public static ReportAnalysis of(Report report, List<OcrJobFailureView> terminalFailures) {
+    return of(report, terminalFailures, List.of());
+  }
+
+  /**
+   * 실패 저널(terminal=true 행)·품질 미달 문서·리포트의 AI 초안 존재 여부로 상태를 판정한다.
+   *
+   * @param report                대상 리포트(성공·차단 신호 판정용)
+   * @param terminalFailures      해당 리포트의 확정 실패 행({@code ai.ocr_job_failures}). 호출자는 반드시
+   *                              terminal=true만 넘긴다
+   * @param needsReuploadDocuments 해당 리포트의 품질 미달 문서({@code ai.ocr_results}, {@code ocr_quality
+   *                              = 'needs_reupload'}). GRANT 미배포 상태면 호출자가 빈 리스트로 degrade한다
+   */
+  public static ReportAnalysis of(
+      Report report, List<OcrJobFailureView> terminalFailures, List<OcrResultView> needsReuploadDocuments) {
     if (report != null && report.getStatus() == ReportStatus.BLOCKED) {
       return BLOCKED;
     }
     // AI 초안 검사보다 앞이다(클래스 javadoc 참고): 초안이 있어도 품질 미달 판정이 이기고, 저널 검사보다
     // 앞이라 isFailed()가 false가 되어 저널 기반 스윕과의 중복 알림이 구조적으로 차단된다.
     if (report != null && report.getStatus() == ReportStatus.NEEDS_REUPLOAD) {
-      // 청구 fan-in으로 걸린 NEEDS_REUPLOAD(#67)는 개별 문서 품질 게이트와 달리 ai.ocr_job_failures에
-      // 흔적이 남는다 — 이미 GRANT된 저널이라 있으면 문서를 특정해 보여준다(§8 E9와 동일하게 attachment_id
-      // 없는 행은 null). 대표 사유·failed_at은 여전히 null이다(§4-2 — 문서별 사유는 있어도 리포트 단위
-      // 대표 사유·시각 개념은 이 상태에 없다). 개별 문서 품질 게이트로 걸린 경우는 저널에 흔적이 없어(A1)
-      // 이전처럼 빈 배열이다.
-      return terminalFailures == null || terminalFailures.isEmpty()
+      // 두 계약이 서로 다른 문서 집합을 특정할 수 있다 — 청구 fan-in(#67)은 ai.ocr_job_failures에 흔적이
+      // 남고, 개별 문서 품질 게이트는 ai.ocr_results.ocr_quality='needs_reupload'로 특정된다(둘 다 없으면
+      // A1대로 개별 게이트가 원인). 대표 사유·failed_at은 여전히 null이다(§4-2 — 문서별 사유는 있어도
+      // 리포트 단위 대표 사유·시각 개념은 이 상태에 없다).
+      List<FailedDocument> documents = mergeFailedDocuments(terminalFailures, needsReuploadDocuments);
+      return documents.isEmpty()
           ? NEEDS_REUPLOAD
-          : new ReportAnalysis(AnalysisState.NEEDS_REUPLOAD, null, null, toFailedDocuments(terminalFailures));
+          : new ReportAnalysis(AnalysisState.NEEDS_REUPLOAD, null, null, documents);
     }
     if (report != null && report.isAiDraftGenerated()) {
       return COMPLETED;
@@ -107,6 +120,19 @@ public record ReportAnalysis(
         .min(Comparator.naturalOrder())
         .orElse(null);
     return new ReportAnalysis(AnalysisState.FAILED, representative, failedAt, documents);
+  }
+
+  private static List<FailedDocument> mergeFailedDocuments(
+      List<OcrJobFailureView> terminalFailures, List<OcrResultView> needsReuploadDocuments) {
+    List<FailedDocument> merged = new ArrayList<>();
+    if (terminalFailures != null) {
+      merged.addAll(toFailedDocuments(terminalFailures));
+    }
+    if (needsReuploadDocuments != null) {
+      needsReuploadDocuments.forEach(
+          document -> merged.add(new FailedDocument(document.getAttachmentId(), null)));
+    }
+    return merged;
   }
 
   private static List<FailedDocument> toFailedDocuments(List<OcrJobFailureView> terminalFailures) {
@@ -165,11 +191,13 @@ public record ReportAnalysis(
   }
 
   /**
-   * 실패 문서 1건.
+   * 실패·재업로드 필요 문서 1건.
    *
-   * @param attachmentId {@code report_attachments.id}. 저널에 없으면 null(§8 E9)
-   * @param reason       문서별 실패 사유
+   * @param attachmentId {@code report_attachments.id}. 저널·품질 판정 어느 쪽에도 없으면 null(§8 E9)
+   * @param reason       문서별 실패 사유. {@code ai.ocr_job_failures} 기반(FAILED, 청구 fan-in
+   *                     NEEDS_REUPLOAD)만 채워진다 — {@code ai.ocr_results} 기반(개별 문서 품질 게이트
+   *                     NEEDS_REUPLOAD)은 다른 계약이라 대응하는 사유가 없어 null이다(§4-2, ACL 경계)
    */
-  public record FailedDocument(@Nullable UUID attachmentId, AnalysisFailureReason reason) {
+  public record FailedDocument(@Nullable UUID attachmentId, @Nullable AnalysisFailureReason reason) {
   }
 }

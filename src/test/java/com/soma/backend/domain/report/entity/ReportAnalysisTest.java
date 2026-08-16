@@ -210,6 +210,42 @@ class ReportAnalysisTest {
   }
 
   @Test
+  @DisplayName("개별 문서 품질 게이트(ai.ocr_results)로 걸린 NEEDS_REUPLOAD는 문서를 특정하되 사유는 null이다")
+  void needsReuploadFromQualityGateExposesDocumentWithNullReason() {
+    // Given: PR #65/#66 — 다른 계약(ai.ocr_results.ocr_quality)이라 AnalysisFailureReason으로 옮기지 않는다.
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    UUID attachmentId = UUID.randomUUID();
+    OcrResultView qualityGateDocument =
+        OcrResultViewFixture.needsReupload(UUID.randomUUID(), attachmentId, "diagnosis");
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(qualityGateDocument));
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.documents()).hasSize(1);
+    assertThat(analysis.documents().getFirst().attachmentId()).isEqualTo(attachmentId);
+    assertThat(analysis.documents().getFirst().reason()).isNull();
+  }
+
+  @Test
+  @DisplayName("청구 fan-in 저널과 품질 게이트 문서가 함께 있으면 둘 다 합쳐 보여준다")
+  void needsReuploadMergesDocumentsFromBothSources() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    UUID fanInAttachmentId = UUID.randomUUID();
+    UUID qualityGateAttachmentId = UUID.randomUUID();
+    OcrJobFailureView fanInFailure =
+        OcrJobFailureViewFixture.terminal(UUID.randomUUID(), fanInAttachmentId, "unreadable_file", FAILED_AT);
+    OcrResultView qualityGateDocument =
+        OcrResultViewFixture.needsReupload(UUID.randomUUID(), qualityGateAttachmentId, "diagnosis");
+
+    ReportAnalysis analysis =
+        ReportAnalysis.of(report, List.of(fanInFailure), List.of(qualityGateDocument));
+
+    assertThat(analysis.documents()).hasSize(2);
+    assertThat(analysis.documents()).extracting(ReportAnalysis.FailedDocument::attachmentId)
+        .containsExactlyInAnyOrder(fanInAttachmentId, qualityGateAttachmentId);
+  }
+
+  @Test
   @DisplayName("Q4 — 실패 행이 삭제되면(정상 회복) 같은 리포트가 PROCESSING으로 되돌아간다")
   void recoveryReturnsToProcessing() {
     // Given

@@ -1,7 +1,9 @@
 package com.soma.backend.domain.notification.service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.dao.DataAccessException;
@@ -15,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.soma.backend.domain.notification.entity.NotificationType;
 import com.soma.backend.domain.report.entity.AnalysisFailureReason;
 import com.soma.backend.domain.report.entity.OcrJobFailureView;
+import com.soma.backend.domain.report.entity.OcrResultView;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
@@ -22,6 +25,7 @@ import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
 import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
+import com.soma.backend.domain.report.service.NeedsReuploadDocumentReader;
 import com.soma.backend.domain.report.service.TerminalFailureJournalReader;
 
 /**
@@ -40,6 +44,7 @@ public class ReportNotificationListener {
   private final NotificationDispatchService notificationDispatchService;
   private final PushNotificationService pushNotificationService;
   private final TerminalFailureJournalReader terminalFailureJournalReader;
+  private final NeedsReuploadDocumentReader needsReuploadDocumentReader;
   private final ReportAttachmentRepository reportAttachmentRepository;
 
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -75,11 +80,11 @@ public class ReportNotificationListener {
   }
 
   /**
-   * OCR 품질 미달(재업로드 필요) 통지. 청구 fan-in으로 걸린 경우(#67)는 저널({@code ai.ocr_job_failures})에
-   * 문서가 특정되므로 그 문서명을 문구에 넣는다 — "어느 문서인지" 정할 수 있으면 정하는 게 사용자에게
-   * 더 도움이 된다. 문서를 하나로 못 좁히면(개별 문서 품질 게이트라 저널 흔적이 없음, 저널 조회 실패,
-   * 여러 문서가 걸림) {@link ReportAnalysis#needsReupload()}의 일반 문구로 degrade한다 — 조회 API의
-   * {@code failure_message}와 이 경우엔 같은 문구를 쓴다(단일 진실).
+   * OCR 품질 미달(재업로드 필요) 통지. 두 계약 중 하나로 문서가 특정될 수 있다 — 청구 fan-in(#67)은 저널
+   * ({@code ai.ocr_job_failures}), 개별 문서 품질 게이트는 {@code ai.ocr_results}(GRANT 배포 후). "어느
+   * 문서인지" 정할 수 있으면 정하는 게 사용자에게 더 도움이 된다. 문서를 하나로 못 좁히면(둘 다 흔적 없음,
+   * 조회 실패, 여러 문서가 걸림) {@link ReportAnalysis#needsReupload()}의 일반 문구로 degrade한다 — 조회
+   * API의 {@code failure_message}와 이 경우엔 같은 문구를 쓴다(단일 진실).
    */
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onReportNeedsReupload(ReportNeedsReuploadEvent event) {
@@ -96,23 +101,29 @@ public class ReportNotificationListener {
   }
 
   /**
-   * 청구 fan-in으로 걸린 NEEDS_REUPLOAD의 확정 실패 저널을 조회해, 문서 정확히 한 건이 특정되고 첨부
-   * 이름까지 있으면 그 첨부를 반환한다. 저널 조회 실패·문서 미특정·복수 문서(대표 하나를 고를 근거가
-   * 없음)는 전부 {@code null} — 호출자가 일반 문구로 degrade한다({@code TerminalFailureJournalReader}가
-   * REQUIRES_NEW라 AFTER_COMMIT처럼 활성 트랜잭션이 없는 지점에서도 안전하게 호출된다).
+   * 청구 fan-in 저널·품질 게이트 판정을 합쳐 문서를 특정한다. 두 조회를 합쳐 정확히 한 건이 특정되고 첨부
+   * 이름까지 있으면 그 첨부를 반환한다. 조회 실패(둘 중 하나만 실패해도 그 소스는 그냥 제외)·문서
+   * 미특정·복수 문서(대표 하나를 고를 근거가 없음)는 전부 {@code null} — 호출자가 일반 문구로 degrade한다
+   * (두 리더 모두 REQUIRES_NEW라 AFTER_COMMIT처럼 활성 트랜잭션이 없는 지점에서도 안전하게 호출된다).
    */
   private ReportAttachment resolveSingleFailedDocument(UUID reportId) {
-    List<OcrJobFailureView> failures;
+    List<UUID> attachmentIds = new ArrayList<>();
     try {
-      failures = terminalFailureJournalReader.findTerminalFailures(List.of(reportId))
-          .getOrDefault(reportId, List.of());
+      terminalFailureJournalReader.findTerminalFailures(List.of(reportId)).getOrDefault(reportId, List.of())
+          .stream().map(OcrJobFailureView::getAttachmentId).filter(Objects::nonNull).forEach(attachmentIds::add);
     } catch (DataAccessException ex) {
+      log.debug("청구 fan-in 저널 조회 실패 — 문서 특정에서 제외한다. reportId={}", reportId);
+    }
+    try {
+      needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId)).getOrDefault(reportId, List.of())
+          .stream().map(OcrResultView::getAttachmentId).filter(Objects::nonNull).forEach(attachmentIds::add);
+    } catch (DataAccessException ex) {
+      log.debug("품질 게이트 문서 조회 실패(GRANT 미배포 시 정상) — 문서 특정에서 제외한다. reportId={}", reportId);
+    }
+    if (attachmentIds.size() != 1) {
       return null;
     }
-    if (failures.size() != 1 || failures.getFirst().getAttachmentId() == null) {
-      return null;
-    }
-    return reportAttachmentRepository.findById(failures.getFirst().getAttachmentId()).orElse(null);
+    return reportAttachmentRepository.findById(attachmentIds.getFirst()).orElse(null);
   }
 
   private String pushTitle(AnalysisFailureReason reason) {

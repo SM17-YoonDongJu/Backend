@@ -55,9 +55,9 @@ public record ReportAnalysisStatusResponse(
     LocalDateTime failedAt,
 
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
-        description = "실패 문서 목록. FAILED는 항상 채워진다. NEEDS_REUPLOAD는 청구 fan-in으로 걸린 경우"
-            + "(ai.ocr_job_failures에 흔적 있음)만 채워지고, 개별 문서 품질 게이트로 걸린 경우는 저널에 흔적이 "
-            + "없어 빈 배열이다(문서 단위 상세는 후속 과제). 그 외 상태는 빈 배열(null 아님)")
+        description = "실패·재업로드 필요 문서 목록. FAILED는 항상 채워진다. NEEDS_REUPLOAD는 청구 fan-in으로 "
+            + "걸린 경우(ai.ocr_job_failures에 흔적 있음)와 개별 문서 품질 게이트로 걸린 경우(ai.ocr_results, "
+            + "GRANT 배포 후)에 채워지고, 어느 쪽에도 흔적이 없으면 빈 배열이다. 그 외 상태는 빈 배열(null 아님)")
     List<FailedDocument> failedDocuments) {
 
   /**
@@ -71,7 +71,7 @@ public record ReportAnalysisStatusResponse(
         .map(document -> new FailedDocument(
             document.attachmentId(),
             document.attachmentId() == null ? null : attachmentNames.get(document.attachmentId()),
-            document.reason().name()))
+            document.reason() == null ? null : document.reason().name()))
         .toList();
     return new ReportAnalysisStatusResponse(
         reportId,
@@ -84,12 +84,15 @@ public record ReportAnalysisStatusResponse(
   }
 
   /**
-   * 실패한 문서 1건. 저널에 {@code attachment_id}가 없는 실패(역직렬화 실패·poison 훅 등)도 있어
+   * 실패·재업로드 필요 문서 1건. 저널에 {@code attachment_id}가 없는 실패(역직렬화 실패·poison 훅 등)도 있어
    * 식별 필드가 전부 nullable이다(design.md §8 E9).
    */
   public record FailedDocument(
-      @Schema(nullable = true, description = "저널에 attachment_id가 없으면 null") UUID attachmentId,
+      @Schema(nullable = true, description = "저널·품질 판정 어느 쪽에도 attachment_id가 없으면 null") UUID attachmentId,
       @Schema(nullable = true, description = "첨부 행을 찾지 못하면 null") String name,
-      @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "문서별 실패 사유") String failureReason) {
+      @Schema(nullable = true, description = "문서별 실패 사유. ai.ocr_job_failures 기반(FAILED, 청구 fan-in "
+          + "NEEDS_REUPLOAD)만 채워진다 — ai.ocr_results 기반(개별 문서 품질 게이트 NEEDS_REUPLOAD)은 다른 "
+          + "계약이라 대응하는 사유가 없어 null이다. MASKING_RESIDUAL | SCHEMA_INVALID | OCR_ERROR | UNKNOWN "
+          + "| UNREADABLE_FILE") String failureReason) {
   }
 }

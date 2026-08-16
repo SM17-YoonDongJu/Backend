@@ -64,15 +64,16 @@ class AnalysisStatusOpenApiDocsTest {
   }
 
   @Test
-  @DisplayName("실패 문서 원소 스키마 — failure_reason은 required, 식별 필드(attachment_id·name)는 nullable이다")
+  @DisplayName("실패 문서 원소 스키마 — 식별 필드(attachment_id·name)·failure_reason 전부 nullable이다")
   void failedDocumentSchemaDeclaresNullableIdentifiers() throws Exception {
     String failedDocument = "$.components.schemas.FailedDocument";
 
     mockMvc.perform(get("/v3/api-docs"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath(failedDocument + ".required", hasItem("failure_reason")))
         .andExpect(jsonPath(failedDocument + ".properties.attachment_id.type", hasItem("null")))
-        .andExpect(jsonPath(failedDocument + ".properties.name.type", hasItem("null")));
+        .andExpect(jsonPath(failedDocument + ".properties.name.type", hasItem("null")))
+        // ai.ocr_results 기반 문서(개별 문서 품질 게이트)는 대응하는 AnalysisFailureReason이 없어 null이다.
+        .andExpect(jsonPath(failedDocument + ".properties.failure_reason.type", hasItem("null")));
   }
 
   @Test
