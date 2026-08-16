@@ -34,9 +34,10 @@ import com.soma.backend.global.security.CustomUserDetails;
  * SQL 실패라야 {@code REQUIRES_NEW} 분리가 의미 있는지 확인된다 — 같은 트랜잭션에서 JDBC 예외를 삼키면
  * 커밋 시 {@code UnexpectedRollbackException}으로 목록이 통째로 500이 된다).
  *
- * <p>검증 대상은 셋이다: <b>앱은 기동하고</b>({@code @Subselect}라 부팅 검증 대상이 아님) <b>목록·상세는
- * 200 + PROCESSING</b>으로 낮춰 내리며 <b>전용 폴링 엔드포인트만 500</b>이다. 클래스 종료 시 계약 스키마를
- * 원복한다.
+ * <p>검증 대상은 넷이다: <b>앱은 기동하고</b>({@code @Subselect}라 부팅 검증 대상이 아님) 저널이 필요한
+ * <b>일반 리포트는 200 + PROCESSING</b>으로 낮아지지만 {@code reports.status}만으로 판정되는
+ * <b>{@code BLOCKED}·{@code NEEDS_REUPLOAD}는 200 + 원래 상태 그대로</b> 노출되며, <b>전용 폴링
+ * 엔드포인트만 500</b>이다. 클래스 종료 시 계약 스키마를 원복한다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -100,21 +101,14 @@ class AnalysisStatusDegradeIntegrationTest {
   }
 
   /**
-   * E13 — <b>알려진 한계를 고정하는 테스트다(기대 동작을 승인하는 것이 아니다).</b>
-   *
-   * <p>NEEDS_REUPLOAD·BLOCKED 판정은 {@code reports.status}만 보면 되고 {@code ai} 저널이 전혀 필요 없는데도,
-   * 목록·상세는 저널 조회가 실패하면 리포트 단위 판정을 통째로 버리고 PROCESSING으로 낮춘다
-   * ({@code ReportQueryService.analysesOrDegrade}가 빈 맵을 반환 → {@code ReportResponseSupport}가 PROCESSING 폴백).
-   * 즉 GRANT 미적용 환경에서는 이 기능이 없애려던 "무음 정지"가 목록·상세에서 그대로 재현된다.
-   *
-   * <p>NEEDS_REUPLOAD가 만든 회귀가 아니라 BLOCKED에도 있던 기존 한계라 이번 스코프에서 고치지 않는다
-   * (design.md §10 E13). 이 테스트는 그 한계를 명시적으로 고정해, 나중에 degrade를 리포트 단위 판정
-   * 폴백({@code ReportAnalysis.of(report, List.of())})으로 개선할 때 <b>이 단언이 깨지는 것이 곧 개선 신호</b>가
-   * 되게 한다.
+   * E13 — {@code NEEDS_REUPLOAD}·{@code BLOCKED} 판정은 {@code reports.status}만 보면 되고 {@code ai} 저널이
+   * 전혀 필요 없다. {@code ReportAnalysisStatusQueryService.resolveAll}이 저널 조회 실패를 리포트 단위
+   * 판정까지 버리지 않고 흡수하므로, GRANT 미적용 환경에서도 두 상태는 목록·상세에서 그대로 노출돼야
+   * 한다 — 그래야 이 기능이 없애려던 "무음 정지"가 degrade 상황에서 재현되지 않는다.
    */
   @Test
-  @DisplayName("E13 알려진 한계 — 저널이 안 읽히면 NEEDS_REUPLOAD도 목록에서 PROCESSING으로 degrade된다")
-  void needsReuploadAlsoDegradesToProcessing() throws Exception {
+  @DisplayName("E13 — 저널이 안 읽혀도 NEEDS_REUPLOAD는 목록에서 그대로 노출된다(PROCESSING으로 낮아지지 않는다)")
+  void needsReuploadSurvivesJournalDegrade() throws Exception {
     // Given: AI 워커가 원시 SQL로 세팅하는 종료 상태를 같은 값으로 만든다(전이표를 거치지 않는 진입).
     Report report = Report.createPending(
         ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
@@ -126,8 +120,22 @@ class AnalysisStatusDegradeIntegrationTest {
     mockMvc.perform(get("/reports").param("status", "NEEDS_REUPLOAD").with(authenticatedAsOwner()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.list[0].report_id").value(needsReuploadId.toString()))
-        // 생명주기 status는 저널과 무관하므로 degrade에도 살아남는다 — 분석 축만 PROCESSING으로 떨어진다.
         .andExpect(jsonPath("$.data.list[0].status").value("NEEDS_REUPLOAD"))
-        .andExpect(jsonPath("$.data.list[0].analysis_state").value("PROCESSING"));
+        .andExpect(jsonPath("$.data.list[0].analysis_state").value("NEEDS_REUPLOAD"));
+  }
+
+  @Test
+  @DisplayName("E13 — 저널이 안 읽혀도 BLOCKED는 상세 조회에서 그대로 노출된다(PROCESSING으로 낮아지지 않는다)")
+  void blockedSurvivesJournalDegrade() throws Exception {
+    Report report = Report.createPending(
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
+        "DEG-" + UUID.randomUUID().toString().substring(0, 12));
+    ReflectionTestUtils.setField(report, "status", ReportStatus.BLOCKED);
+    UUID blockedId = reportRepository.save(report).getId();
+
+    mockMvc.perform(get("/reports/{id}", blockedId).with(authenticatedAsOwner()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+        .andExpect(jsonPath("$.data.analysis_state").value("BLOCKED"));
   }
 }

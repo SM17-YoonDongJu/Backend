@@ -95,8 +95,12 @@ public class ReportQueryService {
 
   /**
    * 분석 상태 배치 조회 + degrade. {@code ai.ocr_job_failures}는 AI 워커 소유라 GRANT 미적용·미배포 상태가
-   * 있을 수 있는데, 목록·상세는 서비스의 핵심 화면이라 그 이유로 통째로 500이 되면 안 된다. 조회에 실패하면
-   * 빈 맵을 반환해 분석 필드만 PROCESSING으로 낮춰 내리고(가용성 우선) 경고 로그를 남긴다(design.md §8 E14).
+   * 있을 수 있는데, 목록·상세는 서비스의 핵심 화면이라 그 이유로 통째로 500이 되면 안 된다.
+   *
+   * <p>저널(확정 실패) 조회 실패는 {@code resolveAll} 안에서 이미 리포트 단위로 흡수돼, {@code BLOCKED}·
+   * {@code NEEDS_REUPLOAD}처럼 {@code reports.status}만으로 판정되는 상태는 살아남는다. 여기서 잡는
+   * {@code DataAccessException}은 {@code resolveAll} 자체가 실패하는(리포트 배치 조회 실패 등) 더 드문
+   * 경우를 위한 마지막 방어선이라, 이때는 분석 필드 전부를 PROCESSING으로 낮춰 내린다(가용성 우선).
    *
    * <p>{@code resolveAll}이 별도 트랜잭션(REQUIRES_NEW)이라 여기서 예외를 잡아도 이 조회 트랜잭션은
    * rollback-only로 오염되지 않는다. 로그에는 내부 식별자(s3_key·user_ref)를 남기지 않는다(design.md §12 S4).

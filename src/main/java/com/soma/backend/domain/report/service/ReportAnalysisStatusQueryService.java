@@ -6,13 +6,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
 import com.soma.backend.domain.report.entity.OcrJobFailureView;
@@ -32,6 +33,7 @@ import com.soma.backend.global.exception.ErrorCode;
  *
  * <p>상태는 저장하지 않고 매번 파생한다: AI 초안 존재 여부(reports) + 확정 실패 행({@code ai.ocr_job_failures}).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -40,6 +42,7 @@ public class ReportAnalysisStatusQueryService {
   private final ReportRepository reportRepository;
   private final ReportAttachmentRepository reportAttachmentRepository;
   private final OcrJobFailureViewRepository ocrJobFailureViewRepository;
+  private final TerminalFailureJournalReader terminalFailureJournalReader;
 
   /**
    * GET /reports/{reportId}/analysis-status — 폴링용 단건 조회.
@@ -79,8 +82,18 @@ public class ReportAnalysisStatusQueryService {
    * <p><b>{@code REQUIRES_NEW}인 이유(중요):</b> {@code ai} 스키마는 다른 팀 소유라 GRANT 미적용·테이블 부재로
    * 조회가 실패할 수 있는데, 그 실패를 호출자의 트랜잭션 안에서 잡으면 Hibernate가 JDBC 예외 시 세션을
    * rollback-only로 표시해 커밋 시점에 {@code UnexpectedRollbackException}이 터진다(= degrade가 무의미해지고
-   * 목록/상세가 통째로 500). 별도 트랜잭션으로 떼어내 실패 반경을 이 조회로 가두고, 호출자는 예외를 잡아
-   * PROCESSING으로 degrade한다.
+   * 목록/상세가 통째로 500). 별도 트랜잭션으로 떼어내 실패 반경을 이 조회로 가둔다.
+   *
+   * <p><b>저널 조회 실패는 리포트 단위 판정까지 버리지 않는다.</b> {@link TerminalFailureJournalReader}가
+   * 별도 Bean·별도 REQUIRES_NEW로 저널만 조회한다. 그 조회가 실패하면(GRANT 미적용 등) 예외가 이 메서드
+   * 호출 지점까지 올라오지만, 실패한 건 이미 롤백까지 끝난 별개의 트랜잭션이라 <b>여기서 잡아도 이 메서드
+   * 자신의 트랜잭션은 오염되지 않는다</b>(자가 호출이 아니라 별도 Bean 경유라 가능 — 같은 트랜잭션 안에서
+   * 예외만 삼키면 Postgres가 이후 문장을 전부 "aborted transaction"으로 막는다). 예외를 잡으면 빈 실패
+   * 목록으로 계속 진행한다 — {@code BLOCKED}·{@code NEEDS_REUPLOAD}는 {@code reports.status}만으로
+   * 판정되고 저널이 전혀 필요 없으므로 {@link ReportAnalysis#of}가 그대로 두 상태를 살려낸다. 저널에 의존하는
+   * {@code FAILED} 판정만 실질적으로 {@code PROCESSING}으로 낮아진다 — 저널 없이는 확정 실패 여부를 알 수
+   * 없기 때문이다. 호출자(예: {@code ReportQueryService.analysesOrDegrade})의 빈 맵 폴백은 이 메서드 자체가
+   * 실패하는(예: 리포트 배치 조회 실패) 더 드문 경우를 위한 마지막 방어선으로만 남는다.
    */
   @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
   public Map<UUID, ReportAnalysis> resolveAll(Collection<UUID> reportIds) {
@@ -91,10 +104,7 @@ public class ReportAnalysisStatusQueryService {
     if (targets.isEmpty()) {
       return Map.of();
     }
-    Map<UUID, List<OcrJobFailureView>> failuresByReport =
-        ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(targets).stream()
-            .filter(failure -> failure.getReportId() != null)
-            .collect(Collectors.groupingBy(OcrJobFailureView::getReportId));
+    Map<UUID, List<OcrJobFailureView>> failuresByReport = terminalFailuresOrEmpty(targets);
 
     Map<UUID, ReportAnalysis> analyses = new HashMap<>();
     for (Report report : reportRepository.findAllByIdIn(targets)) {
@@ -102,6 +112,17 @@ public class ReportAnalysisStatusQueryService {
           ReportAnalysis.of(report, failuresByReport.getOrDefault(report.getId(), List.of())));
     }
     return analyses;
+  }
+
+  private Map<UUID, List<OcrJobFailureView>> terminalFailuresOrEmpty(List<UUID> targets) {
+    try {
+      return terminalFailureJournalReader.findTerminalFailures(targets);
+    } catch (DataAccessException ex) {
+      log.warn("확정 실패 저널 조회 실패 — FAILED 판정만 PROCESSING으로 degrade한다(대상 {}건). "
+          + "BLOCKED·NEEDS_REUPLOAD는 reports.status만으로 판정되므로 영향 없다. cause={}",
+          targets.size(), ex.getMostSpecificCause().getMessage());
+      return Map.of();
+    }
   }
 
   /**
