@@ -409,6 +409,7 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 - **필드**: `user_id`, `type`(enum `NotificationType`, varchar 저장), `title`, `body`, `is_read`, `created_at`
 - **NotificationType 값(14개)**: 고객계 `REVIEW_COMPLETE`/`RECEIVED_PROPOSAL`/`CONSULT_ACCEPTED`/`ANALYSIS_COMPLETE`/`ANALYSIS_FAILED`/`REPORT_BLOCKED`/`REPORT_NEEDS_REUPLOAD`/`IDENTITY_VERIFIED`/`CHAT_MESSAGE`/`SETTLEMENT_NOTICE`/`PROPOSAL_CLOSED`, 사정사계 `NEW_REVIEW_REQUEST`/`REVIEW_DEADLINE_SOON`/`CONSULT_REQUESTED`. `ANALYSIS_FAILED`(분석 확정 실패)·`REPORT_BLOCKED`(가드레일 차단)·`REPORT_NEEDS_REUPLOAD`(OCR 품질 미달)는 시스템 실패 통지라 `NotificationSetting.allows()`에서 토글 무관 항상 발송(`PROPOSAL_CLOSED`와 동일 취급) — `notification_settings`에 대응 컬럼 없음, 추가도 불필요(varchar 저장이라 마이그레이션 없이 enum만 늘리면 된다).
 - **비고**: 생성 배선(이벤트→row insert)은 별도 티켓 범위. 생성 후 읽음만 전이(updated_at 없음).
+- **네이밍 규칙**: `report` 도메인이 원인인 시스템 실패 통지는 `REPORT_` 접두어를 붙인다(`REPORT_BLOCKED`·`REPORT_NEEDS_REUPLOAD`). 접두어 없이 `reports.status`·`AnalysisState` 값과 동일한 이름(`BLOCKED`·`NEEDS_REUPLOAD`)을 그대로 쓰면 FE가 `notifications.type`/FCM `data.type`과 응답 `status`/`analysis_state`를 같은 네임스페이스로 오인할 수 있다(PR #251에서 CodeRabbit이 지적해 배포 전 정정한 사례 — `NEEDS_REUPLOAD` → `REPORT_NEEDS_REUPLOAD`). 새 `NotificationType` 값을 추가할 때 형제 값과 접두어 일관성을 먼저 확인할 것.
 
 ### NOTIFICATION_SETTINGS (알림 수신 토글)
 - **목적**: 사용자별 알림 수신 on/off 토글(USERS 1:1, user_id PK). off면 해당 type 미발송(producer 배선에서 적용).
