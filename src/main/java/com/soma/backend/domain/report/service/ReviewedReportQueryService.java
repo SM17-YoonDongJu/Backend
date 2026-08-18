@@ -47,7 +47,7 @@ public class ReviewedReportQueryService {
     long totalCount = reportReviewRepository.countByAdjusterId(adjusterId);
     // NOTE(m1): consultationConvertedCount·conversionRate는 report_reviews.status=COUNSELING 기준이다.
     // 검수 반영(ReportReviewCommandService)은 status를 SENT로만 만들고, COUNSELING 전이는 고객이 제안의
-    // 상담을 시작할 때(PATCH /reports/{reportId}/proposals/{proposalId}, status=COUNSELING) 채팅방 개설과
+    // 상담을 수락할 때(PATCH /reports/{reportId}/proposals/{proposalId}, status=ACCEPTED) 채팅방 개설과
     // 함께 일어난다 — 그 API가 생기면서 이 두 지표는 실제 값을 갖는다.
     long consultationConvertedCount = reportReviewRepository.countConsultationConvertedByAdjusterId(adjusterId);
     double conversionRate = totalCount == 0L ? 0.0 : (double) consultationConvertedCount / totalCount;

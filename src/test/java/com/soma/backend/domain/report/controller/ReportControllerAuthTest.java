@@ -317,7 +317,9 @@ class ReportControllerAuthTest {
   }
 
   // -----------------------------------------------------------------------------------------
-  // PATCH /reports/{reportId}/proposals/{proposalId} — 상담 시작/채택/거절 (design.md §8-6 #14~#16)
+  // PATCH /reports/{reportId}/proposals/{proposalId} — 제안 상담 수락 (design.md §8-6 #14~#16)
+  // status=ACCEPTED는 "상담 수락"(채팅방 개설)이라 응답 review_status는 COUNSELING이다.
+  // REJECTED는 현재 no-op이며 최종 채택·거절은 PATCH /chats/{chatRoomId}/accept·reject 전용이다.
   // -----------------------------------------------------------------------------------------
 
   private String decideBody(String status) {
@@ -325,20 +327,20 @@ class ReportControllerAuthTest {
   }
 
   @Test
-  @DisplayName("status=COUNSELING이면 200 + data.chat_room_id(snake_case)를 non-null로 내려준다")
-  void decideCounselingReturnsChatRoomId() throws Exception {
+  @DisplayName("status=ACCEPTED면 200 + data.chat_room_id(snake_case)를 non-null로 내려준다")
+  void decideAcceptedReturnsChatRoomId() throws Exception {
     UUID reportId = UUID.randomUUID();
     UUID proposalId = UUID.randomUUID();
     UUID adjusterId = UUID.randomUUID();
     UUID chatRoomId = UUID.randomUUID();
-    given(reportCommandService.decide(any(), any(), any(), eq("COUNSELING")))
+    given(reportCommandService.decide(any(), any(), any(), eq("ACCEPTED")))
         .willReturn(new ProposalDecisionResponse(reportId, proposalId, adjusterId,
             ReportStatus.COUNSELING, ReviewStatus.COUNSELING, chatRoomId));
 
     mockMvc.perform(patch("/reports/{id}/proposals/{pid}", reportId, proposalId)
             .with(authenticatedAs(UUID.randomUUID()))
             .contentType(MediaType.APPLICATION_JSON)
-            .content(decideBody("COUNSELING")))
+            .content(decideBody("ACCEPTED")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("200"))
         .andExpect(jsonPath("$.data.report_id").value(reportId.toString()))
@@ -350,34 +352,34 @@ class ReportControllerAuthTest {
   }
 
   @Test
-  @DisplayName("status=ACCEPTED면 200이고 data.chat_room_id는 null이다(회귀 방지)")
-  void decideAcceptedReturnsNullChatRoomId() throws Exception {
+  @DisplayName("status=REJECTED면 200이고 상태는 그대로·data.chat_room_id는 null이다(no-op)")
+  void decideRejectedReturnsNullChatRoomId() throws Exception {
     UUID reportId = UUID.randomUUID();
     UUID proposalId = UUID.randomUUID();
-    given(reportCommandService.decide(any(), any(), any(), eq("ACCEPTED")))
+    given(reportCommandService.decide(any(), any(), any(), eq("REJECTED")))
         .willReturn(new ProposalDecisionResponse(reportId, proposalId, UUID.randomUUID(),
-            ReportStatus.CLOSED, ReviewStatus.ACCEPTED, null));
+            ReportStatus.AWAITING_ADOPTION, ReviewStatus.SENT, null));
 
     mockMvc.perform(patch("/reports/{id}/proposals/{pid}", reportId, proposalId)
             .with(authenticatedAs(UUID.randomUUID()))
             .contentType(MediaType.APPLICATION_JSON)
-            .content(decideBody("ACCEPTED")))
+            .content(decideBody("REJECTED")))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.report_status").value("CLOSED"))
-        .andExpect(jsonPath("$.data.review_status").value("ACCEPTED"))
+        .andExpect(jsonPath("$.data.report_status").value("AWAITING_ADOPTION"))
+        .andExpect(jsonPath("$.data.review_status").value("SENT"))
         .andExpect(jsonPath("$.data.chat_room_id").value(nullValue()));
   }
 
   @Test
-  @DisplayName("비소유자가 상담을 시작하려 하면 서비스가 던진 403 FORBIDDEN을 그대로 전달한다")
-  void decideCounselingByNonOwnerReturns403() throws Exception {
+  @DisplayName("비소유자가 상담을 수락하려 하면 서비스가 던진 403 FORBIDDEN을 그대로 전달한다")
+  void decideByNonOwnerReturns403() throws Exception {
     given(reportCommandService.decide(any(), any(), any(), any()))
         .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
 
     mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
             .with(authenticatedAs(UUID.randomUUID()))
             .contentType(MediaType.APPLICATION_JSON)
-            .content(decideBody("COUNSELING")))
+            .content(decideBody("ACCEPTED")))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
   }
@@ -387,21 +389,21 @@ class ReportControllerAuthTest {
   void unauthenticatedDecideReturns401() throws Exception {
     mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
             .contentType(MediaType.APPLICATION_JSON)
-            .content(decideBody("COUNSELING")))
+            .content(decideBody("ACCEPTED")))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
   }
 
   @Test
   @DisplayName("제안이 이미 종료 상태면 서비스가 던진 409 INVALID_STATE_TRANSITION을 그대로 전달한다")
-  void decideCounselingOnTerminalProposalReturns409() throws Exception {
+  void decideOnTerminalProposalReturns409() throws Exception {
     given(reportCommandService.decide(any(), any(), any(), any()))
         .willThrow(new BusinessException(ErrorCode.INVALID_STATE_TRANSITION));
 
     mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
             .with(authenticatedAs(UUID.randomUUID()))
             .contentType(MediaType.APPLICATION_JSON)
-            .content(decideBody("COUNSELING")))
+            .content(decideBody("ACCEPTED")))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("INVALID_STATE_TRANSITION"));
   }

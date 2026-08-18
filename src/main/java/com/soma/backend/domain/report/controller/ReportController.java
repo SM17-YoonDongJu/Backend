@@ -125,7 +125,7 @@ public class ReportController {
   }
 
   /**
-   * 제안 상담 시작(COUNSELING)/찬성(ACCEPTED)/거절(REJECTED)
+   * 제안 상담 수락(ACCEPTED)/거절(REJECTED, 현재 미동작)
    */
   @PatchMapping("/reports/{reportId}/proposals/{proposalId}")
   public ResponseEntity<ApiResponse<ProposalDecisionResponse>> decide(

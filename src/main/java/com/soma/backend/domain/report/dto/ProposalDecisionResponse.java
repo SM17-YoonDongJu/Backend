@@ -15,7 +15,7 @@ public record ProposalDecisionResponse(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) ReportStatus reportStatus,
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) ReviewStatus reviewStatus,
     @Schema(nullable = true,
-        description = "status=COUNSELING 요청으로 개설(또는 재사용)된 상담 채팅방 id. "
-            + "ACCEPTED·REJECTED 요청 응답에서는 항상 null이다.")
+        description = "status=ACCEPTED 요청으로 개설(또는 재사용)된 상담 채팅방 id. "
+            + "REJECTED 요청에서는 항상 null이다.")
     UUID chatRoomId) {
 }

@@ -23,7 +23,6 @@ import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
-import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.entity.UserClaim;
 import com.soma.backend.domain.report.entity.claim.ClaimDetails;
 import com.soma.backend.domain.report.entity.event.ConsultationRequestedEvent;
@@ -113,9 +112,19 @@ public class ReportCommandService {
     return CreateReportResponse.from(report);
   }
 
-  /** PATCH /reports/{reportId}/proposals/{proposalId} — 본인 리포트의 특정 제안 상담 시작/채택/거절. */
+  /**
+   * PATCH /reports/{reportId}/proposals/{proposalId} — 본인 리포트의 특정 제안 상담 수락(ACCEPTED).
+   *
+   * <p>이 엔드포인트는 "상담 수락 전용"이다. 최종 채택(제안 ACCEPTED·리포트 CLOSED)은 채팅방 화면의
+   * PATCH /chats/{chatRoomId}/accept에서만 하고, 거절은 PATCH /chats/{chatRoomId}/reject에서만 한다.
+   *
+   * <p><b>요청 status=ACCEPTED가 응답 review_status=COUNSELING을 만드는 이유</b>: 요청값 ACCEPTED는
+   * "제안을 ACCEPTED로 바꿔라"가 아니라 "이 사정사와 상담을 수락한다(=채팅방을 연다)"는 뜻이다. 그
+   * 결과로 제안은 실제 도메인 전이인 SENT→COUNSELING을 밟으므로 응답에는 COUNSELING이 담긴다.
+   * 요청 문자열과 응답 상태값이 다른 건 의도된 계약이다(프론트 화면 흐름에 맞춘 명명).
+   */
   public ProposalDecisionResponse decide(UUID userId, UUID reportId, UUID proposalId, String status) {
-    ReviewStatus decision = parseDecision(status);
+    boolean startsCounseling = parseDecision(status);
 
     Report report = reportRepository.findById(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
@@ -129,20 +138,7 @@ public class ReportCommandService {
       throw new BusinessException(ErrorCode.PROPOSAL_NOT_FOUND);
     }
 
-    UUID chatRoomId = null;
-    if (decision == ReviewStatus.ACCEPTED) {
-      review.accept();
-      report.accept(review.getAdjusterId());
-    } else if (decision == ReviewStatus.COUNSELING) {
-      chatRoomId = startCounseling(report, review);
-    } else {
-      // COUNSELING 제안은 이 경로가 채팅방을 정리하지 않는다 — 거절을 허용하면 방이 ACTIVE인 채
-      // 영구히 결정 불가 상태(accept·reject 둘 다 409)로 남는다. 거절은 PATCH /chats/{id}/reject로만.
-      if (review.getStatus() == ReviewStatus.COUNSELING) {
-        throw new BusinessException(ErrorCode.INVALID_STATE_TRANSITION);
-      }
-      review.reject();
-    }
+    UUID chatRoomId = startsCounseling ? startCounseling(report, review) : null;
 
     return new ProposalDecisionResponse(
         reportId, review.getId(), review.getAdjusterId(), report.getStatus(), review.getStatus(), chatRoomId);
@@ -168,21 +164,23 @@ public class ReportCommandService {
     return room.chatRoomId();
   }
 
-  /** ACCEPTED/REJECTED/COUNSELING만 허용 — 그 외 값(SENT 포함)은 400. */
-  private ReviewStatus parseDecision(String status) {
+  /**
+   * ACCEPTED(상담 수락 — 채팅방 개설) 또는 REJECTED(현재 아무 동작 없음, 거절은
+   * PATCH /chats/{chatRoomId}/reject 전용)만 허용한다. 반환값은 상담 수락 여부(true=ACCEPTED)다.
+   * ReviewStatus enum을 재사용하지 않는 이유: 이 요청값은 더 이상 REPORT_REVIEWS.status와
+   * 1:1 대응하지 않는다(ACCEPTED 요청 → 실제로는 review가 COUNSELING이 된다).
+   */
+  private boolean parseDecision(String status) {
     if (!StringUtils.hasText(status)) {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
-    ReviewStatus decision;
-    try {
-      decision = ReviewStatus.valueOf(status);
-    } catch (IllegalArgumentException ex) {
-      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    if ("ACCEPTED".equals(status)) {
+      return true;
     }
-    if (decision == ReviewStatus.SENT) {
-      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    if ("REJECTED".equals(status)) {
+      return false;
     }
-    return decision;
+    throw new BusinessException(ErrorCode.VALIDATION_ERROR);
   }
 
   /** 사람용 사건번호 yyyyMMdd-NNN. 당일 시퀀스는 DB 원자 카운터로 발급해 동시 생성 경합을 차단한다. */
