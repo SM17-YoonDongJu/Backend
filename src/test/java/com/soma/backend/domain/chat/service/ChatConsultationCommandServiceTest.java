@@ -265,7 +265,7 @@ class ChatConsultationCommandServiceTest {
 
       given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
       given(reportReviewRepository.findById(reviewId)).willReturn(Optional.of(myReview));
-      given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+      given(reportRepository.findByIdForUpdate(reportId)).willReturn(Optional.of(report));
       given(reportReviewRepository.findByReportId(reportId)).willReturn(List.of(myReview));
       stubMessageSave();
 
@@ -301,7 +301,7 @@ class ChatConsultationCommandServiceTest {
 
       given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
       given(reportReviewRepository.findById(reviewId)).willReturn(Optional.of(myReview));
-      given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+      given(reportRepository.findByIdForUpdate(reportId)).willReturn(Optional.of(report));
       given(reportReviewRepository.findByReportId(reportId)).willReturn(List.of(myReview, sibling));
       stubMessageSave();
 
@@ -329,7 +329,7 @@ class ChatConsultationCommandServiceTest {
 
       given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
       given(reportReviewRepository.findById(reviewId)).willReturn(Optional.of(myReview));
-      given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+      given(reportRepository.findByIdForUpdate(reportId)).willReturn(Optional.of(report));
       given(reportReviewRepository.findByReportId(reportId)).willReturn(List.of(
           myReview,
           reviewWithId(UUID.randomUUID(), reportId, UUID.randomUUID(), ReviewStatus.SENT),
@@ -374,7 +374,8 @@ class ChatConsultationCommandServiceTest {
 
       given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
       given(reportReviewRepository.findById(reviewId)).willReturn(Optional.of(myReview));
-      given(reportRepository.findById(reportId)).willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
+      given(reportRepository.findByIdForUpdate(reportId))
+          .willReturn(Optional.of(reportWithStatus(ReportStatus.CLOSED)));
 
       assertThatThrownBy(() -> service.reject(userId, roomId))
           .isInstanceOfSatisfying(BusinessException.class,
@@ -395,7 +396,7 @@ class ChatConsultationCommandServiceTest {
 
       given(chatRoomRepository.findById(roomId)).willReturn(Optional.of(room));
       given(reportReviewRepository.findById(reviewId)).willReturn(Optional.of(myReview));
-      given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+      given(reportRepository.findByIdForUpdate(reportId)).willReturn(Optional.of(report));
       given(reportReviewRepository.findByReportId(reportId)).willReturn(List.of(myReview));
       stubMessageSave();
 

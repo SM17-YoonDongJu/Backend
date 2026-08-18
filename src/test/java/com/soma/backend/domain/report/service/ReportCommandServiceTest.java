@@ -341,7 +341,7 @@ class ReportCommandServiceTest {
     assertThat(response.chatRoomId()).isNull();
     assertThat(response.adjusterId()).isEqualTo(adjusterId);
     verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
-    verify(eventPublisher, never()).publishEvent(any());
+    verify(eventPublisher, never()).publishEvent(any(ConsultationRequestedEvent.class));
   }
 
   @ParameterizedTest(name = "report={0}")

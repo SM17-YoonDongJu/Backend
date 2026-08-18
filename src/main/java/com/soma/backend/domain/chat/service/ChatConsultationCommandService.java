@@ -69,12 +69,16 @@ public class ChatConsultationCommandService {
    * 상담 거절: 내 제안 REJECTED + 방 CLOSED. 다른 제안은 유지한다. 리포트를 채택 대기로 되돌리는 것은
    * 이 거절로 리포트의 마지막 상담이 끝났을 때만이다 — 형제 제안이 아직 COUNSELING이면 그대로 둔다.
    * SYSTEM 메시지 브로드캐스트.
+   *
+   * <p>"마지막 상담인가" 판정은 리포트 행을 비관적 잠금으로 잡은 뒤에 한다({@code loadReportForUpdate}) —
+   * 같은 리포트의 형제 방을 동시에 거절할 때 두 트랜잭션이 서로를 COUNSELING으로 관찰해 둘 다 복귀를
+   * 건너뛰는 레이스를 막기 위함이다.
    */
   @Transactional
   public ConsultationDecisionResponse reject(UUID me, UUID roomId) {
     ChatRoom room = loadOwnedConsultableRoom(me, roomId);
     ReportReview myReview = loadReview(room.getReportReviewId());
-    Report report = loadReport(room.getReportId());
+    Report report = loadReportForUpdate(room.getReportId());
 
     myReview.reject();
     if (!hasOtherCounselingReview(report.getId(), myReview.getId())
@@ -92,6 +96,9 @@ public class ChatConsultationCommandService {
    * 같은 리포트의 다른 제안이 아직 COUNSELING 중인지 — 있으면 리포트를 채택 대기로 되돌리지 않는다
    * (다른 상담이 살아있는데 리포트가 채택 대기 풀로 새어 나가 스케줄러에 NOT_SELECTED로 잘못 전이되는
    * 것을 막는다).
+   *
+   * <p>호출자가 리포트 행을 잠근 뒤에 실행되므로, 같은 리포트의 거절끼리는 직렬화돼 형제의 최신 상태를
+   * 본다. 잠금 없이 이 판정을 하면 동시 거절이 서로를 COUNSELING으로 관찰해 둘 다 복귀를 건너뛴다.
    */
   private boolean hasOtherCounselingReview(UUID reportId, UUID myReviewId) {
     return reportReviewRepository.findByReportId(reportId).stream()
@@ -119,6 +126,15 @@ public class ChatConsultationCommandService {
 
   private Report loadReport(UUID reportId) {
     return reportRepository.findById(reportId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+  }
+
+  /**
+   * 거절 전용 리포트 로드 — 행을 {@code PESSIMISTIC_WRITE}로 잠가 같은 리포트의 동시 거절을 직렬화한다.
+   * 잠금 대상은 리포트 1행뿐이고 거절 경로에서 가장 먼저 잡으므로 잠금 순서가 어긋날 여지가 없다.
+   */
+  private Report loadReportForUpdate(UUID reportId) {
+    return reportRepository.findByIdForUpdate(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
   }
 
