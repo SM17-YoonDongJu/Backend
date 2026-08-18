@@ -173,6 +173,13 @@ public class MatchService {
 - 컨텍스트 간 협력은 상대 컨텍스트의 `service`를 주입해 쓰되, 순환 의존이 생기면 도메인 이벤트로 끊는다.
 - **다른 팀 소유 테이블 조회를 `try/catch`로 degrade시킬 땐 `REQUIRES_NEW`가 필수다.** 호출자의 `@Transactional` 메서드 안에서 그 조회가 `DataAccessException`을 던지고 그걸 그 자리에서 잡아도, Hibernate는 이미 세션을 rollback-only로 표시해버려 커밋 시점에 `UnexpectedRollbackException`이 다시 터진다(degrade가 무의미해짐). 격리하려면 그 조회 메서드에 `@Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)`를 붙이고 호출자가 그 메서드 호출만 `catch (DataAccessException)`한다. 대가는 있다 — Spring이 `REQUIRES_NEW` 진입 시 바깥 트랜잭션의 커넥션을 반납하지 않고 쥔 채로 새 커넥션을 하나 더 받으므로, **요청 하나가 순간적으로 HikariCP 커넥션 2개를 점유**한다. 이 패턴을 쓸 때마다 풀 크기(`spring.datasource.hikari.maximum-pool-size`)를 다시 검토할 것(spring-infra 스킬 §3 실제 사례 참고).
 
+### REQUIRES_NEW로 실패를 격리할 때 흔한 함정
+
+다른 팀 소유 스키마 조회(`ai.*`)처럼 실패할 수 있는 조회를 `@Transactional(propagation = REQUIRES_NEW)`로 감싸는 이유는 그 실패가 호출자 트랜잭션을 오염시키지 않게 하기 위해서다. 아래 둘을 지키지 않으면 격리가 무의미해진다(NEEDS_REUPLOAD degrade 버그, PR #251에서 실제로 겪음).
+
+1. **같은 클래스 안에서 자가 호출(self-invocation)하면 `@Transactional`이 안 걸린다.** Spring AOP 프록시는 외부에서 들어오는 호출만 가로채므로, `this.foo()`로 부르면 새 트랜잭션이 열리지 않고 호출자의 트랜잭션을 그대로 쓴다. 격리하려면 **별도 Bean**(`@Component`/`@Service`)으로 분리해 주입해서 호출해야 한다(`ReportHoldInitializer`·`TerminalFailureJournalReader` 참고).
+2. **격리된 트랜잭션 안에서 예외를 삼키면 안 된다.** PostgreSQL은 트랜잭션 안에서 문장 하나가 실패하면 커밋·롤백 전까지 이후 모든 문장이 "current transaction is aborted"로 연쇄 실패한다. `REQUIRES_NEW` 메서드 **안에서** try/catch로 예외를 삼키면, Spring은 메서드가 정상 종료했다고 보고 그 트랜잭션을 커밋하려 드는데 DB 세션은 이미 aborted 상태라 커밋 자체가 실패한다. 예외는 메서드 밖으로 그대로 던져 Spring이 트랜잭션을 롤백하게 하고, **호출자가 그 호출 지점에서(자기 트랜잭션 안에서) 잡아야** 한다.
+
 ## 6. Controller · DTO 매핑
 
 컨트롤러는 얇게. HTTP ↔ 유스케이스 변환만 한다.

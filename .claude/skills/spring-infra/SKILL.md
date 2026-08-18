@@ -88,6 +88,7 @@ spring:
 
 - **풀 크기 근거:** 무한정 늘리면 DB가 죽는다. `maximum-pool-size`는 DB `max_connections`와 인스턴스 수를 역산해서 정한다(기본 10은 단일 인스턴스 보수값). 하드닝 시 env로 환경별 오버라이드를 배선한다.
 - **`max-lifetime`은 DB/LB 유휴 종료 시간보다 짧게** — 그래야 죽은 커넥션을 쥐고 있다가 터지는 걸 막는다. 현재는 미설정(Hikari 기본 30분)이라 명시 설정을 권장한다.
+- **현재 배포 토폴로지: 단일 인스턴스.** dev·prod `docker-compose.*.yml` 모두 `backend` 서비스가 1개고 `replicas`/`deploy.replicas` 설정이 없다(k8s 아님). `@Scheduled` 스윕러(`BlockedReportNotificationSweeper` 등)가 행 잠금·`@Version` 없이도 "동시 실행 시 중복 처리" 위험을 감수하는 근거가 이것이다 — 다중 인스턴스로 스케일아웃하면 이 가정이 깨지므로, 그때는 스윕러 전반에 분산 락 또는 `@Version` 낙관적 잠금을 재검토해야 한다(PR #251 CodeRabbit 리뷰에서 지적됨).
 
 ## 4. SQS producer 배선 + 로컬 브로커(LocalStack)
 

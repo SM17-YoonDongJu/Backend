@@ -76,6 +76,18 @@ class ReportQueryServiceTest {
   }
 
   @Test
+  @DisplayName("status=NEEDS_REUPLOAD 필터도 enum 추가만으로 그대로 지원된다(parseStatus는 valueOf)")
+  void needsReuploadStatusFilterIsSupported() {
+    givenEmptyPage();
+
+    reportQueryService.getUserReports(UUID.randomUUID(), "NEEDS_REUPLOAD", 1, 10);
+
+    ArgumentCaptor<ReportStatus> statusCaptor = ArgumentCaptor.forClass(ReportStatus.class);
+    then(reportRepository).should().findUserReportCards(any(), statusCaptor.capture(), any());
+    assertThat(statusCaptor.getValue()).isEqualTo(ReportStatus.NEEDS_REUPLOAD);
+  }
+
+  @Test
   @DisplayName("status가 비어 있으면 필터 없이(null) 조회하고, page(0 이하)는 0으로 클램프된다")
   void blankStatusMeansNullFilterAndPageFlooredToZero() {
     givenEmptyPage();

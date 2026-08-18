@@ -2,7 +2,7 @@
 
 > **출처:** Notion — API 명세서(개별 페이지 20개) + 기능리스트(개별 페이지 20개)  
 > **규칙:** 이 파일의 모든 항목은 위 Notion 페이지 출처로만 작성한다. 임의 해석·추측 금지.  
-> **최종 동기화:** 2026-08-15
+> **최종 동기화:** 2026-08-16
 
 ---
 
@@ -57,9 +57,7 @@ BLOCKED              ← AI 입력 가드레일 차단(보험·법률 외 주제
                        reports.status를 원시 SQL로 직접 'BLOCKED'로 세팅한다(Backend 도메인 메서드를
                        거치지 않음). **종료 상태**이며 `Report.ALLOWED_TRANSITIONS`엔 자기 자신으로만
                        존재해 어떤 리뷰/채택 흐름으로도 나가거나 들어올 수 없다.
-```
-
-> 상태 전이 허용표(`Report.applyReviewTransition`): AWAITING_INSPECTION→{AWAITING_ADOPTION, NOT_SELECTED}, AWAITING_ADOPTION→{COUNSELING, NOT_SELECTED}, COUNSELING→{CLOSED, AWAITING_ADOPTION}, NOT_SELECTED→{COUNSELING}, CLOSED→(종료), BLOCKED→(종료, AI 워커가 직접 세팅).
+> 상태 전이 허용표(`Report.applyReviewTransition`): AWAITING_INSPECTION→{AWAITING_ADOPTION, NOT_SELECTED}, AWAITING_ADOPTION→{COUNSELING, NOT_SELECTED}, COUNSELING→{CLOSED, AWAITING_ADOPTION}, NOT_SELECTED→{COUNSELING}, CLOSED→(종료), BLOCKED→(종료, AI 워커가 직접 세팅), NEEDS_REUPLOAD→(종료, AI 워커가 직접 세팅).
 
 ### 상태별 사용자 표시 문자열 (API 응답 `status` 필드)
 
@@ -72,8 +70,7 @@ BLOCKED              ← AI 입력 가드레일 차단(보험·법률 외 주제
 | `CLOSED` | `완료` | — | ✅ | ❌ |
 | `NOT_SELECTED` | (표시 문자열 코드 미확정) | ❌ (신규 검수 차단) | ✅ | 재개 시 COUNSELING 가능 |
 | `BLOCKED` | `BLOCKED`(그대로 노출, 별도 매핑 없음) | ❌ (검수 대상 자체가 아님) | ✅ | ❌ |
-
-> 리포트 `status` 필터·응답 값 표기: `생성 중` / `채택 대기중` / `상담 중` / `완료`. `NOT_SELECTED`(미채택)·`BLOCKED`(가드레일 차단)의 사용자 표시 문자열은 `ReportResponseSupport.customerStatus()`가 `CLOSED`만 `"MATCHED"`로 바꾸고 나머지는 enum 이름을 그대로 내리는 방식이라, 둘 다 코드값 그대로 노출된다(전용 한글 문구는 코드에 아직 정의되지 않음).
+> 리포트 `status` 필터·응답 값 표기: `생성 중` / `채택 대기중` / `상담 중` / `완료`. `NOT_SELECTED`(미채택)·`BLOCKED`(가드레일 차단)·`NEEDS_REUPLOAD`(OCR 품질 미달)의 사용자 표시 문자열은 `ReportResponseSupport.customerStatus()`가 `CLOSED`만 `"MATCHED"`로 바꾸고 나머지는 enum 이름을 그대로 내리는 방식이라, 셋 다 코드값 그대로 노출된다(전용 한글 문구는 코드에 아직 정의되지 않음).
 
 ### 3-1. 분석 처리 상태 (AnalysisState — REPORTS.status와 별도 축)
 
@@ -81,13 +78,14 @@ BLOCKED              ← AI 입력 가드레일 차단(보험·법률 외 주제
 
 - **판정 우선순위(작을수록 우선):**
   1. `REPORTS.status == BLOCKED` → `BLOCKED`(가드레일이 OCR 이전에 끊겨 아래 저널에 흔적이 없다. `reports.status`에서 직접 판정)
-  2. AI 초안 생성됨(`applicable_guarantees != null`) → `COMPLETED`(확정 실패 행이 남아 있어도 성공이 이긴다)
-  3. `ai.ocr_job_failures`에 `terminal=true` 행 존재 → `FAILED`
-  4. 그 외 → `PROCESSING`
-- **`ai.ocr_job_failures`** — AI 워커가 OCR 처리 실패를 기록하는 계약 테이블. **AI 워커 소유**(Flyway로 만들지 않는다), Backend는 SELECT만 한다. 권한(GRANT)이 아직 없어도 앱 부팅이 막히지 않도록 `@Subselect` 읽기 전용 엔티티(`OcrJobFailureView`)로 매핑한다(§ddd-tactical 스킬 참고).
-- **실패 사유(`AnalysisFailureReason`)**: `MASKING_RESIDUAL`(마스킹 잔류, 재업로드해도 동일 실패)/`SCHEMA_INVALID`(계약 위반)/`OCR_ERROR`/`UNKNOWN`/`UNREADABLE_FILE`(유일하게 재업로드로 해결 가능). 문서 여러 건이 다른 사유로 실패하면 이 순서로 대표 사유를 고른다 — `UNREADABLE_FILE`이 가장 낮은 우선순위라 다른 사유가 하나라도 섞이면 절대 대표가 되지 않는다(잘못된 재업로드 안내 방지).
-- **API**: `GET /reports/{reportId}/analysis-status`(폴링용 전용 엔드포인트, **소유자 전용** — 실패 문서 파일명이 실리는 유일한 응답이라 사정사에겐 안 연다) + 목록(`GET /reports`)·상세(`GET /reports/{reportId}`)에 평면 3필드(`analysis_state`/`analysis_failure_reason`/`analysis_failure_message`)로도 노출.
-- **알림**: 확정 실패·BLOCKED 각각 별도 스케줄러 스윕(`AnalysisFailureNotificationSweeper`/`BlockedReportNotificationSweeper`)이 감지해 인앱 알림+FCM 푸시. 조회 시점 주입이 아니라 스윕인 이유는 앱을 닫아둔 사용자에게도 푸시로 알려야 하기 때문.
+  2. `REPORTS.status == NEEDS_REUPLOAD` → `NEEDS_REUPLOAD`(OCR 품질 미달 — "실패"가 아니라 "품질 판정"이라 저널에 흔적이 없다. `reports.status`에서 직접 판정, AI 초안 존재 여부보다 우선해 "초안은 있는데 재업로드가 필요하다"는 모순 상태를 막는다)
+  3. AI 초안 생성됨(`applicable_guarantees != null`) → `COMPLETED`(확정 실패 행이 남아 있어도 성공이 이긴다)
+  4. `ai.ocr_job_failures`에 `terminal=true` 행 존재 → `FAILED`
+  5. 그 외 → `PROCESSING`
+- **`ai.ocr_job_failures`** — AI 워커가 OCR 처리 실패를 기록하는 계약 테이블. **AI 워커 소유**(Flyway로 만들지 않는다), Backend는 SELECT만 한다. 권한(GRANT)이 아직 없어도 앱 부팅이 막히지 않도록 `@Subselect` 읽기 전용 엔티티(`OcrJobFailureView`)로 매핑한다(§ddd-tactical 스킬 참고). `BLOCKED`·`NEEDS_REUPLOAD` 리포트에 저널 행이 남아 있어도(가정 위반 시) 이 우선순위 배치 덕분에 `isFailed()`가 `false`가 되어 실패 스윕과 중복 알림이 나지 않는다 — 다만 배치 슬롯은 계속 소모하므로 `OcrJobFailureViewRepositoryImpl`의 조회 조건에서 두 종료 상태를 제외한다.
+- **실패 사유(`AnalysisFailureReason`)**: `MASKING_RESIDUAL`(마스킹 잔류, 재업로드해도 동일 실패)/`SCHEMA_INVALID`(계약 위반)/`OCR_ERROR`/`UNKNOWN`/`UNREADABLE_FILE`(유일하게 재업로드로 해결 가능). 문서 여러 건이 다른 사유로 실패하면 이 순서로 대표 사유를 고른다 — `UNREADABLE_FILE`이 가장 낮은 우선순위라 다른 사유가 하나라도 섞이면 절대 대표가 되지 않는다(잘못된 재업로드 안내 방지). `NEEDS_REUPLOAD`는 `ai.ocr_results.ocr_quality`(다른 테이블·다른 컬럼)의 판정이라 이 ACL enum에 편입하지 않는다 — `NEEDS_REUPLOAD` 상태의 `failure_reason`은 항상 `null`.
+- **API**: `GET /reports/{reportId}/analysis-status`(폴링용 전용 엔드포인트, **소유자 전용** — 실패 문서 파일명이 실리는 유일한 응답이라 사정사에겐 안 연다) + 목록(`GET /reports`)·상세(`GET /reports/{reportId}`)에 평면 3필드(`analysis_state`/`analysis_failure_reason`/`analysis_failure_message`)로도 노출. `NEEDS_REUPLOAD`의 `failed_documents`는 현재 빈 배열 고정 — 문서 단위 상세(`ai.ocr_results` 연동)는 후속 이슈로 분리됐다(GRANT 미적용).
+- **알림**: 확정 실패·BLOCKED·NEEDS_REUPLOAD 각각 별도 스케줄러 스윕(`AnalysisFailureNotificationSweeper`/`BlockedReportNotificationSweeper`/`NeedsReuploadNotificationSweeper`)이 감지해 인앱 알림+FCM 푸시. 조회 시점 주입이 아니라 스윕인 이유는 앱을 닫아둔 사용자에게도 푸시로 알려야 하기 때문. 세 스윕 모두 토글 무관 항상 발송.
 
 ---
 
@@ -399,8 +397,9 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 ### NOTIFICATIONS (인앱 알림함)
 - **목적**: 사용자별 인앱 알림 1건(제목·본문·읽음 여부). 발송 토큰(device_tokens)·수신 설정(notification_settings)과 분리된 알림함 목록/읽음 전용(V18).
 - **필드**: `user_id`, `type`(enum `NotificationType`, varchar 저장), `title`, `body`, `is_read`, `created_at`
-- **NotificationType 값(13개)**: 고객계 `REVIEW_COMPLETE`/`RECEIVED_PROPOSAL`/`CONSULT_ACCEPTED`/`ANALYSIS_COMPLETE`/`ANALYSIS_FAILED`/`REPORT_BLOCKED`/`IDENTITY_VERIFIED`/`CHAT_MESSAGE`/`SETTLEMENT_NOTICE`/`PROPOSAL_CLOSED`, 사정사계 `NEW_REVIEW_REQUEST`/`REVIEW_DEADLINE_SOON`/`CONSULT_REQUESTED`. `ANALYSIS_FAILED`(분석 확정 실패)·`REPORT_BLOCKED`(가드레일 차단)는 시스템 실패 통지라 `NotificationSetting.allows()`에서 토글 무관 항상 발송(`PROPOSAL_CLOSED`와 동일 취급) — `notification_settings`에 대응 컬럼 없음, 추가도 불필요(varchar 저장이라 마이그레이션 없이 enum만 늘리면 된다).
+- **NotificationType 값(14개)**: 고객계 `REVIEW_COMPLETE`/`RECEIVED_PROPOSAL`/`CONSULT_ACCEPTED`/`ANALYSIS_COMPLETE`/`ANALYSIS_FAILED`/`REPORT_BLOCKED`/`REPORT_NEEDS_REUPLOAD`/`IDENTITY_VERIFIED`/`CHAT_MESSAGE`/`SETTLEMENT_NOTICE`/`PROPOSAL_CLOSED`, 사정사계 `NEW_REVIEW_REQUEST`/`REVIEW_DEADLINE_SOON`/`CONSULT_REQUESTED`. `ANALYSIS_FAILED`(분석 확정 실패)·`REPORT_BLOCKED`(가드레일 차단)·`REPORT_NEEDS_REUPLOAD`(OCR 품질 미달)는 시스템 실패 통지라 `NotificationSetting.allows()`에서 토글 무관 항상 발송(`PROPOSAL_CLOSED`와 동일 취급) — `notification_settings`에 대응 컬럼 없음, 추가도 불필요(varchar 저장이라 마이그레이션 없이 enum만 늘리면 된다).
 - **비고**: 생성 배선(이벤트→row insert)은 별도 티켓 범위. 생성 후 읽음만 전이(updated_at 없음).
+- **네이밍 규칙**: `report` 도메인이 원인인 시스템 실패 통지는 `REPORT_` 접두어를 붙인다(`REPORT_BLOCKED`·`REPORT_NEEDS_REUPLOAD`). 접두어 없이 `reports.status`·`AnalysisState` 값과 동일한 이름(`BLOCKED`·`NEEDS_REUPLOAD`)을 그대로 쓰면 FE가 `notifications.type`/FCM `data.type`과 응답 `status`/`analysis_state`를 같은 네임스페이스로 오인할 수 있다(PR #251에서 CodeRabbit이 지적해 배포 전 정정한 사례 — `NEEDS_REUPLOAD` → `REPORT_NEEDS_REUPLOAD`). 새 `NotificationType` 값을 추가할 때 형제 값과 접두어 일관성을 먼저 확인할 것.
 
 ### NOTIFICATION_SETTINGS (알림 수신 토글)
 - **목적**: 사용자별 알림 수신 on/off 토글(USERS 1:1, user_id PK). off면 해당 type 미발송(producer 배선에서 적용).
@@ -417,9 +416,10 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 | `case_no` | varchar(100) | 사람용 사건번호 `yyyyMMdd-NNN`(당일 시퀀스 발급) |
 | `title` | varchar | 리포트 제목(nullable) |
 | `accident_type` | enum | `medical_indemnity, traffic, disability, cancer_diagnosis, fire, liability, other` (영문) |
-| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED`, `BLOCKED`(AI 워커가 원시 SQL로 직접 세팅, §3-1 참고) |
+| `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED`, `BLOCKED`(AI 워커가 원시 SQL로 직접 세팅, §3-1 참고), `NEEDS_REUPLOAD`(AI 워커가 원시 SQL로 직접 세팅, OCR 품질 미달, §3-1 참고). DB는 varchar(30) — CHECK 제약·PostgreSQL enum 없음, 값 목록은 Java enum(`ReportStatus`)에서만 강제된다 |
 | `analysis_failure_notified_at` | timestamp(nullable) | 분석 확정 실패 알림 발송 시각(V41). NULL=미통지, 스윕의 멱등 가드. 분석 상태 자체는 저장 안 함(§3-1) |
 | `blocked_notified_at` | timestamp(nullable) | BLOCKED 알림 발송 시각(V42). NULL=미통지, 별도 스윕의 멱등 가드 |
+| `needs_reupload_notified_at` | timestamp(nullable) | NEEDS_REUPLOAD 알림 발송 시각(V43). NULL=미통지, 별도 스윕(`NeedsReuploadNotificationSweeper`)의 멱등 가드 |
 | `claimed_min_amount` | bigint | 최소 청구 금액 (단정 표현 금지 — 범위로 표현) |
 | `claimed_max_amount` | bigint | 최대 청구 금액 |
 | `offered_amount` | bigint | 보험사 지급 금액 |
@@ -600,6 +600,7 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 
 | 날짜 | 변경 내용                                                                                                                                              | 사유 |
 |------|----------------------------------------------------------------------------------------------------------------------------------------------------|------|
+| 2026-08-16 | **OCR 품질 미달 상태(`NEEDS_REUPLOAD`) 반영**: §3 상태머신·전이표·표시문자열표에 `NEEDS_REUPLOAD`(OCR 품질 미달, 종료 상태, AI 워커 원시 SQL 세팅, 회복은 재업로드=새 리포트뿐) 추가. §3-1 판정 우선순위 4→5단계(`BLOCKED` 다음·AI 초안 검사보다 앞 — 초안 존재 시 오판 방지 + 저널 기반 실패 스윕과 중복 알림 차단), `AnalysisState` PROCESSING/COMPLETED/FAILED/BLOCKED→**+NEEDS_REUPLOAD 5값**, 알림 스윕 2종→**3종**(`NeedsReuploadNotificationSweeper` 신설). `analysis_failure_reason`(`AnalysisFailureReason`)엔 편입하지 않음(다른 테이블·다른 컬럼 판정이라 ACL 경계 유지) — `NEEDS_REUPLOAD`의 `failure_reason`은 항상 null. §13 NotificationType 13→**14개**(`REPORT_NEEDS_REUPLOAD`, 토글 무관 항상 발송 — 형제 값 네이밍 관례에 맞춰 `REPORT_` 접두어 사용, ai_owner 제안 원문 `NEEDS_REUPLOAD`에서 정정). §14 REPORTS.status에 `NEEDS_REUPLOAD`, `needs_reupload_notified_at`(V43, 알림 멱등 가드) 컬럼 추가 — `reports.status`엔 DB CHECK 제약이 없어(varchar(30), Java enum만 강제) 값 추가 자체엔 마이그레이션 불필요, V43는 가드 컬럼용. `ai.ocr_results`(문서 단위 상세) 연동은 `core.ocr_results` 동명이표 충돌 때문에 이번 스코프에서 제외, 후속 이슈로 분리. | ai_owner(FastAPI OCR 워커)의 무음 정지 신고 — BLOCKED와 동일 패턴으로 해결(#247·#248 후속) |
 | 2026-08-15 | **리포트 분석 처리 상태 노출 기능 반영(PR #247·#248)**: §3 상태머신·전이표·표시문자열표에 `BLOCKED`(AI 입력 가드레일 차단, 종료 상태, 원시 SQL 세팅) 추가. §3-1 신설 — `AnalysisState`(REPORTS.status와 별도 축, PROCESSING/COMPLETED/FAILED/BLOCKED, DB 미저장 파생값)·판정 우선순위·`ai.ocr_job_failures`(AI 워커 소유 계약 테이블, `@Subselect` 읽기전용)·대표 실패 사유 우선순위·`GET /reports/{reportId}/analysis-status`(소유자 전용)·알림 스윕 2종 설명. §10 report 도메인에 analysis-status·`/me/received-proposals` 엔드포인트 추가. §13 NotificationType 11→13개(`ANALYSIS_FAILED`·`REPORT_BLOCKED` 추가, 토글 무관 항상발송). §14 REPORTS.status에 BLOCKED, `analysis_failure_notified_at`(V41)·`blocked_notified_at`(V42) 컬럼 추가. | OCR 처리 실패 알림 계약(`ai.ocr_job_failures`) 소비 기능 구현 후 하네스 동기화 |
 | 2026-07-20 | **코드 정합 감사 반영(드리프트 18건)**: §3·§14 status에 `NOT_SELECTED` 추가(스케줄러 스윕, 비종료). §3·§5·§10·§16 매칭을 "제안(REPORT_REVIEWS) 수락/거절" 모델로 재작성 — CLOSED=사용자 수락, COUNSELING→AWAITING_ADOPTION 거절 경로, PATCH /chats/{id}/accept·reject·PATCH /reports/{id}/proposals/{pid}; 유령 `/matches` 엔드포인트·match 도메인 폐기 명시. §7·§16 토큰 만료 15분/30일→30분/14일. §9·§14 ADJUSTER_APPLICATIONS `speciality`→`specialties text[]`+phone·affiliation·region·registration_image_url·문서심사(ADJUSTER_APPLICATION_DOCUMENTS/Document*·Affiliation) 반영. §13 REPORT_REVIEW_ISSUES→`report_issues_reviews`(V10)+impact_amount(V9), ADJUSTER_REVIEW→`adjuster_reviews`+report_id(V26), REPORT_HOLDS·NOTIFICATIONS·NOTIFICATION_SETTINGS·NotificationType 추가. §14 REPORTS title·case_no 추가·confidence_level enum→varchar, ADJUSTER_PROFILES 누락필드 보강, SUBSCRIPTIONS 타입 정정+"엔티티 미구현", PAYMENTS "미구현/계획(스키마 없음)", REPORT_CASE_SEQUENCES(V14). §11 error code 구코드 공존·도메인코드 반영. 마이그레이션 번호 V12/V13→V22/V23 정정. | chore/harness-audit B_glossary 드리프트 감사(18건) 동기화 |
 | 2026-07-14 | 사정사 홈 대시보드(GET /adjusters/me/home)를 report → **adjuster 도메인**으로 분리(섹션 10 adjuster 추가). ADJUSTER_PROFILES를 `AdjusterProfile` 엔티티로 매핑(§14 필드 정정: `speciality varchar`→`specialties text[]`, 구 `subscription_plan` 컬럼 없음 명시, `registration_url`·`updated_at` V22 추가 — 마이그레이션 재번호로 V12→V22). ADJUSTER_APPLICATIONS status ERD 정합(`ACCEPTED`→`APPROVED` §9·§14, `introduce`→`introduction`). **지역 배열화**: USERS.region·ADJUSTER_PROFILES.activity_region을 `text[]`로 전환(V23 — 재번호로 V13→V23, 복수 지역) — 검수대기 목록 지역 필터는 동등비교→`array_contains`. | #100 native→QueryDSL 리팩터 중 adjuster 도메인 분리 + 기존 엔티티 ERD 반영(지역 배열화 포함) |

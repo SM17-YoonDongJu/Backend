@@ -135,6 +135,117 @@ class ReportAnalysisTest {
   }
 
   @Test
+  @DisplayName("report.status가 NEEDS_REUPLOAD면 저널과 무관하게 NEEDS_REUPLOAD로 판정하고 문구·재업로드 안내를 채운다")
+  void needsReuploadStatusIsDerivedFromReportStatus() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.isFailed()).isFalse();
+    assertThat(analysis.reason()).isNull();
+    assertThat(analysis.failedAt()).isNull();
+    assertThat(analysis.failureMessage()).isEqualTo("업로드하신 문서를 알아보기 어려워요. 더 선명하게 다시 올려주세요.");
+    assertThat(analysis.reuploadGuidance()).isEqualTo(ReuploadGuidance.RECOMMENDED);
+    assertThat(analysis.documents()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("핵심 — AI 초안이 있어도 NEEDS_REUPLOAD가 이긴다(COMPLETED로 내리면 무음 정지가 재현된다)")
+  void needsReuploadBeatsAiDraft() {
+    // Given: AI가 일부 문서로 초안을 만든 뒤 품질 판정을 늦게 쓴 모순 상태
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    ReflectionTestUtils.setField(report, "applicableGuarantees", List.of("상해후유장해"));
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+  }
+
+  @Test
+  @DisplayName("핵심 — NEEDS_REUPLOAD는 확정 실패 행이 공존해도 isFailed()가 false다(저널 스윕 중복 알림 차단)")
+  void needsReuploadKeepsIsFailedFalseWhenJournalRowsCoexist() {
+    // Given: 품질 판정에는 저널 행이 안 생긴다는 가정이 틀린 경우(방어적 고정)
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    OcrJobFailureView lingering =
+        OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering));
+
+    // Then: AnalysisFailureNotificationSweeper는 isFailed()로 통지 대상을 고르므로 중복 알림이 나가지 않는다.
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.isFailed()).isFalse();
+  }
+
+  @Test
+  @DisplayName("청구 fan-in으로 걸린 NEEDS_REUPLOAD는 저널에 흔적이 있으면 문서를 특정해 보여준다")
+  void needsReuploadFromClaimFanInExposesFailedDocuments() {
+    // Given: PR #67 — 필수 문서 미인식·비필수 문서 결정적 실패는 개별 문서 품질 게이트와 달리 저널에 남는다.
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    UUID attachmentId = UUID.randomUUID();
+    OcrJobFailureView fanInFailure =
+        OcrJobFailureViewFixture.terminal(UUID.randomUUID(), attachmentId, "unreadable_file", FAILED_AT);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(fanInFailure));
+
+    // Then: 상태·문구·isFailed()는 그대로지만(모순 없음), 문서 목록은 저널에서 채워진다.
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.isFailed()).isFalse();
+    assertThat(analysis.reason()).isNull();
+    assertThat(analysis.failedAt()).isNull();
+    assertThat(analysis.documents()).hasSize(1);
+    assertThat(analysis.documents().getFirst().attachmentId()).isEqualTo(attachmentId);
+    assertThat(analysis.documents().getFirst().reason()).isEqualTo(AnalysisFailureReason.UNREADABLE_FILE);
+  }
+
+  @Test
+  @DisplayName("개별 문서 품질 게이트로 걸린 NEEDS_REUPLOAD는 저널에 흔적이 없어 문서 목록이 빈 배열이다")
+  void needsReuploadFromQualityGateHasEmptyDocuments() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.documents()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("개별 문서 품질 게이트(ai.ocr_results)로 걸린 NEEDS_REUPLOAD는 문서를 특정하되 사유는 null이다")
+  void needsReuploadFromQualityGateExposesDocumentWithNullReason() {
+    // Given: PR #65/#66 — 다른 계약(ai.ocr_results.ocr_quality)이라 AnalysisFailureReason으로 옮기지 않는다.
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    UUID attachmentId = UUID.randomUUID();
+    OcrResultView qualityGateDocument =
+        OcrResultViewFixture.needsReupload(UUID.randomUUID(), attachmentId, "diagnosis");
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(qualityGateDocument));
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.documents()).hasSize(1);
+    assertThat(analysis.documents().getFirst().attachmentId()).isEqualTo(attachmentId);
+    assertThat(analysis.documents().getFirst().reason()).isNull();
+  }
+
+  @Test
+  @DisplayName("청구 fan-in 저널과 품질 게이트 문서가 함께 있으면 둘 다 합쳐 보여준다")
+  void needsReuploadMergesDocumentsFromBothSources() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    UUID fanInAttachmentId = UUID.randomUUID();
+    UUID qualityGateAttachmentId = UUID.randomUUID();
+    OcrJobFailureView fanInFailure =
+        OcrJobFailureViewFixture.terminal(UUID.randomUUID(), fanInAttachmentId, "unreadable_file", FAILED_AT);
+    OcrResultView qualityGateDocument =
+        OcrResultViewFixture.needsReupload(UUID.randomUUID(), qualityGateAttachmentId, "diagnosis");
+
+    ReportAnalysis analysis =
+        ReportAnalysis.of(report, List.of(fanInFailure), List.of(qualityGateDocument));
+
+    assertThat(analysis.documents()).hasSize(2);
+    assertThat(analysis.documents()).extracting(ReportAnalysis.FailedDocument::attachmentId)
+        .containsExactlyInAnyOrder(fanInAttachmentId, qualityGateAttachmentId);
+  }
+
+  @Test
   @DisplayName("Q4 — 실패 행이 삭제되면(정상 회복) 같은 리포트가 PROCESSING으로 되돌아간다")
   void recoveryReturnsToProcessing() {
     // Given
@@ -239,7 +350,7 @@ class ReportAnalysisTest {
   }
 
   @Test
-  @DisplayName("정적 팩터리 processing()·completed()·blocked()는 실패 필드가 비어 있고 documents는 null이 아닌 빈 리스트다")
+  @DisplayName("정적 팩터리(processing·completed·blocked·needsReupload)는 실패 필드가 비고 documents는 빈 리스트다")
   void staticFactoriesAreEmptyAndNonNull() {
     assertThat(ReportAnalysis.processing().state()).isEqualTo(AnalysisState.PROCESSING);
     assertThat(ReportAnalysis.processing().documents()).isNotNull().isEmpty();
@@ -247,6 +358,8 @@ class ReportAnalysisTest {
     assertThat(ReportAnalysis.completed().documents()).isNotNull().isEmpty();
     assertThat(ReportAnalysis.blocked().state()).isEqualTo(AnalysisState.BLOCKED);
     assertThat(ReportAnalysis.blocked().documents()).isNotNull().isEmpty();
+    assertThat(ReportAnalysis.needsReupload().state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(ReportAnalysis.needsReupload().documents()).isNotNull().isEmpty();
   }
 
   @Test

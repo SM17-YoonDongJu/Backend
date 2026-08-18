@@ -57,6 +57,10 @@ public class Report extends BaseEntity {
     // AI 워커가 원시 SQL로 직접 세팅(Backend 도메인 메서드를 거치지 않음). 종료 상태 — 여기서 나가는
     // 전이는 없다(applyReviewTransition을 거치는 모든 호출은 여기서 INVALID_STATE_TRANSITION으로 막힌다).
     ALLOWED_TRANSITIONS.put(ReportStatus.BLOCKED, EnumSet.of(ReportStatus.BLOCKED));
+    // OCR 품질 미달(재업로드 필요)도 AI 워커가 원시 SQL로 직접 세팅하는 종료 상태다. 회복은 재시도가
+    // 아니라 새 리포트(재업로드)이므로 여기서 나가는 전이는 없다 — 검수 착수·채택·미채택 스윕이 전부
+    // INVALID_STATE_TRANSITION으로 막힌다.
+    ALLOWED_TRANSITIONS.put(ReportStatus.NEEDS_REUPLOAD, EnumSet.of(ReportStatus.NEEDS_REUPLOAD));
   }
 
   @Id
@@ -140,6 +144,14 @@ public class Report extends BaseEntity {
    */
   @Column(name = "blocked_notified_at")
   private LocalDateTime blockedNotifiedAt;
+
+  /**
+   * NEEDS_REUPLOAD(OCR 품질 미달 — 재업로드 필요) 알림을 보낸 시각(멱등 가드). NULL이면 미통지다.
+   * {@code blockedNotifiedAt}과 컬럼을 공유하지 않는다 — 두 상태는 상호배타적이라 하나로도 동작하지만
+   * 컬럼 의미가 흐려지고 상태별 통지 건수를 나눌 수 없게 된다.
+   */
+  @Column(name = "needs_reupload_notified_at")
+  private LocalDateTime needsReuploadNotifiedAt;
 
   /**
    * 리포트 생성 진입점(design.md §3). OCR·AI 분석 전 상태이므로 status=AWAITING_INSPECTION으로 시작한다.
@@ -243,6 +255,21 @@ public class Report extends BaseEntity {
       return false;
     }
     this.blockedNotifiedAt = LocalDateTime.now();
+    return true;
+  }
+
+  /**
+   * NEEDS_REUPLOAD 알림 발송을 1회만 기록한다(단방향 가드: null → 시각). {@code status}는 AI 워커가 직접
+   * 세팅하는 종료 상태라({@link ReportStatus#NEEDS_REUPLOAD}) 재판정·재통지 시나리오가 없다 — 재업로드는
+   * 항상 새 리포트다.
+   *
+   * @return 이번 호출이 통지 시각을 기록했으면 {@code true}, 이미 통지돼 건너뛰었으면 {@code false}
+   */
+  public boolean markNeedsReuploadNotified() {
+    if (this.needsReuploadNotifiedAt != null) {
+      return false;
+    }
+    this.needsReuploadNotifiedAt = LocalDateTime.now();
     return true;
   }
 
