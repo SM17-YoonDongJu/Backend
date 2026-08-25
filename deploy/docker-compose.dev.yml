@@ -66,6 +66,14 @@ services:
       # 샘플링(dev 전량=1.0). 운영 조정은 이 값만 교체.
       TRACING_SAMPLE_PROBABILITY: ${TRACING_SAMPLE_PROBABILITY:-1.0}
       TZ: Asia/Seoul
+      # FCM 푸시 발송용 Firebase service account 키 경로(컨테이너 내부). 이 값이 있어야 FcmConfig가
+      # FirebaseApp 빈을 만들어 실제로 발송한다 — 미설정이면 stub 모드로 발송을 건너뛴다. 키 파일 자체는
+      # 시크릿이라 레포에 커밋하지 않고 아래 volumes로 호스트 파일을 마운트한다.
+      FCM_SERVICE_ACCOUNT_PATH: /etc/secrets/firebase-adminsdk.json
+    volumes:
+      # 호스트의 service account JSON을 read-only로 마운트(컨테이너는 root 실행이라 600 파일도 읽힘).
+      # 호스트 경로는 FCM_SA_HOST_PATH로 덮어쓸 수 있고, 기본값은 dev 인스턴스 배치 위치다.
+      - ${FCM_SA_HOST_PATH:-/home/ubuntu/secrets/firebase-adminsdk.json}:/etc/secrets/firebase-adminsdk.json:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
       interval: 30s
