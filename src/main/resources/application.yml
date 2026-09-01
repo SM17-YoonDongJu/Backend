@@ -180,6 +180,12 @@ management:
       probes:
         enabled: true          # liveness/readiness 프로브 → /actuator/health/{liveness,readiness}
   metrics:
+    distribution:
+      # http.server.requests에 Prometheus 히스토그램 버킷(_bucket)을 노출한다. 기본은 count/sum/max뿐이라
+      # Grafana histogram_quantile로 p50/p95/p99를 계산할 원재료가 없었다 — k6 부하테스트 전 API별
+      # percentile 확인을 위해 추가(deploy/monitoring/grafana/dashboards/api-latency-percentiles.json 참고).
+      percentiles-histogram:
+        http.server.requests: true
     tags:
       # 모든 메트릭에 붙는 공통 라벨. Grafana SpringBoot APM(12900)·JVM Micrometer(4701) 대시보드가
       # application 라벨(label_values(application))로 대상을 선택한다 — 없으면 패널이 No data.
