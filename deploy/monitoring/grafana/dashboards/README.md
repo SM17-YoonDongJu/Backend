@@ -8,6 +8,7 @@
 |------|----------|------|-------------|
 | `1860.json` | Node Exporter Full | t3·g6 시스템(CPU·메모리·디스크·네트워크) | node_exporter UP |
 | `14282.json` | Cadvisor exporter | 컨테이너별 리소스 | cAdvisor UP |
+| `763.json` | Redis Dashboard for Prometheus Redis Exporter | ops/sec·히트율·evicted keys·connected clients·메모리 | redis-exporter UP. 원본의 `namespace` 변수는 이 exporter 기본 출력에 없는 라벨이라 제거하고 `instance` 변수 쿼리를 직접 참조로 바꿔 받았다(원본 그대로 쓰면 전 패널 No data) |
 | `12900.json` | SpringBoot APM Dashboard | HTTP·HikariCP·로그·메모리풀 | ⚠️ **`application` 라벨 필요** |
 | `4701.json` | JVM (Micrometer) | JVM 힙·GC·스레드·버퍼풀 | ⚠️ **`application` 라벨 필요** |
 | `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | t3 행 즉시, GPU 행은 g6 exporter 후 |
