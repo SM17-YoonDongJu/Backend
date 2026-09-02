@@ -1,6 +1,6 @@
 {
   "annotations": { "list": [] },
-  "description": "RDS 인프라 지표(CloudWatch) — node-exporter/cAdvisor는 EC2 인스턴스만 감시해서 관리형 RDS는 잡히지 않는다. 이 대시보드는 CloudWatch 데이터소스로 RDS 네이티브 지표를 직접 조회한다. 모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한(cloudwatch:GetMetricData·ListMetrics·GetMetricStatistics, tag:GetResources, ec2:DescribeTags/DescribeInstances/DescribeRegions)이 없으면 패널이 전부 에러/No data로 뜬다 — deploy/README.md 참고.",
+  "description": "RDS 인프라 지표(CloudWatch) — node-exporter/cAdvisor는 EC2 인스턴스만 감시해서 관리형 RDS는 잡히지 않는다. 이 대시보드는 CloudWatch 데이터소스로 RDS 네이티브 지표를 직접 조회한다. 모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한(cloudwatch:GetMetricData·ListMetrics·GetMetricStatistics, tag:GetResources, ec2:DescribeTags/DescribeInstances/DescribeRegions)이 없으면 패널이 전부 에러/No data로 뜬다 — deploy/README.md 참고. dbinstance 변수는 CloudWatch dimension_values() 동적 조회가 이 Grafana 버전에서 빈 값을 반환해(실측 확인) brbs-rds-dev 고정값으로 바꿨다 — 이 계정엔 RDS가 dev/prod 2개뿐이고 이 스택은 dev만 본다. 환경을 바꾸려면 이 변수 값만 직접 수정할 것.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -207,12 +207,10 @@
       },
       {
         "name": "dbinstance",
-        "type": "query",
-        "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
-        "query": "dimension_values($region,AWS/RDS,CPUUtilization,DBInstanceIdentifier)",
-        "refresh": 1,
-        "includeAll": false,
-        "multi": false
+        "type": "custom",
+        "query": "brbs-rds-dev",
+        "current": { "text": "brbs-rds-dev", "value": "brbs-rds-dev" },
+        "options": [{ "text": "brbs-rds-dev", "value": "brbs-rds-dev", "selected": true }]
       }
     ]
   },
