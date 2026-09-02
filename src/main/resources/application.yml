@@ -189,6 +189,10 @@ management:
         # 채팅 Redis relay 종단 지연(발행→STOMP 전달) — 히스토그램 없으면 chat_relay_latency_seconds에
         # count/sum/max만 남아 histogram_quantile로 p50/p95/p99를 못 뽑는다.
         chat.relay.latency: true
+        # WebSocket 핸드셰이크·SUBSCRIBE 인가 소요시간 — 성공/실패 카운터만으론 "됐는지"만 보이고
+        # "얼마나 걸렸는지"는 안 보여서 추가.
+        chat.ws.handshake.duration: true
+        chat.ws.subscribe.duration: true
     tags:
       # 모든 메트릭에 붙는 공통 라벨. Grafana SpringBoot APM(12900)·JVM Micrometer(4701) 대시보드가
       # application 라벨(label_values(application))로 대상을 선택한다 — 없으면 패널이 No data.
