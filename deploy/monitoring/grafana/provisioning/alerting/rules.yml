@@ -1,4 +1,4 @@
-# 알림 룰 6종 (#88 보너스) — 1분 평가, BRBS 폴더.
+# 알림 룰 9종 (#88 보너스 6종 + OCR 파이프라인 3종) — 1분 평가, BRBS 폴더.
 # 설계 원칙:
 #  - NoData → OK: dev 무트래픽·GPU 미연결 시 침묵(오발화 방지)
 #  - Error → OK, 단 TargetDown만 Error → Alerting: Prometheus(데이터소스) 자체 장애를 대표 1건으로 감지
@@ -280,6 +280,161 @@ groups:
               range: false
               refId: A
               legendFormat: "{{pool}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── OCR 파이프라인(발행=backend / 소비=report 워커) ──
+      # 워커는 HTTP 서버가 없어 /metrics 스크랩이 불가하다(TargetDown 룰이 못 잡는다) — 그래서 "컨테이너가
+      # 떠 있는가"는 cAdvisor로, "일을 하고 있는가"는 로그로 본다. 워커가 /metrics를 노출하면
+      # prometheus.yml의 ocr-worker job을 켜고 여기에 처리량·실패율 룰을 추가한다.
+      - uid: brbs-ocr-worker-down
+        title: "OcrWorkerDown - OCR 워커 컨테이너 없음"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OCR 워커(brbs-report) 컨테이너가 보이지 않음"
+          description: "5분 이상 cAdvisor에 brbs-report가 없다 — 컨테이너가 죽었거나 이름이 바뀌었다. OCR 트리거를 아무도 소비하지 않으므로 리포트 생성이 멈춘다(메시지는 큐에 4일 보관). 앱 인스턴스에서 docker ps·docker logs brbs-report 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
+            model:
+              expr: 'absent(container_last_seen{name="brbs-report"})'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-ocr-worker-not-consuming
+        title: "OcrWorkerNotConsuming - OCR 워커가 큐를 읽지 못함"
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OCR 워커가 SQS 수신에 반복 실패 중"
+          description: "10분 넘게 'sqs receive failed'가 쏟아진다 — 컨테이너는 살아 있지만 큐를 못 읽는 상태다. SQS_OCR_JOB_QUEUE_URL 주입 여부(2026-08-13 실제 원인)·IAM(Receive/Delete)·큐 이름을 확인. 발행은 정상인데 소비만 끊기면 이 룰만 발화한다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            # ⚠️ 워커(AI 레포)의 로그 문구에 의존한다 — 문구가 바뀌면 이 룰은 조용히 죽는다.
+            # 정상 시 0건이라 NoData=OK로 침묵하고, 초당 1회 재시도가 5분 이어지면 ~300건이 된다.
+            model:
+              refId: A
+              expr: 'sum(count_over_time({service="brbs-report"} |= "sqs receive failed" [5m]))'
+              queryType: instant
+              datasource:
+                type: loki
+                uid: loki
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-outbox-relay-failing
+        title: "OutboxRelayFailing - OCR 트리거 발행 실패"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "아웃박스 릴레이가 SQS 발행에 실패 중"
+          description: "10분 내 발행 실패가 있었다. 5회를 넘기면 FAILED로 파킹돼 자동 재시도가 끝나므로(수동 복구 필요) 큐 이름(SQS_OCR_QUEUE_NAME)·IAM(SendMessage/GetQueueUrl)을 확인. 로그: {service=\"brbs-backend\"} |= \"아웃박스 이벤트 발행 실패\""
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # OutboxRelay가 발행 결과를 카운터로 남긴다(outbox.relay.failed → outbox_relay_failed_total).
+            # 이 메트릭이 배포되기 전에는 시계열이 없어 NoData=OK로 침묵한다.
+            model:
+              expr: 'sum(increase(outbox_relay_failed_total[10m]))'
+              instant: true
+              range: false
+              refId: A
           - refId: C
             relativeTimeRange:
               from: 0
