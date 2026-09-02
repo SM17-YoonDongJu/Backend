@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
@@ -23,6 +24,9 @@ import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.socket.WebSocketHandler;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -40,6 +44,8 @@ class ChatHandshakeInterceptorTest {
   private JwtProvider jwtProvider;
   @Mock
   private WebSocketHandler webSocketHandler;
+  @Spy
+  private MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
   @InjectMocks
   private ChatHandshakeInterceptor interceptor;

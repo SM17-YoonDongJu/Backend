@@ -1,0 +1,148 @@
+{
+  "annotations": { "list": [] },
+  "description": "채팅 WebSocket/STOMP 지표 — 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay(발행/전달) 처리량. ChatHandshakeInterceptor·ChatSubscribeInterceptor·ChatWebSocketSessionMetrics·ChatEventPublisher·ChatMessageSubscriber에서 직접 계측한 커스텀 메트릭이라 별도 exporter나 설정 없이 배포 즉시 값이 찬다. 클라이언트는 SUBSCRIBE만 하고 SEND는 REST이므로(설계서 §5), 메시지 전송량은 api-latency-percentiles.json의 POST 메시지 엔드포인트 쪽에서 같이 봐야 한다.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "핸드셰이크 · 연결",
+      "type": "row"
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Handshake Rate (결과별)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (result) (rate(chat_ws_handshake_total{application=\"$application\"}[$__rate_interval]))",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Active Connections / Subscriptions",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "chat_ws_connections_active{application=\"$application\"}",
+          "legendFormat": "connections"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "chat_ws_subscriptions_active{application=\"$application\"}",
+          "legendFormat": "subscriptions"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Subscribe Rate (결과별)",
+      "description": "success 외 태그는 ErrorCode 이름 그대로 노출(CHAT_WS_UNAUTHORIZED·CHAT_ROOM_NOT_FOUND·CHAT_NOT_A_MEMBER).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (result) (rate(chat_ws_subscribe_total{application=\"$application\"}[$__rate_interval]))",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Disconnect Rate (close status별)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (status) (rate(chat_ws_disconnect_total{application=\"$application\"}[$__rate_interval]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 200,
+      "panels": [],
+      "title": "메시지 Relay (Redis pub/sub)",
+      "type": "row"
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Publish vs Deliver Rate",
+      "description": "publish(REST 메시지 저장 후 Redis 발행)와 deliver(Redis 구독 → STOMP relay)를 겹쳐서 본다. 두 선이 벌어지면 relay 구간에서 유실·지연이 쌓이고 있다는 신호다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(chat_relay_publish_total{application=\"$application\"}[$__rate_interval]))",
+          "legendFormat": "publish"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (result) (rate(chat_relay_deliver_total{application=\"$application\"}[$__rate_interval]))",
+          "legendFormat": "deliver {{result}}"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["brbs", "chat", "websocket"],
+  "templating": {
+    "list": [
+      {
+        "name": "application",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(application)",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "채팅 WebSocket (핸드셰이크·구독·relay)",
+  "uid": "brbs-websocket-chat",
+  "version": 1,
+  "weekStart": ""
+}

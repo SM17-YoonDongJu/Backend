@@ -5,6 +5,7 @@ import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.json.JsonMapper;
@@ -23,9 +24,12 @@ import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
 public class ChatMessageSubscriber implements MessageListener {
 
   private static final String ROOM_TOPIC_PREFIX = "/topic/chat.rooms.";
+  private static final String DELIVER_METRIC = "chat.relay.deliver";
+  private static final String RESULT_TAG = "result";
 
   private final SimpMessagingTemplate messagingTemplate;
   private final JsonMapper jsonMapper;
+  private final MeterRegistry meterRegistry;
 
   @Override
   public void onMessage(Message message, byte[] pattern) {
@@ -33,8 +37,10 @@ public class ChatMessageSubscriber implements MessageListener {
       ChatBroadcastMessage payload = jsonMapper.readValue(message.getBody(), ChatBroadcastMessage.class);
       messagingTemplate.convertAndSend(
           ROOM_TOPIC_PREFIX + payload.roomId(), jsonMapper.writeValueAsString(payload));
+      meterRegistry.counter(DELIVER_METRIC, RESULT_TAG, "success").increment();
     } catch (RuntimeException ex) {
       // relay 실패는 실시간 전달만 영향 — 메시지는 이미 DB에 영속화됐으므로 로그만 남기고 삼킨다.
+      meterRegistry.counter(DELIVER_METRIC, RESULT_TAG, "failure").increment();
       log.warn("채팅 브로드캐스트 relay 실패", ex);
     }
   }
