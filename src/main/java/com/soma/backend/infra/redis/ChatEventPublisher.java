@@ -1,5 +1,7 @@
 package com.soma.backend.infra.redis;
 
+import java.time.Instant;
+
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -9,6 +11,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.soma.backend.infra.redis.dto.ChatBroadcastEnvelope;
 import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
 
 /**
@@ -43,7 +46,8 @@ public class ChatEventPublisher {
 
   /** 즉시 발행(직렬화 후 convertAndSend). 실패해도 메시지 저장 자체는 이미 커밋된 상태다. */
   public void publish(ChatBroadcastMessage message) {
-    redisTemplate.convertAndSend(RedisConfig.CHAT_MESSAGE_CHANNEL, jsonMapper.writeValueAsString(message));
+    ChatBroadcastEnvelope envelope = new ChatBroadcastEnvelope(message, Instant.now());
+    redisTemplate.convertAndSend(RedisConfig.CHAT_MESSAGE_CHANNEL, jsonMapper.writeValueAsString(envelope));
     meterRegistry.counter(PUBLISH_METRIC).increment();
   }
 }
