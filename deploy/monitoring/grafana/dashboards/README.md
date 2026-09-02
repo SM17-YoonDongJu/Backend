@@ -15,6 +15,7 @@
 | `api-latency-percentiles.json` | API 지연시간 (커스텀) | uri별 RPS·p50/p95/p99, 전체 요약, 가장 느린 API Top 10 | ⚠️ **`management.metrics.distribution.percentiles-histogram.http.server.requests=true` 필요**(히스토그램 버킷 없으면 `histogram_quantile`이 No data) + `application` 라벨 |
 | `k6-load-test.json` | k6 부하테스트 (커스텀) | k6 클라이언트 지표(RPS·실패율·VU·http_req_duration/waiting/blocked/connecting/tls_handshaking percentile·dropped_iterations) | k6를 `-o experimental-prometheus-rw`로 이 Prometheus에 remote-write할 때만 데이터 유입 |
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |
+| `websocket-chat.json` | 채팅 WebSocket (커스텀) | 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay 발행/전달 처리량 | 배포 즉시(커스텀 계측이라 별도 exporter·설정 불필요) + `application` 라벨 |
 
 > ⚠️ `application` 라벨은 앱의 `management.metrics.tags.application=${spring.application.name}`
 > (PR #132)이 채운다. 이 설정 없이는 12900·4701의 application 변수가 비어 패널이 No data가 된다.
