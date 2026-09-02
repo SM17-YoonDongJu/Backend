@@ -43,6 +43,9 @@ logging:
     path: /tmp/logs
 
 app:
+  sqs:
+    # 릴레이는 outbox.enabled=false로 꺼두지만, 큐 이름은 빈 초기화 시점에 필요하다(application.yml에 폴백 없음).
+    ocr-queue-name: ocr-job-queue
   cookie:
     secure: false
   outbox:
