@@ -57,8 +57,13 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:9292/actuator/health/readines
 **별도 모니터링 인스턴스(`brbs-monitoring`)** 에서 `docker-compose.monitoring.yml`로 기동한다. 설정은
 `deploy/monitoring/`(prometheus·grafana provisioning·loki·tempo 설정)으로 관리. 전부 `restart: unless-stopped`로 상주.
 
-node-exporter·cAdvisor·Alloy는 **그 호스트 자체를 감시/수집하는 에이전트**라 이동할 수 없어 앱 인스턴스에
+node-exporter·cAdvisor·Alloy·redis-exporter는 **그 호스트 자체를 감시/수집하는 에이전트**라 이동할 수 없어 앱 인스턴스에
 남아 있고(`docker-compose.dev.yml`), 모니터링 인스턴스의 Prometheus/Loki/Tempo가 원격으로 스크랩·수신한다.
+
+> ⚠️ **이 관측성 스택은 현재 dev 전용이다.** `docker-compose.prod.yml`에는 node-exporter·cAdvisor·Alloy·
+> redis-exporter가 전혀 없고, `deploy/monitoring/prometheus.yml`의 앱 스크랩 타깃도 `10.0.11.42`(t3.brbs-backend-dev)
+> 하나뿐이다. prod 부하테스트·장애 조사 시 이 Grafana에서 prod 쪽 데이터는 보이지 않는다 — prod에도 같은
+> 에이전트를 배포하고 별도 스크랩 타깃을 추가해야 커버된다(별도 이슈로 분리할 것).
 
 | 구성요소 | 인스턴스 | 포트(바인딩) | 역할 |
 |----------|----------|--------------|------|
@@ -69,9 +74,10 @@ node-exporter·cAdvisor·Alloy는 **그 호스트 자체를 감시/수집하는 
 | node-exporter | 앱 | `9100`(모니터링→scrape, private) | 앱 인스턴스 시스템 메트릭 |
 | cAdvisor | 앱 | `8082`(모니터링→scrape, private) | 앱 인스턴스 컨테이너 메트릭 |
 | Alloy | 앱 | `12345`(모니터링→scrape, private) | 앱 인스턴스 컨테이너 로그 수집 → Loki push |
+| redis-exporter | 앱 | `9121`(모니터링→scrape, private) | Redis 내부 지표(ops/sec·히트율·evicted keys 등) |
 
 - **원격 스크랩/push는 전부 프라이빗 IP + 보안그룹으로 제한**(외부 미노출). 양방향이라 보안그룹도 양방향으로 연다:
-  - 모니터링 → 앱: `9292`(backend actuator)·`9100`(node-exporter)·`8082`(cadvisor)·`12345`(alloy)
+  - 모니터링 → 앱: `9292`(backend actuator)·`9100`(node-exporter)·`8082`(cadvisor)·`12345`(alloy)·`9121`(redis-exporter)
   - 앱 → 모니터링: `3100`(loki push)·`4318`(tempo OTLP push)
 - private IP: 앱 인스턴스(`brbs-backend-dev`) `10.0.11.42`, 모니터링 인스턴스(`brbs-monitoring`) `10.0.11.48`.
   `deploy/monitoring/prometheus.yml`·`deploy/monitoring/alloy/config.alloy`에 반영됨. 인스턴스를 재생성해 IP가

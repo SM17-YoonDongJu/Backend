@@ -29,8 +29,8 @@ scrape_configs:
           instance: monitoring
 
   # ── 앱(t3.brbs-backend-dev, 10.0.11.42) 시스템·컨테이너·앱 메트릭 — 원격 스크랩 ──
-  # node-exporter·cadvisor·alloy는 그 호스트를 감시하는 에이전트라 이동 불가(docker-compose.dev.yml 참고).
-  # 보안그룹: 모니터링 인스턴스 → t3 인바운드로 9292·9100·8082·12345 를 private(내부)만 허용.
+  # node-exporter·cadvisor·alloy·redis-exporter는 그 호스트를 감시하는 에이전트라 이동 불가(docker-compose.dev.yml 참고).
+  # 보안그룹: 모니터링 인스턴스 → t3 인바운드로 9292·9100·8082·12345·9121 을 private(내부)만 허용.
 
   # Spring Boot 앱 메트릭 (HTTP·JVM·HikariCP)
   - job_name: brbs-backend
@@ -59,6 +59,13 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["10.0.11.42:12345"]
+        labels:
+          instance: t3-app
+
+  # Redis 내부 지표 (ops/sec·히트율·evicted keys·connected clients 등)
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ["10.0.11.42:9121"]
         labels:
           instance: t3-app
 
