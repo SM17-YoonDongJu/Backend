@@ -1,0 +1,17 @@
+{
+  "name": "brbs-qa-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "QA 체크리스트 '결과=미확인' 항목 자동 검증 (Playwright API 테스트)",
+  "scripts": {
+    "test": "playwright test",
+    "test:unauth": "playwright test --project=unauthenticated",
+    "test:auth": "playwright test --project=authenticated",
+    "report": "playwright show-report",
+    "codegen": "playwright codegen"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "dotenv": "^16.4.5"
+  }
+}

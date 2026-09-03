@@ -10,6 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -25,6 +26,10 @@ import com.soma.backend.infra.outbox.OcrOutboxRepository;
  *
  * <p>이벤트의 {@code topic}은 대상 SQS 큐 이름(예: ocr-job-queue)으로 쓰인다 — 큐 URL은 최초 1회 GetQueueUrl로
  * 해석해 캐시한다. {@code app.outbox.enabled=false}면 폴링을 건너뛴다(테스트·SQS 미가용 로컬).
+ *
+ * <p>발행 결과는 로그와 메트릭({@code outbox.relay.sent}·{@code outbox.relay.failed}, 태그 queue) 양쪽에
+ * 남긴다 — 성공 흔적이 없으면 "발행이 되고 있는가"를 DB 조회로만 확인할 수 있어, 로그 수집이 끊긴 상황에서
+ * 진단이 막힌다. 폴링은 2초마다 돌지만 보낼 이벤트가 없으면 아무 로그도 남기지 않는다.
  */
 @Slf4j
 @Component
@@ -37,9 +42,13 @@ public class OutboxRelay {
   private static final int BATCH_SIZE = 5;
   // 이 횟수를 넘겨 실패하면 FAILED로 파킹(더 이상 자동 재시도하지 않음) — 무한 재시도로 인한 적체 방지.
   private static final int MAX_ATTEMPTS = 5;
+  // 발행 결과 카운터. 태그는 queue(=아웃박스 topic) 하나뿐이라 카디널리티가 낮다.
+  private static final String METRIC_SENT = "outbox.relay.sent";
+  private static final String METRIC_FAILED = "outbox.relay.failed";
 
   private final OcrOutboxRepository outboxRepository;
   private final SqsClient sqsClient;
+  private final MeterRegistry meterRegistry;
 
   // topic(=SQS 큐 이름) → 큐 URL 캐시. GetQueueUrl 호출을 큐당 1회로 줄인다.
   private final Map<String, String> queueUrlCache = new ConcurrentHashMap<>();
@@ -67,6 +76,8 @@ public class OutboxRelay {
       String queueUrl = resolveQueueUrl(event.getTopic());
       sqsClient.sendMessage(builder -> builder.queueUrl(queueUrl).messageBody(event.getPayload()));
       event.markSent();
+      meterRegistry.counter(METRIC_SENT, "queue", event.getTopic()).increment();
+      log.info("아웃박스 이벤트 발행 완료. id={}, queue={}", event.getId(), event.getTopic());
     } catch (RuntimeException ex) {
       // SdkException(타임아웃·직렬화·네트워크 등)을 폭넓게 흡수한다 — 한 이벤트의 실패가 이 트랜잭션을
       // 롤백시켜, 배치 안에서 먼저 markSent()된 다른 이벤트가 중복 발행되는 상황을 막기 위함이다.
@@ -81,7 +92,8 @@ public class OutboxRelay {
 
   private void markFailed(OcrOutboxEvent event, Exception ex) {
     event.markAttemptFailed(MAX_ATTEMPTS);
-    log.warn("아웃박스 이벤트 발행 실패. id={}, queue={}, attempts={}",
-        event.getId(), event.getTopic(), event.getAttempts(), ex);
+    meterRegistry.counter(METRIC_FAILED, "queue", event.getTopic()).increment();
+    log.warn("아웃박스 이벤트 발행 실패. id={}, queue={}, attempts={}, status={}",
+        event.getId(), event.getTopic(), event.getAttempts(), event.getStatus(), ex);
   }
 }

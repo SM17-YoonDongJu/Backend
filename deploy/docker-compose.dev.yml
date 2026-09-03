@@ -262,6 +262,30 @@ services:
     networks:
       - brbs-net
 
+  # Redis 내부 지표(ops/sec·히트율·evicted keys·connected clients 등). cAdvisor는 컨테이너 리소스(CPU·메모리)만
+  # 보여줄 뿐 Redis 내부 상태는 못 본다 — JwtFilter가 인증된 요청마다 블랙리스트를 Redis에서 조회하고
+  # 리프레시 토큰 회전도 Redis Lua CAS를 쓰는 핫패스라 별도로 노출한다. 모니터링 인스턴스(10.0.11.48)가
+  # 9121로 원격 스크랩. redis 서비스와 같은 브리지 네트워크라 서비스명(redis)으로 접속한다.
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: brbs-redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
   # Alloy: Docker 데몬의 모든 컨테이너 stdout을 수집해 (원격) Loki로 push. docker.sock을 read-only로 마운트한다.
   # docker.sock은 이 호스트(backend·report·chatbot·redis가 뜨는 곳) 것이라 alloy 자체는 이동 불가 —
   # push 대상만 config.alloy에서 원격 Loki(모니터링 인스턴스)를 가리키도록 변경(플레이스홀더, PR로 실제 IP 채움).

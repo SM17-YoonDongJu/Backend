@@ -21,7 +21,9 @@ spring:
     # 스키마 미지정 원시 JDBC도 core.encryption_keys를 찾는다. 명시하지 않으면 DB 롤의 search_path
     # 설정(app_owner에 걸린 "core, public")에 의존하게 되는데, 그건 레포 밖 상태라 롤 재생성·RDS 복원
     # 등으로 사라지면 앱이 조용히 깨진다. core가 아직 없는 DB에서는 public으로 폴백하므로 안전하다.
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:brbs_dev}?currentSchema=core,public
+    # reWriteBatchedInserts=true: 다건 INSERT를 실제 다중행 INSERT로 재작성해 DB 왕복을 줄인다
+    # (아래 jpa.properties.hibernate.jdbc.batch_size와 함께 동작 — 리포트 생성의 첨부·아웃박스 적재).
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:brbs_dev}?currentSchema=core,public&reWriteBatchedInserts=true
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -42,6 +44,10 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        # 한 트랜잭션의 다건 INSERT를 배치로 묶어 DB 왕복을 줄인다. 서비스에서 같은 타입 INSERT가
+        # 연속되도록 정렬해야 실제로 묶인다(order_inserts는 매핑 안 된 FK 순서 리스크가 있어 미사용).
+        jdbc:
+          batch_size: 50
     open-in-view: false
   
   flyway:
@@ -87,9 +93,12 @@ app:
     needs-reupload-sweep-interval-ms: ${NEEDS_REUPLOAD_SWEEP_INTERVAL_MS:60000}
     needs-reupload-sweep-enabled: ${NEEDS_REUPLOAD_SWEEP_ENABLED:true}
   sqs:
-    # OCR 트리거 발행 대상 SQS 큐 이름. dev·prod는 .env의 SQS_OCR_QUEUE_NAME(brbs-ocr-job-queue-{env})으로 주입,
-    # 로컬/test는 기본값 ocr-job-queue. OutboxRelay가 이 이름으로 GetQueueUrl 한다.
-    ocr-queue-name: ${SQS_OCR_QUEUE_NAME:ocr-job-queue}
+    # OCR 트리거 발행 대상 SQS 큐 이름. dev·prod는 .env의 SQS_OCR_QUEUE_NAME(brbs-ocr-job-queue-{env})으로 주입한다.
+    # 폴백 기본값을 두지 않는다 — env가 빠지면 존재하지 않는 큐 이름이 아웃박스 행의 topic에 그대로 박제되고,
+    # 릴레이는 GetQueueUrl 실패로 5회 재시도 후 FAILED 파킹한다. 이후 env를 고쳐도 이미 쌓인 행은 topic이
+    # 저장 시점 값이라 자동 복구되지 않는다(2026-08-13 dev에서 실제 발생, 수동 UPDATE로 복구).
+    # 미주입 시 기동을 실패시켜 배포 시점에 드러나게 한다. 로컬·test는 각 프로파일이 큐 이름을 명시한다.
+    ocr-queue-name: ${SQS_OCR_QUEUE_NAME}
   cookie:
     secure: ${COOKIE_SECURE:true}      # 운영 https 기본값. 로컬 http는 프로파일에서 false
     # 프론트(Vercel)와 백엔드가 다른 사이트(cross-site)로 배포되면 쿠키가 XHR에 실리도록
@@ -180,6 +189,19 @@ management:
       probes:
         enabled: true          # liveness/readiness 프로브 → /actuator/health/{liveness,readiness}
   metrics:
+    distribution:
+      # http.server.requests에 Prometheus 히스토그램 버킷(_bucket)을 노출한다. 기본은 count/sum/max뿐이라
+      # Grafana histogram_quantile로 p50/p95/p99를 계산할 원재료가 없었다 — k6 부하테스트 전 API별
+      # percentile 확인을 위해 추가(deploy/monitoring/grafana/dashboards/api-latency-percentiles.json 참고).
+      percentiles-histogram:
+        http.server.requests: true
+        # 채팅 Redis relay 종단 지연(발행→STOMP 전달) — 히스토그램 없으면 chat_relay_latency_seconds에
+        # count/sum/max만 남아 histogram_quantile로 p50/p95/p99를 못 뽑는다.
+        chat.relay.latency: true
+        # WebSocket 핸드셰이크·SUBSCRIBE 인가 소요시간 — 성공/실패 카운터만으론 "됐는지"만 보이고
+        # "얼마나 걸렸는지"는 안 보여서 추가.
+        chat.ws.handshake.duration: true
+        chat.ws.subscribe.duration: true
     tags:
       # 모든 메트릭에 붙는 공통 라벨. Grafana SpringBoot APM(12900)·JVM Micrometer(4701) 대시보드가
       # application 라벨(label_values(application))로 대상을 선택한다 — 없으면 패널이 No data.

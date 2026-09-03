@@ -68,11 +68,11 @@ com.soma.backend
 
 **infra/s3** — `S3Client`·`S3Presigner` Bean은 `infra/s3/S3Config`에서 구성한다 — 리전만 `aws.region` 프로퍼티로 주입하고 자격증명은 `DefaultCredentialsProvider`(IAM Role·`~/.aws`)로 위임한다 (Spring Cloud AWS 미사용). presigned URL은 채팅 첨부 다운로드에 사용한다.
 
-**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 적재하고, 별도 스케줄러가 `FOR UPDATE SKIP LOCKED`로 폴링해 처리한다 (부수효과의 원자성·재시도 보장, 다중 인스턴스 중복 처리 방지). 용도가 다른 **두 아웃박스가 공존**한다 — `outbox_events`(`OutboxEvent`)는 `OutboxProcessor`가 회원 탈퇴 후처리(Redis 토큰 정리·Apple 토큰 폐기)를 수행하고, `kafka_outbox_events`(`OcrOutboxEvent`)는 `OutboxRelay`가 OCR 트리거를 SQS로 발행한다. 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름, `app.sqs.ocr-queue-name`)이며 브로커는 관리형 AWS SQS다. **클래스는 `OcrOutbox*`인데 테이블은 `kafka_outbox_events`(V13)로 남아 있다** — 브로커 전환(#208) 후 클래스만 용도 기준으로 정리했고, 테이블 리네임은 `ALTER TABLE ... RENAME TO`가 `public` 스키마 `CREATE` 권한을 요구해(운영 유저에 없음, 아래 Key Configuration 참조) 보류했다.
+**infra/outbox** — 트랜잭셔널 아웃박스 패턴. 도메인 트랜잭션과 같은 커밋으로 이벤트를 적재하고, 별도 스케줄러가 `FOR UPDATE SKIP LOCKED`로 폴링해 처리한다 (부수효과의 원자성·재시도 보장, 다중 인스턴스 중복 처리 방지). 용도가 다른 **두 아웃박스가 공존**한다 — `outbox_events`(`OutboxEvent`)는 `OutboxProcessor`가 회원 탈퇴 후처리(Redis 토큰 정리·Apple 토큰 폐기)를 수행하고, `kafka_outbox_events`(`OcrOutboxEvent`)는 `OutboxRelay`가 OCR 트리거를 SQS로 발행한다. 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름, `app.sqs.ocr-queue-name`)이며 브로커는 관리형 AWS SQS다. 큐 이름에 **폴백 기본값을 두지 않는다** — env가 빠지면 없는 큐 이름이 행에 박제돼 나중에 고쳐도 복구되지 않기 때문이다(기동 실패로 즉시 노출). 발행 결과는 로그와 메트릭(`outbox.relay.sent`·`outbox.relay.failed`, 태그 `queue`) 양쪽에 남는다. **클래스는 `OcrOutbox*`인데 테이블은 `kafka_outbox_events`(V13)로 남아 있다** — 브로커 전환(#208) 후 클래스만 용도 기준으로 정리했고, 테이블 리네임은 `ALTER TABLE ... RENAME TO`가 `public` 스키마 `CREATE` 권한을 요구해(운영 유저에 없음, 아래 Key Configuration 참조) 보류했다.
 
 ## Key Configuration
 
-환경변수는 `.env.example` 참고. 필수값: `DB_PASSWORD`, `JWT_SECRET`, `S3_BUCKET`, `KAKAO_*`, `NAVER_*`. AWS 자격증명(access/secret key)은 IAM Role 자동 탐색(`DefaultCredentialsProvider`)에 위임하므로 env 필수값이 아니며, `AWS_REGION`은 기본값이 있다.
+환경변수는 `.env.example` 참고. 필수값: `DB_PASSWORD`, `JWT_SECRET`, `S3_BUCKET`, `KAKAO_*`, `NAVER_*`, `SQS_OCR_QUEUE_NAME`(폴백 없음 — 미설정 시 기동 실패. `local` 프로파일은 자체 명시라 예외). AWS 자격증명(access/secret key)은 IAM Role 자동 탐색(`DefaultCredentialsProvider`)에 위임하므로 env 필수값이 아니며, `AWS_REGION`은 기본값이 있다.
 
 쿠키 인증·CORS는 프로퍼티로 분리한다(기본값 있어 필수 아님): `COOKIE_SECURE`(기본 `true`, 로컬 http는 `false`), `COOKIE_SAME_SITE`(기본 `Lax`, cross-site 운영은 `None`+https), `CORS_ALLOWED_ORIGIN_PATTERNS`(기본 `http://localhost:3000`, 쉼표 구분 패턴 목록 — 예 `https://앱도메인,https://*.vercel.app`).
 

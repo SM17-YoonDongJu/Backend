@@ -14,12 +14,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.soma.backend.domain.chat.ChatRoomFixture;
 import com.soma.backend.domain.chat.entity.ChatRoom;
@@ -39,6 +43,8 @@ class ChatSubscribeInterceptorTest {
   private ChatRoomRepository chatRoomRepository;
   @Mock
   private MessageChannel messageChannel;
+  @Spy
+  private MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
   @InjectMocks
   private ChatSubscribeInterceptor interceptor;

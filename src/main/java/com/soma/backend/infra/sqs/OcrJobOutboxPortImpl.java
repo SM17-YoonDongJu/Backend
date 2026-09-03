@@ -30,8 +30,9 @@ public class OcrJobOutboxPortImpl implements OcrJobOutboxPort {
   private final JsonMapper jsonMapper;
 
   // 발행 대상 SQS 큐 이름(=아웃박스 topic 컬럼에 저장). dev·prod는 .env의 SQS_OCR_QUEUE_NAME으로 주입하고,
-  // 로컬/test는 기본값 ocr-job-queue. OutboxRelay가 이 이름으로 GetQueueUrl 한다.
-  @Value("${app.sqs.ocr-queue-name:ocr-job-queue}")
+  // 로컬/test는 프로파일이 명시한다. OutboxRelay가 이 이름으로 GetQueueUrl 한다.
+  // 폴백 기본값을 두지 않는 이유(잘못된 큐 이름이 행에 박제됨)는 application.yml의 app.sqs 주석 참조.
+  @Value("${app.sqs.ocr-queue-name}")
   private String ocrQueueName;
 
   @Override
