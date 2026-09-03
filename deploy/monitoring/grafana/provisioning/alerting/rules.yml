@@ -1,4 +1,4 @@
-# 알림 룰 13종 (#88 보너스 6종 + OCR 파이프라인 3종 + 약관 인덱싱 4종) — 1분 평가, BRBS 폴더.
+# 알림 룰 14종 (#88 보너스 6종 + OCR 파이프라인 3종 + 약관 인덱싱 5종) — 1분 평가, BRBS 폴더.
 # 설계 원칙:
 #  - NoData → OK: dev 무트래픽·GPU 미연결 시 침묵(오발화 방지)
 #  - Error → OK, 단 TargetDown만 Error → Alerting: Prometheus(데이터소스) 자체 장애를 대표 1건으로 감지
@@ -505,6 +505,56 @@ groups:
                 - evaluator:
                     type: gt
                     params: [907200]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-cycle-failed
+        title: "IndexCycleFailed - 마지막 인덱싱 사이클 실패"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "약관 인덱싱 사이클이 실패로 끝났다"
+          description: "IndexStale은 마지막 성공이 10.5일을 넘겨야 울리므로, 사이클이 실패해도 그때까지는 아무 신호가 없다. 이 룰이 그 간극을 메운다 — 실패를 몇 분 안에 알린다. 데몬은 사이클이 죽어도 다음 주기를 기다리며 살아 있으므로 컨테이너 상태로는 구분되지 않는다. brbs-etl에서 docker logs brbs-insurance-chunker 확인. 상태 파일이 빈 새 볼륨에서는 첫 사이클이 끝나기 전까지 0이라 IndexNeverSucceeded와 같이 울린다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 재시작으로는 오발화하지 않는다 — record_start()가 기존 상태에 기동 시각만 덧쓰고
+            # last_run_ok는 그대로 두므로, 직전 사이클 결과가 볼륨에 남아 있다.
+            model:
+              expr: 'insurance_chunker_last_cycle_success'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
                   operator:
                     type: and
                   query:
