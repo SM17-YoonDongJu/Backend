@@ -7,12 +7,12 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Profiles;
-import org.springframework.core.env.StandardEnvironment;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.soma.backend.domain.user.repository.UserRepository;
@@ -78,10 +78,16 @@ class K6ScenarioSeedRunnerTest {
     assertThat(isActiveWith(expression, "dev", "prod")).as("dev+prod 동시 지정").isFalse();
   }
 
+  /**
+   * {@code StandardEnvironment}를 쓰지 않는다 — {@code setActiveProfiles()}를 빈 배열로 호출해도 내부
+   * 활성 프로파일 집합이 비면 {@code getActiveProfiles()}가 {@code spring.profiles.active} 프로퍼티(OS
+   * 환경변수 포함)로 폴백한다. CI는 이 잡을 {@code SPRING_PROFILES_ACTIVE=test}로 실행하므로 "프로파일
+   * 미지정"을 검증하려던 케이스가 실제로는 test 프로파일이 활성인 것처럼 평가돼 로컬은 통과하고 CI만
+   * 실패했다. {@link Profiles#matches(java.util.function.Predicate)}로 순수 평가만 하면 이 폴백이 없다.
+   */
   private boolean isActiveWith(String expression, String... activeProfiles) {
-    StandardEnvironment environment = new StandardEnvironment();
-    environment.setActiveProfiles(activeProfiles);
-    return environment.acceptsProfiles(Profiles.of(expression));
+    Set<String> active = Set.of(activeProfiles);
+    return Profiles.of(expression).matches(active::contains);
   }
 
   private K6ScenarioSeedRunner newRunner(boolean enabled) {
