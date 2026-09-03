@@ -15,9 +15,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.GetQueueUrlResponse;
 import software.amazon.awssdk.services.sqs.model.SendMessageResponse;
@@ -36,6 +39,10 @@ class OutboxRelayTest {
 
   @Mock
   private SqsClient sqsClient;
+
+  // 카운터 증가를 실제로 기록해야 검증할 수 있어 mock이 아니라 실제 레지스트리를 주입한다.
+  @Spy
+  private MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
   @InjectMocks
   private OutboxRelay outboxRelay;
@@ -58,6 +65,7 @@ class OutboxRelayTest {
 
     assertThat(event.getStatus()).isEqualTo(OcrOutboxStatus.SENT);
     verify(sqsClient).sendMessage(any(Consumer.class));
+    assertThat(meterRegistry.counter("outbox.relay.sent", "queue", "ocr-job-queue").count()).isEqualTo(1.0);
   }
 
   @Test
@@ -72,6 +80,7 @@ class OutboxRelayTest {
 
     assertThat(event.getStatus()).isEqualTo(OcrOutboxStatus.PENDING);
     assertThat(event.getAttempts()).isEqualTo(1);
+    assertThat(meterRegistry.counter("outbox.relay.failed", "queue", "ocr-job-queue").count()).isEqualTo(1.0);
   }
 
   @Test

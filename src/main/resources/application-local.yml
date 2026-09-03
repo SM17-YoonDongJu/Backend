@@ -9,6 +9,9 @@ spring:
         format_sql: true
 
 app:
+  sqs:
+    # LocalStack이 init-sqs.sh로 만드는 큐. application.yml은 폴백 없이 env를 요구하므로 로컬은 여기서 명시한다.
+    ocr-queue-name: ocr-job-queue
   cookie:
     secure: false     # 로컬 http 개발
   docs:

@@ -69,6 +69,18 @@ scrape_configs:
         labels:
           instance: t3-app
 
+  # OCR 워커(brbs-report, AI 레포 소유). 현재 HTTP 서버가 없어 스크랩 대상이 아니다 —
+  # 컨테이너 생존은 cadvisor-t3가, 소비 동작은 Loki 로그 알림(OcrWorkerNotConsuming)이 커버한다.
+  # 워커가 prometheus_client로 /metrics를 노출하면 아래를 켜고(포트는 AI 레포와 합의)
+  # docker-compose.dev.yml의 report 서비스에 포트 게시 + 보안그룹(모니터링 → t3 해당 포트)을 함께 열어야 한다.
+  # 그때 처리량·실패율·처리지연 알림 룰을 alerting/rules.yml의 OCR 섹션에 추가한다.
+  # - job_name: ocr-worker
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["10.0.11.42:<WORKER_METRICS_PORT>"]
+  #       labels:
+  #         instance: t3-app
+
   # ── GPU(g6.xlarge) 시스템·컨테이너 메트릭  ──
   # g6에 node_exporter(9100)·cAdvisor(8080) 배포 후, 그 private IP로 아래 주석을 해제한다.
   # 보안그룹: 모니터링 인스턴스 → g6 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).
