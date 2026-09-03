@@ -100,21 +100,35 @@ scrape_configs:
           instance: g4dn-etl
           service: insurance-chunker
 
-  # ── GPU(brbs-ai, 10.0.11.93 / g6.xlarge) 시스템·컨테이너 메트릭 ──
-  # ⚠️ 바로 위 청커가 도는 brbs-etl(10.0.11.131, g4dn.xlarge)과는 다른 호스트다 — GPU 인스턴스가 둘이다(#257).
-  # 여기 g6는 brbs-ai이고 현재 stopped라, 켜면 TargetDown(critical)이 상시 울린다. 그래서 주석을 유지한다.
-  # brbs-etl의 호스트·컨테이너 메트릭(node-etl·cadvisor-etl)은 그쪽에 exporter를 배포하는 #257에서 따로 붙인다
-  # (보안그룹 9100·8080은 열려 있지만 exporter가 아직 없어서, 지금 잡만 켜면 마찬가지로 TargetDown이 뜬다).
-  # 배포 후 그 private IP로 아래 주석을 해제한다.
-  # 보안그룹: 모니터링 인스턴스 → g6 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).
+  # ── brbs-etl(10.0.11.131 / g4dn.xlarge) 시스템·컨테이너 메트릭 — #257 ──
+  # 바로 위 청커 잡은 이 호스트에서 도는 '앱'의 지표이고, 여기는 그 '호스트 자체'의 지표다 — 별개 관측이다.
+  # brbs-etl에 node_exporter·cAdvisor를 배포한 뒤(#257) 아래 주석을 해제한다. exporter 없이 켜면
+  # TargetDown(critical)이 상시 울린다.
+  # ⚠️ 포트는 앱 인스턴스(t3)와 같은 구성을 전제로 적어뒀다(cAdvisor 8082). 보안그룹은 9100·8080으로
+  # 열려 있다는 얘기가 있어 실제 배포 포트와 인바운드가 무엇인지 확인하고 켤 것.
+  # - job_name: node-etl
+  #   static_configs:
+  #     - targets: ["10.0.11.131:9100"]
+  #       labels:
+  #         instance: g4dn-etl
+  # - job_name: cadvisor-etl
+  #   static_configs:
+  #     - targets: ["10.0.11.131:8082"]
+  #       labels:
+  #         instance: g4dn-etl
+
+  # ── brbs-ai(10.0.11.93 / g6.xlarge) 시스템·컨테이너 메트릭 ──
+  # ⚠️ 위 brbs-etl과 다른 호스트다 — GPU 인스턴스가 둘이고, 이쪽 g6가 원래 'GPU'로 불리던 그 인스턴스다(#257).
+  # 현재 stopped라 켜면 TargetDown(critical)이 상시 울린다. 인스턴스를 다시 띄운 뒤 IP를 확인하고 해제한다.
+  # 보안그룹: 모니터링 인스턴스 → brbs-ai 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).
   # (인스턴스 분리 전엔 t3 → g6이었으나, 스크랩 주체가 모니터링 인스턴스로 바뀌었으므로 소스를 다시 잡아야 한다.)
-  # - job_name: node-gpu
+  # - job_name: node-ai
   #   static_configs:
-  #     - targets: ["<G6_PRIVATE_IP>:9100"]
+  #     - targets: ["10.0.11.93:9100"]
   #       labels:
-  #         instance: g6-gpu
-  # - job_name: cadvisor-gpu
+  #         instance: g6-ai
+  # - job_name: cadvisor-ai
   #   static_configs:
-  #     - targets: ["<G6_PRIVATE_IP>:8080"]
+  #     - targets: ["10.0.11.93:8080"]
   #       labels:
-  #         instance: g6-gpu
+  #         instance: g6-ai

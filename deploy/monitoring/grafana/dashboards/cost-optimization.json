@@ -115,7 +115,8 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "CPU 사용률 추이 (t3 vs g6)",
+      "title": "CPU 사용률 추이 (인스턴스별)",
+      "description": "node_exporter가 붙은 호스트 전부. 현재는 t3-app 하나이고, brbs-etl(g4dn-etl)은 #257로 exporter를 배포하면 여기에 같이 뜬다.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
@@ -132,7 +133,8 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "메모리 사용률 추이 (t3 vs g6)",
+      "title": "메모리 사용률 추이 (인스턴스별)",
+      "description": "node_exporter가 붙은 호스트 전부. 현재는 t3-app 하나이고, brbs-etl(g4dn-etl)은 #257로 exporter를 배포하면 여기에 같이 뜬다.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
@@ -151,14 +153,14 @@
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
       "id": 200,
       "panels": [],
-      "title": "GPU(g6) 가동 효율 — 상시 가동 가치 (g6 exporter 연결 후 데이터 · GPU 칩/VRAM은 dcgm-exporter 후속)",
+      "title": "GPU(brbs-etl / g4dn.xlarge) 가동 효율 — 상시 가동 가치 (#257 exporter 배포 후 데이터 · GPU 칩/VRAM은 dcgm-exporter 후속 #258)",
       "type": "row"
     },
     {
       "id": 6,
       "type": "stat",
-      "title": "g6 Idle 시간 비율 (24h, CPU<10%)",
-      "description": "최근 24시간 중 CPU가 10% 미만이었던 시간 비율. 80% 이상(빨강)이면 온디맨드 상시 가동 재검토(스케줄 온오프·스팟). GPU 칩 사용률 기반 판단은 dcgm-exporter 도입 후.",
+      "title": "brbs-etl Idle 시간 비율 (24h, CPU<10%)",
+      "description": "최근 24시간 중 CPU가 10% 미만이었던 시간 비율. 80% 이상(빨강)이면 온디맨드 상시 가동 재검토(스케줄 온오프·스팟). GPU 칩 사용률 기반 판단은 dcgm-exporter 도입 후. brbs-etl에 node_exporter가 붙기 전(#257)까지는 No data다.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 15 },
       "fieldConfig": {
@@ -188,7 +190,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "avg_over_time(((100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=\"g6-gpu\"}[5m])) * 100)) < bool 10)[24h:5m]) * 100",
+          "expr": "avg_over_time(((100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=\"g4dn-etl\"}[5m])) * 100)) < bool 10)[24h:5m]) * 100",
           "legendFormat": "idle 비율"
         }
       ]
@@ -196,7 +198,7 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "g6 CPU·메모리 사용률",
+      "title": "brbs-etl CPU·메모리 사용률",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 18, "x": 6, "y": 15 },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
@@ -205,13 +207,13 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=\"g6-gpu\"}[5m])) * 100)",
+          "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=\"g4dn-etl\"}[5m])) * 100)",
           "legendFormat": "CPU"
         },
         {
           "refId": "B",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "(1 - (node_memory_MemAvailable_bytes{instance=\"g6-gpu\"} / node_memory_MemTotal_bytes{instance=\"g6-gpu\"})) * 100",
+          "expr": "(1 - (node_memory_MemAvailable_bytes{instance=\"g4dn-etl\"} / node_memory_MemTotal_bytes{instance=\"g4dn-etl\"})) * 100",
           "legendFormat": "메모리"
         }
       ]

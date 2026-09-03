@@ -90,9 +90,13 @@ node-exporter·cAdvisor·Alloy·redis-exporter는 **그 호스트 자체를 감�
     --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'   # → http://localhost:3000 (Grafana)
   ```
 - 앱 메트릭(`10.0.11.42:9292/actuator/prometheus`)은 #131 배포로 관리 포트가 열려 있어 **스택 기동 시 바로 UP**.
-- GPU(g6)에 node_exporter·cAdvisor 배포 후 `monitoring/prometheus.yml`의 GPU job 주석 해제 + 보안그룹(**모니터링 인스턴스**→g6
-  9100·8080 private) 허용 — 인스턴스 분리 전엔 t3→g6이었으나 스크랩 주체가 바뀌었으므로 **GPU 모니터링 구축 담당에게 새 소스(모니터링
-  인스턴스 private IP)를 공유**해야 한다.
+- **GPU 인스턴스는 둘이고 서로 다른 작업이다.** `brbs-etl`(`10.0.11.131`, g4dn.xlarge)에서 Ollama와 약관 인덱싱이 돌고,
+  `brbs-ai`(`10.0.11.93`, g6.xlarge)는 현재 stopped다. 원래 "GPU(g6)"로 뭉뚱그려 부르던 게 후자다.
+  - brbs-etl 호스트 관측(node_exporter·cAdvisor·Alloy)은 #257 — 배포 후 `monitoring/prometheus.yml`의 `node-etl`·`cadvisor-etl`
+    주석을 해제한다. 이 호스트에서 도는 청커 앱 지표(`insurance-chunker` 잡)는 이미 붙어 있고 그것과는 별개다.
+  - brbs-ai는 인스턴스를 다시 띄운 뒤 `node-ai`·`cadvisor-ai` 주석을 해제한다.
+  - 어느 쪽이든 보안그룹은 **모니터링 인스턴스**→대상 호스트 인바운드(9100·cAdvisor 포트) private 허용이 필요하다.
+    인스턴스 분리 전엔 t3→GPU였으므로 스크랩 소스가 바뀐 걸 담당자에게 공유해야 한다.
 - **알림**: Grafana 통합 알림을 provisioning으로 관리(`monitoring/grafana/provisioning/alerting/`) → **Discord 2채널
   severity 라우팅** — `critical`(타깃다운·5xx)→`#alert-critical`(`ALERT_WEBHOOK_URL_CRITICAL`),
   `warning`(CPU·메모리·디스크·Hikari)→`#alert-warning`(`ALERT_WEBHOOK_URL_WARNING`), 미분류는 critical(fail-safe).
