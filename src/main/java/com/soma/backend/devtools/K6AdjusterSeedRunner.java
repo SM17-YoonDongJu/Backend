@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -44,6 +45,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 @Slf4j
 @Component
 @Profile("!test")
+@Order(10)
 public class K6AdjusterSeedRunner implements ApplicationRunner {
 
   /** 시딩할 사정사 수. 닉네임은 {@code k6-adjuster-1} ~ {@code k6-adjuster-10}. */
