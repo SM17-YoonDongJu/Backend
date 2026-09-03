@@ -81,6 +81,17 @@ scrape_configs:
   #       labels:
   #         instance: t3-app
 
+  # ── 보험 약관 청커(insurance-chunker, AI 레포 소유) — 원격 스크랩 ──
+  # 앱·모니터링과 또 다른 호스트(10.0.11.131)라 보안그룹: 모니터링 인스턴스 → 10.0.11.131 인바운드 9101을
+  # private(내부)만 허용해야 UP으로 뜬다. exporter가 실제로 응답하기 전에 이 잡을 배포하면
+  # TargetDown(critical, 2m)이 곧바로 발화하므로 순서를 지킬 것.
+  - job_name: insurance-chunker
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["10.0.11.131:9101"]
+        labels:
+          service: insurance-chunker
+
   # ── GPU(g6.xlarge) 시스템·컨테이너 메트릭  ──
   # g6에 node_exporter(9100)·cAdvisor(8080) 배포 후, 그 private IP로 아래 주석을 해제한다.
   # 보안그룹: 모니터링 인스턴스 → g6 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).
