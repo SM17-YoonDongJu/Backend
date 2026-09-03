@@ -1,6 +1,6 @@
 {
   "annotations": { "list": [] },
-  "description": "채팅 WebSocket/STOMP 지표 — 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay(발행/전달/종단지연) 처리량. ChatHandshakeInterceptor·ChatSubscribeInterceptor·ChatWebSocketSessionMetrics·ChatEventPublisher·ChatMessageSubscriber에서 직접 계측한 커스텀 메트릭이라 별도 exporter나 설정 없이 배포 즉시 값이 찬다. 클라이언트는 SUBSCRIBE만 하고 SEND는 REST이므로(설계서 §5), 메시지 전송량은 api-latency-percentiles.json의 POST 메시지 엔드포인트 쪽에서 같이 봐야 한다.",
+  "description": "채팅 WebSocket/STOMP 지표 — 핸드셰이크·구독 성공률·소요시간, 활성 연결·구독 수, Redis relay(발행/전달/종단지연) 처리량. ChatHandshakeInterceptor·ChatSubscribeInterceptor·ChatWebSocketSessionMetrics·ChatEventPublisher·ChatMessageSubscriber에서 직접 계측한 커스텀 메트릭이라 별도 exporter나 설정 없이 배포 즉시 값이 찬다. 클라이언트는 SUBSCRIBE만 하고 SEND는 REST이므로(설계서 §5), 메시지 전송량은 api-latency-percentiles.json의 POST 메시지 엔드포인트 쪽에서 같이 봐야 한다.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -90,8 +90,68 @@
       ]
     },
     {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Handshake Duration (p50/p95/p99)",
+      "description": "beforeHandshake 진입부터 결과 확정(성공/거부)까지 걸린 시간. 카운터만으론 '됐는지'만 보이고 '얼마나 걸렸는지'는 안 보여서 추가.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(chat_ws_handshake_duration_seconds_bucket{application=\"$application\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(chat_ws_handshake_duration_seconds_bucket{application=\"$application\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(chat_ws_handshake_duration_seconds_bucket{application=\"$application\"}[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Subscribe Duration (p50/p95/p99)",
+      "description": "SUBSCRIBE 인가(authorize) 소요시간 — 방 조회 등 DB 왕복이 포함된다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(chat_ws_subscribe_duration_seconds_bucket{application=\"$application\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(chat_ws_subscribe_duration_seconds_bucket{application=\"$application\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(chat_ws_subscribe_duration_seconds_bucket{application=\"$application\"}[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
       "id": 200,
       "panels": [],
       "title": "메시지 Relay (Redis pub/sub)",
@@ -103,7 +163,7 @@
       "title": "Publish vs Deliver Rate",
       "description": "publish(REST 메시지 저장 후 Redis 발행)와 deliver(Redis 구독 → STOMP relay)를 겹쳐서 본다. 두 선이 벌어지면 relay 구간에서 유실·지연이 쌓이고 있다는 신호다.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
@@ -127,7 +187,7 @@
       "title": "Relay Latency (발행 → STOMP 전달, p50/p95/p99)",
       "description": "ChatEventPublisher.publish가 Redis에 실은 발행 시각과 ChatMessageSubscriber.onMessage가 STOMP로 전달한 시각의 차이. management.metrics.distribution.percentiles-histogram.chat.relay.latency=true가 있어야 histogram_quantile이 값을 낸다.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
