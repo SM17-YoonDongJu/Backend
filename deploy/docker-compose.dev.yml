@@ -27,6 +27,10 @@ services:
       # backend가 그 이름에서 URL을 런타임 해석한다(URL env 불필요). 접속은 dev 인스턴스 IAM Role 위임(AWS_REGION 아래 참조).
       SQS_OCR_QUEUE_NAME: ${SQS_OCR_QUEUE_NAME}
       JWT_SECRET: ${JWT_SECRET}
+      # k6 부하테스트 전용 dev 로그인 백도어. 기본 false — .env.dev에서 로드테스트 창에만 true로 연다.
+      # 열려 있는 동안엔 DEV_LOGIN_SECRET(공유 시크릿 헤더)도 반드시 함께 채운다.
+      DEV_LOGIN_ENABLED: ${DEV_LOGIN_ENABLED:-false}
+      DEV_LOGIN_SECRET: ${DEV_LOGIN_SECRET:-}
       AWS_REGION: ${AWS_REGION}
       S3_BUCKET: ${S3_BUCKET}
       KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
