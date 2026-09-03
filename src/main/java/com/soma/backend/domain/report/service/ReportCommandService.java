@@ -4,6 +4,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,6 +47,9 @@ import com.soma.backend.infra.sqs.OcrJobOutboxPort;
 public class ReportCommandService {
 
   private static final DateTimeFormatter CASE_NO_DAY = DateTimeFormatter.ofPattern("yyyyMMdd");
+  // 한 리포트의 첨부 문서 수 상한. 무제한이면 요청 하나가 한 트랜잭션의 INSERT 수와 case_no 카운터 락
+  // 점유 시간을 무한정 늘려(로컬 DoS) 같은 날짜의 다른 생성까지 막는다.
+  private static final int MAX_DOCUMENTS = 20;
 
   private final UserClaimRepository userClaimRepository;
   private final ReportRepository reportRepository;
@@ -62,6 +66,15 @@ public class ReportCommandService {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
 
+    // 문서 수 상한은 DB 쓰기·case_no 카운터 락 획득 전에 검증한다 — 초과 요청이 카운터를 증가시켰다
+    // 롤백해 사건번호에 구멍을 내지 않도록 fail-fast 한다.
+    List<CreateReportRequest.Document> documents =
+        request.documents() == null ? List.of() : request.documents();
+    if (documents.size() > MAX_DOCUMENTS) {
+      throw new BusinessException(ErrorCode.REPORT_TOO_MANY_DOCUMENTS);
+    }
+    int docTotal = documents.size();
+
     //accidentType에 따른 claimDetails 생성
     ClaimDetails details =
         ClaimDetails.of(request.accidentType(), request.diagnosis(), request.hospitalizations());
@@ -77,28 +90,24 @@ public class ReportCommandService {
         userId, request.productId(), claim.getId(), request.accidentType(), request.question(),
         generateCaseNo()));
 
-    //Document
-    List<CreateReportRequest.Document> documents =
-        request.documents() == null ? List.of() : request.documents();
+    // 첨부 저장과 OCR 발행을 두 패스로 나눈다(문서마다 번갈아 저장하지 않는다) — 같은 타입 INSERT가
+    // 연속돼야 JDBC 배치로 묶여 커밋 flush의 DB 왕복이 준다. 이 flush는 case_no 카운터 락 구간 안에서
+    // 일어나므로, 왕복을 줄이면 동시 생성의 직렬화 대기도 그만큼 짧아진다.
+    List<ReportAttachment> attachments = new ArrayList<>(docTotal);
+    for (CreateReportRequest.Document document : documents) {
+      attachments.add(reportAttachmentRepository.save(ReportAttachment.of(
+          report.getId(), document.name(), document.s3Url(),
+          toContentType(document.fileType()), document.reportType())));
+    }
 
-    int docTotal = documents.size();
-
-    // Document 별 반복문 (doc_index 1-based, doc_total로 FastAPI가 OCR 완료(fan-in) 판별)
+    // document 1건당 OCR 트리거 발행 (doc_index 1-based, doc_total로 FastAPI가 OCR 완료(fan-in) 판별)
     for (int i = 0; i < documents.size(); i++) {
       CreateReportRequest.Document document = documents.get(i);
-
-      //contentType 매핑
-      String contentType = toContentType(document.fileType());
-
-      //report_attachments 테이블 스켈레톤 저장
-      ReportAttachment attachment = reportAttachmentRepository.save(ReportAttachment.of(
-          report.getId(), document.name(), document.s3Url(), contentType, document.reportType()));
-
-      //document 1건 단위 ocrjob 발행 (report/attachment 참조 + 문서 순번·총개수 포함)
+      ReportAttachment attachment = attachments.get(i);
       ocrJobOutboxPort.enqueue(new OcrJob(
           UUID.randomUUID().toString(),
           toS3Key(document.s3Url()),
-          contentType,
+          attachment.getMimeType(),
           userId.toString(),
           document.reportType(),
           claim.getId().toString(),
@@ -183,7 +192,12 @@ public class ReportCommandService {
     throw new BusinessException(ErrorCode.VALIDATION_ERROR);
   }
 
-  /** 사람용 사건번호 yyyyMMdd-NNN. 당일 시퀀스는 DB 원자 카운터로 발급해 동시 생성 경합을 차단한다. */
+  /**
+   * 사람용 사건번호 yyyyMMdd-NNN. 당일 시퀀스는 DB 원자 카운터로 발급해 동시 생성 경합(case_no UNIQUE
+   * 위반)을 막는다. 다만 이 카운터 행 락은 트랜잭션 커밋까지 유지돼 같은 날짜 동시 생성이 직렬화된다 —
+   * 첨부·아웃박스 INSERT를 배치로 묶고 문서 수를 제한해 락 구간을 줄였다. 카운터 자체의 구조 개편
+   * (SEQUENCE·독립 트랜잭션)은 부하 측정 후 #266에서 다룬다.
+   */
   private String generateCaseNo() {
     LocalDate today = LocalDate.now();
     int sequence = reportRepository.nextCaseNoSequence(today);

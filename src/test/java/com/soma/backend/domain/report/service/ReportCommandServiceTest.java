@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -144,6 +145,30 @@ class ReportCommandServiceTest {
     assertThatThrownBy(() -> service.createReport(userId, request))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD));
+    verify(ocrJobOutboxPort, never()).enqueue(any());
+  }
+
+  @Test
+  @DisplayName("문서 수가 상한을 넘으면 400 REPORT_TOO_MANY_DOCUMENTS — DB 쓰기·발행 전에 막는다")
+  void createReport_throwsTooManyDocuments_whenExceedsLimit() {
+    // MAX_DOCUMENTS(20)를 넘는 21건 — 카운터·claim·report·첨부·발행 어느 것도 일어나면 안 된다
+    List<CreateReportRequest.Document> tooMany = IntStream.rangeClosed(1, 21)
+        .mapToObj(n -> new CreateReportRequest.Document(
+            "https://bucket.s3.ap-northeast-2.amazonaws.com/uploads/" + n + ".pdf",
+            n + ".pdf", "진단서", ".pdf"))
+        .toList();
+    CreateReportRequest request = new CreateReportRequest(
+        UUID.randomUUID(), AccidentType.MEDICAL_INDEMNITY, LocalDate.now(), List.of(), null, List.of(),
+        null, null, tooMany, null);
+
+    assertThatThrownBy(() -> service.createReport(userId, request))
+        .isInstanceOfSatisfying(BusinessException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.REPORT_TOO_MANY_DOCUMENTS));
+
+    verify(reportRepository, never()).nextCaseNoSequence(any());
+    verify(userClaimRepository, never()).save(any());
+    verify(reportRepository, never()).save(any());
+    verify(reportAttachmentRepository, never()).save(any());
     verify(ocrJobOutboxPort, never()).enqueue(any());
   }
 

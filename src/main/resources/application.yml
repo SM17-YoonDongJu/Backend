@@ -21,7 +21,9 @@ spring:
     # 스키마 미지정 원시 JDBC도 core.encryption_keys를 찾는다. 명시하지 않으면 DB 롤의 search_path
     # 설정(app_owner에 걸린 "core, public")에 의존하게 되는데, 그건 레포 밖 상태라 롤 재생성·RDS 복원
     # 등으로 사라지면 앱이 조용히 깨진다. core가 아직 없는 DB에서는 public으로 폴백하므로 안전하다.
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:brbs_dev}?currentSchema=core,public
+    # reWriteBatchedInserts=true: 다건 INSERT를 실제 다중행 INSERT로 재작성해 DB 왕복을 줄인다
+    # (아래 jpa.properties.hibernate.jdbc.batch_size와 함께 동작 — 리포트 생성의 첨부·아웃박스 적재).
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:brbs_dev}?currentSchema=core,public&reWriteBatchedInserts=true
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -42,6 +44,10 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        # 한 트랜잭션의 다건 INSERT를 배치로 묶어 DB 왕복을 줄인다. 서비스에서 같은 타입 INSERT가
+        # 연속되도록 정렬해야 실제로 묶인다(order_inserts는 매핑 안 된 FK 순서 리스크가 있어 미사용).
+        jdbc:
+          batch_size: 50
     open-in-view: false
   
   flyway:
