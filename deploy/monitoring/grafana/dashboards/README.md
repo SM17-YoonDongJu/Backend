@@ -15,6 +15,7 @@
 | `api-latency-percentiles.json` | API 지연시간 (커스텀) | uri별 RPS·p50/p95/p99, 전체 요약, 가장 느린 API Top 10 | ⚠️ **`management.metrics.distribution.percentiles-histogram.http.server.requests=true` 필요**(히스토그램 버킷 없으면 `histogram_quantile`이 No data) + `application` 라벨 |
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |
 | `websocket-chat.json` | 채팅 WebSocket (커스텀) | 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay 발행/전달 처리량 | 배포 즉시(커스텀 계측이라 별도 exporter·설정 불필요) + `application` 라벨 |
+| `insurance-chunker.json` | 약관 인덱싱 (커스텀, #259) | 마지막 성공 이후 경과·사이클 성패·상태별 문서·격리/경계 weak 문서·단계별 시간 비중 | `insurance-chunker` 잡 UP(brbs-etl 10.0.11.131:9101). **7일 주기 배치라 카운터가 안 움직이는 게 정상** — 주 신호는 '마지막 실행 상태' 게이지다. 첫 사이클이 성공하기 전에는 신선도 패널이 `성공 기록 없음`으로 뜬다(지표 자체가 없음) |
 
 > ⚠️ `application` 라벨은 앱의 `management.metrics.tags.application=${spring.application.name}`
 > (PR #132)이 채운다. 이 설정 없이는 12900·4701의 application 변수가 비어 패널이 No data가 된다.

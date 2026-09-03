@@ -1,4 +1,4 @@
-# 알림 룰 9종 (#88 보너스 6종 + OCR 파이프라인 3종) — 1분 평가, BRBS 폴더.
+# 알림 룰 13종 (#88 보너스 6종 + OCR 파이프라인 3종 + 약관 인덱싱 4종) — 1분 평가, BRBS 폴더.
 # 설계 원칙:
 #  - NoData → OK: dev 무트래픽·GPU 미연결 시 침묵(오발화 방지)
 #  - Error → OK, 단 TargetDown만 Error → Alerting: Prometheus(데이터소스) 자체 장애를 대표 1건으로 감지
@@ -432,6 +432,205 @@ groups:
             # 이 메트릭이 배포되기 전에는 시계열이 없어 NoData=OK로 침묵한다.
             model:
               expr: 'sum(increase(outbox_relay_failed_total[10m]))'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── 약관 인덱싱(insurance-chunker, brbs-etl) ──
+      # 배치 잡이라 알림 규칙이 다르다. 주기가 7일(INGEST_INTERVAL_SECONDS=604800)이므로 7일 중 6일 23시간 동안
+      # 처리량 0이 정상이다 — "5분간 처리 0건" 같은 활동 기반 룰은 상시 발화하므로 두지 않는다.
+      # 주 신호는 rate가 아니라 신선도 게이지이고, 컨테이너 자체가 죽는 건 기존 TargetDown이 커버한다.
+
+      - uid: brbs-index-stale
+        title: "IndexStale - 약관 인덱싱이 한 주기 반 넘게 성공하지 못함"
+        condition: C
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "약관 인덱싱 신선도 초과 — 마지막 성공이 10.5일을 넘겼다"
+          description: "이 서비스의 유일한 진짜 SLI다. 임계 907200s는 컨테이너 healthcheck.py와 같은 식(주기 604800 x HEALTH_GRACE_FACTOR 1.5)이라 앱 쪽 grace factor를 바꾸면 이 룰도 같이 바꿔야 한다. 데몬은 사이클이 실패해도 예외를 삼키고 다음 주기를 기다리므로 컨테이너는 running인 채로 몇 주째 인덱싱이 안 될 수 있다. brbs-etl에서 docker logs brbs-insurance-chunker 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 604800(7d) x 1.5 = 907200s. 아래 threshold의 숫자가 이 식의 결과다.
+            model:
+              expr: 'time() - insurance_chunker_last_success_timestamp_seconds'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [907200]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-never-succeeded
+        title: "IndexNeverSucceeded - 약관 인덱싱 성공 기록이 아예 없음"
+        condition: C
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "insurance_chunker_last_success_timestamp_seconds 시계열이 없다"
+          description: "함정 대응 룰이다. exporter는 last_success_at이 있을 때만 이 지표를 내보내므로, 한 번도 성공한 적이 없으면 시계열 자체가 없고 IndexStale의 뺄셈은 빈 결과가 된다(NoData=OK로 조용히 침묵). 즉 '한 번도 성공 못 한' 최악의 상태를 신선도 룰이 못 잡는다. 스크랩 타깃이 통째로 죽어도 같이 발화하지만 그건 TargetDown(2m)이 먼저 알려준다. 첫 사이클이 성공하면 자동으로 해제되고 이후로는 IndexStale이 이어받는다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
+            model:
+              expr: 'absent(insurance_chunker_last_success_timestamp_seconds)'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-quarantined
+        title: "DocumentsQuarantined - 재시도 상한에 걸린 문서 발생"
+        condition: C
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "격리된 약관 문서 {{ $values.A }}건 — 이번 주기에 손도 대지 않았다"
+          description: "재시도 상한(INGEST_MAX_RETRY, 기본 3)에 걸려 사이클이 건너뛴 문서다. 사이클 자체는 성공으로 찍히기 때문에 이 룰이 없으면 특정 문서만 조용히 진도가 안 나가는 상태를 못 본다. 해당 문서가 다시 성공하면 시도 횟수가 리셋돼 자동 해제된다. 어떤 문서인지는 brbs-etl의 /data/state/attempts.json에 남는다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'insurance_chunker_quarantined_documents'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-weak-boundary
+        title: "WeakBoundaryDocuments - 경계 검출이 약한 문서 발생"
+        condition: C
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "경계 신뢰도 weak 문서 {{ $values.A }}건 — 적재는 됐지만 조번호가 어긋난다"
+          description: "섹션 경계를 못 잡아 조번호가 어긋난 채로 적재된 문서다. status는 OK로 남기 때문에 이 지표가 없으면 품질 저하가 성공으로 집계된다. ⚠️ items.jsonl(append-only) 누적이라 값이 내려가지 않는다 — 한 번 발화하면 원인 문서를 다시 인덱싱해도 해제되지 않으므로, 확인 후 Grafana에서 silence를 걸고 다음 증가를 보는 식으로 운영해야 한다. 증가분만 보려면 delta(...[7d]) > 0 으로 바꿔야 하는데, 우선 절대량으로 존재 자체를 드러낸다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'insurance_chunker_weak_boundary_documents'
               instant: true
               range: false
               refId: A

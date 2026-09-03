@@ -250,7 +250,9 @@ jobs:
           # SSM Parameters 총량 한도(100KB) 보호를 위해 90KB 초과 시 실패시킨다(초과하게 되면 S3 경유로 전환할 것).
           COMPOSE_B64=$(base64 -w0 deploy/docker-compose.monitoring.yml)
 
-          tar -czf /tmp/monitoring.tar.gz -C deploy monitoring
+          # 문서(*.md)는 서버 런타임에 쓰이지 않으므로 페이로드에서 뺀다 — Grafana 파일 프로비저너도 *.json만 읽는다.
+          # 대시보드가 하나 늘 때마다 한도에 붙는 구조라, README 하나(base64 기준 약 3.6KB)만 빼도 여유가 그만큼 생긴다.
+          tar -czf /tmp/monitoring.tar.gz -C deploy --exclude='*.md' monitoring
           MONITORING_B64=$(base64 -w0 /tmp/monitoring.tar.gz)
           if [ "${#MONITORING_B64}" -gt 92160 ]; then
             echo "::error::deploy/monitoring 페이로드(${#MONITORING_B64}B)가 SSM 한도(90KB)에 근접 — S3 경유 동기화로 전환 필요"
