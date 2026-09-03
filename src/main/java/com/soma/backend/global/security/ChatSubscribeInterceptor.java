@@ -11,6 +11,7 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.stereotype.Component;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.chat.entity.ChatRoom;
@@ -21,8 +22,8 @@ import com.soma.backend.global.exception.ErrorCode;
 /**
  * STOMP SUBSCRIBE 인가. {@code /topic/chat.rooms.{roomId}} 구독 시 세션 Principal(userId)이 해당 방의
  * 참여자인지 검증하고, 아니면 구독을 거부한다(설계서 §5). 클라이언트는 구독만 하므로 SEND는 다루지 않는다.
- * 성공·거부(사유별)를 {@code chat.ws.subscribe} 카운터로 남긴다 — 거부 사유 태그는 {@link ErrorCode} 이름을
- * 그대로 써서 별도 분류 체계를 만들지 않는다.
+ * 성공·거부(사유별)를 {@code chat.ws.subscribe} 카운터와 {@code chat.ws.subscribe.duration} Timer로 남긴다 —
+ * 거부 사유 태그는 {@link ErrorCode} 이름을 그대로 써서 별도 분류 체계를 만들지 않는다.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,6 +31,7 @@ public class ChatSubscribeInterceptor implements ChannelInterceptor {
 
   private static final String ROOM_DESTINATION_PREFIX = "/topic/chat.rooms.";
   private static final String METRIC_NAME = "chat.ws.subscribe";
+  private static final String TIMER_NAME = "chat.ws.subscribe.duration";
   private static final String RESULT_TAG = "result";
 
   private final ChatRoomRepository chatRoomRepository;
@@ -46,14 +48,20 @@ public class ChatSubscribeInterceptor implements ChannelInterceptor {
       return message;
     }
 
+    Timer.Sample sample = Timer.start(meterRegistry);
     try {
       authorize(accessor, destination);
     } catch (BusinessException ex) {
-      meterRegistry.counter(METRIC_NAME, RESULT_TAG, ex.getErrorCode().name()).increment();
+      recordResult(sample, ex.getErrorCode().name());
       throw ex;
     }
-    meterRegistry.counter(METRIC_NAME, RESULT_TAG, "success").increment();
+    recordResult(sample, "success");
     return message;
+  }
+
+  private void recordResult(Timer.Sample sample, String result) {
+    meterRegistry.counter(METRIC_NAME, RESULT_TAG, result).increment();
+    sample.stop(meterRegistry.timer(TIMER_NAME, RESULT_TAG, result));
   }
 
   private void authorize(StompHeaderAccessor accessor, String destination) {
