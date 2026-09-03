@@ -15,7 +15,6 @@ permissions:
 
 env:
   ECR_REPOSITORY: soma/backend
-  IMAGE_TAG: ${{ github.sha }}
   EC2_INSTANCE_NAME: brbs-backend-prod
   EC2_USER: ubuntu
   EC2_HOME: /home/ubuntu
@@ -44,19 +43,12 @@ jobs:
     name: Build & Push to ECR
     runs-on: ubuntu-latest
     outputs:
-      short_sha: ${{ steps.build.outputs.short_sha }}
-      image_uri: ${{ steps.build.outputs.image_uri }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      image_uri: ${{ steps.meta.outputs.image_uri }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: gradle
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -68,32 +60,32 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & push Docker image
-        id: build
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image tags
+        id: meta
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           IMAGE_URI="$REGISTRY/$ECR_REPOSITORY"
-
-          echo "Building: $IMAGE_URI"
-
-          docker build \
-            --tag $IMAGE_URI:$IMAGE_TAG \
-            --tag $IMAGE_URI:$SHORT_SHA \
-            --tag $IMAGE_URI:prod \
-            .
-
-          docker push $IMAGE_URI:$IMAGE_TAG
-          docker push $IMAGE_URI:$SHORT_SHA
-          docker push $IMAGE_URI:prod
-
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
-          echo "===== Pushed ====="
-          echo "$IMAGE_URI:$SHORT_SHA"
-          echo "$IMAGE_URI:prod"
+      # BuildKit + GitHub Actions 캐시(type=gha)로 의존성 레이어를 재사용한다.
+      # 멀티스테이지라 mode=max여야 builder 스테이지(gradlew dependencies)까지 캐시된다.
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_uri }}:${{ github.sha }}
+            ${{ steps.meta.outputs.image_uri }}:${{ steps.meta.outputs.short_sha }}
+            ${{ steps.meta.outputs.image_uri }}:prod
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-to-ec2:
     name: Deploy to EC2 via SSM
