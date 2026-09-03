@@ -92,17 +92,24 @@ scrape_configs:
         labels:
           service: insurance-chunker
 
-  # ── GPU(g6.xlarge) 시스템·컨테이너 메트릭  ──
-  # g6에 node_exporter(9100)·cAdvisor(8080) 배포 후, 그 private IP로 아래 주석을 해제한다.
-  # 보안그룹: 모니터링 인스턴스 → g6 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).
-  # (인스턴스 분리 전엔 t3 → g6이었으나, 스크랩 주체가 모니터링 인스턴스로 바뀌었으므로 소스를 다시 잡아야 한다.)
-  # - job_name: node-gpu
-  #   static_configs:
-  #     - targets: ["<G6_PRIVATE_IP>:9100"]
-  #       labels:
-  #         instance: g6-gpu
-  # - job_name: cadvisor-gpu
-  #   static_configs:
-  #     - targets: ["<G6_PRIVATE_IP>:8080"]
-  #       labels:
-  #         instance: g6-gpu
+  # ── GPU(g6.xlarge = brbs-ai, 10.0.11.93) 시스템·컨테이너·GPU 메트릭 — 원격 스크랩 ──
+  # g6에 node_exporter(9100)·cAdvisor(8080)·dcgm-exporter(9400)를 상주시킨다(AI 레포 deploy/docker-compose.ocr.yml).
+  # 보안그룹: 모니터링 인스턴스 → g6 인바운드로 9100·8080·9400 을 private(내부)만 허용(외부 노출 금지).
+  # (인스턴스 분리 전엔 t3 → g6이었으나, 스크랩 주체가 모니터링 인스턴스로 바뀌어 소스를 다시 잡았다.)
+  # exporter가 실제로 응답하기 전에 배포하면 TargetDown(critical, 2m)이 곧바로 발화하므로 순서를 지킬 것.
+  - job_name: node-gpu
+    static_configs:
+      - targets: ["10.0.11.93:9100"]
+        labels:
+          instance: g6-gpu
+  - job_name: cadvisor-gpu
+    static_configs:
+      - targets: ["10.0.11.93:8080"]
+        labels:
+          instance: g6-gpu
+  # GPU 칩 메트릭(VRAM·util·온도·전력·클럭) — DCGM_FI_DEV_*. VRAM/OOM·스로틀링 감시의 핵심.
+  - job_name: dcgm-gpu
+    static_configs:
+      - targets: ["10.0.11.93:9400"]
+        labels:
+          instance: g6-gpu

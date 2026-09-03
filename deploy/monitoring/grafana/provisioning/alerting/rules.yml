@@ -459,3 +459,153 @@ groups:
                     type: last
                     params: []
                   type: query
+
+      # ── GPU(g6=brbs-ai, 10.0.11.93) — dcgm-exporter/cAdvisor 기반. dcgm-gpu·cadvisor-gpu 타깃 UP 시부터 평가 ──
+      # 타깃 자체 다운은 기존 TargetDown(critical, 2m)이 커버하므로 여기선 GPU 고유 신호만 다룬다.
+      - uid: brbs-gpu-vram-high
+        title: "GpuVramHigh - GPU VRAM 95% 초과(포화·OOM 전조)"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU VRAM 포화: {{ $labels.instance }} gpu{{ $labels.gpu }}"
+          description: "10분 지속 VRAM 95% 초과. 모델이 VRAM을 채우는 건 정상이나, ~100% 고정은 추가 로드 실패·언로드/재로드 스래싱(수십초 지연)·OOM 전조다(70b OOM 이력). ollama 로그의 unload/OOM과 gpu-dcgm 대시보드를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'max by(instance, gpu) (DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE))'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}} gpu{{gpu}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.95]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-gpu-temp-high
+        title: "GpuTempHigh - GPU 온도 85도 초과(스로틀링)"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU 온도 과열: {{ $labels.instance }} gpu{{ $labels.gpu }}"
+          description: "5분 지속 85℃ 초과 — 조용한 성능 저하(클럭 스로틀링) 구간. gpu-dcgm 대시보드에서 전력·SM clock 동반 하락을 확인. 지속되면 워크로드/냉각을 점검."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'max by(instance, gpu) (DCGM_FI_DEV_GPU_TEMP)'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}} gpu{{gpu}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ollama는 HTTP 스크랩 대상이 아니라(무인증 서버) 컨테이너 생존을 cAdvisor(g6)로 본다 — OcrWorkerDown과 동형.
+      - uid: brbs-ollama-down
+        title: "OllamaDown - ollama 컨테이너 없음"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ollama(brbs-ollama) 컨테이너가 보이지 않음"
+          description: "5분 이상 cAdvisor(g6)에 brbs-ollama가 없다 — 컨테이너가 죽었거나 이름이 바뀌었다. ollama가 없으면 report·chatbot의 LLM/임베딩과 ocr-worker 임베딩이 전부 실패한다. g6에서 docker ps·docker logs brbs-ollama 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
+            model:
+              expr: 'absent(container_last_seen{name="brbs-ollama"})'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query

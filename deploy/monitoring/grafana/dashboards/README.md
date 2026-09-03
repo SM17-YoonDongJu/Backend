@@ -12,6 +12,7 @@
 | `12900.json` | SpringBoot APM Dashboard | HTTP·HikariCP·로그·메모리풀 | ⚠️ **`application` 라벨 필요** |
 | `4701.json` | JVM (Micrometer) | JVM 힙·GC·스레드·버퍼풀 | ⚠️ **`application` 라벨 필요** |
 | `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | t3 행 즉시, GPU 행은 g6 exporter 후 |
+| `gpu-dcgm.json` | GPU (DCGM) — g6 (커스텀) | GPU VRAM/util·온도·전력·SM/MEM 클럭 (ollama 언로드·큐잉·스로틀링 관측) | dcgm-exporter(g6 `:9400`) UP |
 | `api-latency-percentiles.json` | API 지연시간 (커스텀) | uri별 RPS·p50/p95/p99, 전체 요약, 가장 느린 API Top 10 | ⚠️ **`management.metrics.distribution.percentiles-histogram.http.server.requests=true` 필요**(히스토그램 버킷 없으면 `histogram_quantile`이 No data) + `application` 라벨 |
 | `k6-load-test.json` | k6 부하테스트 (커스텀) | k6 클라이언트 지표(RPS·실패율·VU·http_req_duration/waiting/blocked/connecting/tls_handshaking percentile·dropped_iterations) | k6를 `-o experimental-prometheus-rw`로 이 Prometheus에 remote-write할 때만 데이터 유입 |
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |
