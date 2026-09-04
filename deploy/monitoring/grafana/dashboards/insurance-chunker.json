@@ -1,0 +1,621 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "약관 인덱싱 데몬(brbs-insurance-chunker, Policy-Chunker 레포 / brbs-etl 호스트)의 배치 잡 지표. 인덱싱 주기가 7일(INGEST_INTERVAL_SECONDS=604800)이라 대부분의 시간 동안 카운터가 안 움직이는 게 정상이며, 주 신호는 처리량이 아니라 '마지막 실행 상태' 게이지다. exporter는 스크랩 시점에 runlog(/data/state)를 읽어 렌더링하므로 데몬이 재시작해도 값이 유지된다. 분포(p95 등)와 히스토그램은 표본이 부족해 노출하지 않는다 — 그쪽은 Policy-Chunker의 metrics.py CLI와 Loki 로그가 맡는다. 알림은 alerting/rules.yml의 인덱싱 섹션.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "마지막 실행 상태 — 7일 주기라 여기가 주 신호다",
+      "type": "row"
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "마지막 성공 이후 경과",
+      "description": "이 서비스의 유일한 진짜 SLI. 임계는 컨테이너 healthcheck.py와 같은 식(주기 604800s x HEALTH_GRACE_FACTOR 1.5) — 주황 = 한 주기(7d) 초과, 빨강 = 한 주기 반(10.5d) 초과로 IndexStale 알림이 발화하는 지점이다. 값이 비면 '아직 한 번도 성공한 적 없음'이다 — exporter가 last_success_at이 있을 때만 이 지표를 내보내기 때문에 시계열 자체가 없다(IndexNeverSucceeded 알림이 이 경우를 잡는다).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 604800
+              },
+              {
+                "color": "red",
+                "value": 907200
+              }
+            ]
+          },
+          "noValue": "성공 기록 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - insurance_chunker_last_success_timestamp_seconds",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "마지막 사이클 성패",
+      "description": "1=성공. 데몬은 사이클이 실패해도 예외를 삼키고 다음 주기를 기다리므로(컨테이너는 계속 running) 생존 여부만으로는 이 값을 대신할 수 없다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "실패",
+                  "index": 1
+                },
+                "1": {
+                  "text": "OK",
+                  "index": 0
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_last_cycle_success",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "격리 문서",
+      "description": "재시도 상한(INGEST_MAX_RETRY, 기본 3)에 걸려 이번 주기에 손도 안 댄 문서 수. 0을 넘으면 사이클은 성공으로 찍히는데 특정 문서만 조용히 진도가 안 나가는 상태다. 문서가 다시 성공하면 시도 횟수가 0으로 리셋돼 이 값도 내려간다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_quarantined_documents",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "경계 신뢰도 weak",
+      "description": "적재는 됐지만 섹션 경계를 못 잡아 조번호가 어긋난 문서 수 — status는 OK로 남기 때문에 이 지표가 없으면 품질 저하가 성공으로 집계된다. ⚠️ items.jsonl(append-only) 누적이라 한 번 올라가면 내려오지 않는다. '지금 몇 건인가'가 아니라 '이번 주기에 늘었는가'로 읽어야 한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_weak_boundary_documents",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "id": 200,
+      "panels": [],
+      "title": "마지막 사이클 결과",
+      "type": "row"
+    },
+    {
+      "id": 5,
+      "type": "bargauge",
+      "title": "마지막 사이클 문서 (상태별)",
+      "description": "ok·empty·skipped·quarantined·error 다섯 상태를 항상 전부 내보내므로 0인 상태도 막대가 남는다. skipped는 doc_hash 멱등으로 다운로드조차 하지 않은 건이라 정상 동작이다(중복 제거가 아낀 양).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "minVizWidth": 0,
+        "minVizHeight": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_last_cycle_documents",
+          "legendFormat": "{{status}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "마지막 사이클 청크",
+      "description": "마지막 적재 실행에서 pgvector에 저장한 청크 수. 문서 수가 비슷한데 이 값이 크게 줄면 파싱·청킹 쪽 회귀를 의심한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 12,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_last_cycle_chunks_indexed",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "마지막 사이클 소요 시간",
+      "description": "마지막 적재 실행 소요(초). 단계별 비중 패널과 같이 보면 병렬화 작업 전후 비교 근거가 된다(#259).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 18,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_last_cycle_duration_seconds",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 300,
+      "panels": [],
+      "title": "장기 추세 (누적)",
+      "type": "row"
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "누적 처리 문서 (상태별)",
+      "description": "카운터 누적값을 그대로 본다 — 7일에 한 번만 올라가는 계단이 정상이고, rate()는 대부분 0이라 의미가 없다. error·quarantined 계단만 유독 가팔라지면 특정 문서군이 반복 실패하고 있다는 신호다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_documents_processed_total",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "piechart",
+      "title": "단계별 시간 비중 (누적)",
+      "description": "parse·chunk·embed·store 등 단계별 누적 소요의 비중 — 병목 후보를 가린다. Policy-Chunker 실측(3,403청크)에서는 parse 47.7% / embed 40.5%였다. 병렬화 작업의 전후 비교 근거.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "displayLabels": [
+          "percent"
+        ],
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "values": [
+            "percent"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "insurance_chunker_phase_duration_seconds_total",
+          "legendFormat": "{{phase}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "brbs",
+    "insurance-chunker",
+    "batch"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "약관 인덱싱 (insurance-chunker)",
+  "uid": "brbs-insurance-chunker",
+  "version": 1,
+  "weekStart": ""
+}

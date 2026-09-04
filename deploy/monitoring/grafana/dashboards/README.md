@@ -6,16 +6,17 @@
 ## 커밋된 대시보드
 | 파일 | 대시보드 | 용도 | 데이터 조건 |
 |------|----------|------|-------------|
-| `1860.json` | Node Exporter Full | t3·g6 시스템(CPU·메모리·디스크·네트워크) | node_exporter UP |
+| `1860.json` | Node Exporter Full | node_exporter가 붙은 호스트의 시스템(CPU·메모리·디스크·네트워크) | node_exporter UP. 현재는 t3-app 하나 — brbs-etl은 #257, brbs-ai(g6, stopped)는 그 뒤 |
 | `14282.json` | Cadvisor exporter | 컨테이너별 리소스 | cAdvisor UP |
 | `763.json` | Redis Dashboard for Prometheus Redis Exporter | ops/sec·히트율·evicted keys·connected clients·메모리 | redis-exporter UP. 원본의 `namespace` 변수는 이 exporter 기본 출력에 없는 라벨이라 제거하고 `instance` 변수 쿼리를 직접 참조로 바꿔 받았다(원본 그대로 쓰면 전 패널 No data) |
 | `12900.json` | SpringBoot APM Dashboard | HTTP·HikariCP·로그·메모리풀 | ⚠️ **`application` 라벨 필요** |
 | `4701.json` | JVM (Micrometer) | JVM 힙·GC·스레드·버퍼풀 | ⚠️ **`application` 라벨 필요** |
-| `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | t3 행 즉시, GPU 행은 g6 exporter 후 |
+| `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | t3 행 즉시. GPU 행은 **brbs-etl(`g4dn-etl`)** 기준이라 #257로 node_exporter를 붙여야 데이터가 찬다 — 처음엔 g6로 적혀 있었으나 실제 GPU 워크로드는 brbs-etl에서 돈다(#258) |
 | `gpu-dcgm.json` | GPU (DCGM) — g6 (커스텀) | GPU VRAM/util·온도·전력·SM/MEM 클럭 (ollama 언로드·큐잉·스로틀링 관측) | dcgm-exporter(g6 `:9400`) UP |
 | `api-latency-percentiles.json` | API 지연시간 (커스텀) | uri별 RPS·p50/p95/p99, 전체 요약, 가장 느린 API Top 10 | ⚠️ **`management.metrics.distribution.percentiles-histogram.http.server.requests=true` 필요**(히스토그램 버킷 없으면 `histogram_quantile`이 No data) + `application` 라벨 |
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |
 | `websocket-chat.json` | 채팅 WebSocket (커스텀) | 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay 발행/전달 처리량 | 배포 즉시(커스텀 계측이라 별도 exporter·설정 불필요) + `application` 라벨 |
+| `insurance-chunker.json` | 약관 인덱싱 (커스텀, #259) | 마지막 성공 이후 경과·사이클 성패·상태별 문서·격리/경계 weak 문서·단계별 시간 비중 | `insurance-chunker` 잡 UP(brbs-etl 10.0.11.131:9101). **7일 주기 배치라 카운터가 안 움직이는 게 정상** — 주 신호는 '마지막 실행 상태' 게이지다. 첫 사이클이 성공하기 전에는 신선도 패널이 `성공 기록 없음`으로 뜬다(지표 자체가 없음) |
 
 > ⚠️ `application` 라벨은 앱의 `management.metrics.tags.application=${spring.application.name}`
 > (PR #132)이 채운다. 이 설정 없이는 12900·4701의 application 변수가 비어 패널이 No data가 된다.
