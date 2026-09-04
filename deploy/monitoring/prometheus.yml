@@ -100,10 +100,15 @@ scrape_configs:
           instance: g4dn-etl
           service: insurance-chunker
 
-  # ── brbs-etl(10.0.11.131 / g4dn.xlarge) 시스템·컨테이너 메트릭 — #257 ──
+  # ── brbs-etl(10.0.11.131 / g4dn.xlarge) 호스트·컨테이너 메트릭·로그 에이전트 — #257 ──
   # 바로 위 청커 잡은 이 호스트에서 도는 '앱'의 지표이고, 여기는 그 '호스트 자체'의 지표다 — 별개 관측이다.
-  # brbs-etl에 node_exporter·cAdvisor를 배포한 뒤(#257) 아래 주석을 해제한다. exporter 없이 켜면
+  # brbs-etl에 node_exporter·cAdvisor·Alloy를 배포한 뒤(#257) 아래 주석을 해제한다. exporter 없이 켜면
   # TargetDown(critical)이 상시 울린다.
+  # cAdvisor를 두는 이유는 리소스 귀속보다 brbs-corpus-worker(AI 레포) 때문이다 — 그 컨테이너는 /metrics·노출
+  # 포트·healthcheck가 전부 없어서 container_last_seen 말고는 생존을 볼 수단이 없다(ocr-worker와 같은 상황).
+  # 죽으면 로그도 끊기므로 로그 기반 룰(NoData=OK)로도 못 잡는다. 청커·Alloy는 스크랩 대상이라 TargetDown이 덮는다.
+  # Alloy는 로그를 monitoring:3100으로 push하는 게 본업이고(아웃바운드라 이 호스트 인바운드와 무관),
+  # 아래 alloy-etl 잡은 그 Alloy 자신의 상태를 스크랩하는 것이다.
   # cAdvisor 포트가 t3(8082)와 다르다 — soma-sg-ai 인바운드는 9100·8080으로 열려 있으므로(2026-09-04 확인,
   # 규칙 설명 "GPU node exporter"·"GPU cadvisor") exporter도 8080으로 띄우는 게 맞다. 다르게 띄울 거면
   # 보안그룹부터 고칠 것. 이 포트가 t3와 어긋난 것도 g6 기준으로 만든 규칙을 brbs-etl이 물려받은 탓이다.
@@ -116,6 +121,12 @@ scrape_configs:
   # - job_name: cadvisor-etl
   #   static_configs:
   #     - targets: ["10.0.11.131:8080"]
+  #       labels:
+  #         instance: g4dn-etl
+  # - job_name: alloy-etl
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["10.0.11.131:12345"]
   #       labels:
   #         instance: g4dn-etl
 
