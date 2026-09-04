@@ -104,8 +104,9 @@ scrape_configs:
   # 바로 위 청커 잡은 이 호스트에서 도는 '앱'의 지표이고, 여기는 그 '호스트 자체'의 지표다 — 별개 관측이다.
   # brbs-etl에 node_exporter·cAdvisor를 배포한 뒤(#257) 아래 주석을 해제한다. exporter 없이 켜면
   # TargetDown(critical)이 상시 울린다.
-  # ⚠️ 포트는 앱 인스턴스(t3)와 같은 구성을 전제로 적어뒀다(cAdvisor 8082). 보안그룹은 9100·8080으로
-  # 열려 있다는 얘기가 있어 실제 배포 포트와 인바운드가 무엇인지 확인하고 켤 것.
+  # cAdvisor 포트가 t3(8082)와 다르다 — soma-sg-ai 인바운드는 9100·8080으로 열려 있으므로(2026-09-04 확인,
+  # 규칙 설명 "GPU node exporter"·"GPU cadvisor") exporter도 8080으로 띄우는 게 맞다. 다르게 띄울 거면
+  # 보안그룹부터 고칠 것.
   # - job_name: node-etl
   #   static_configs:
   #     - targets: ["10.0.11.131:9100"]
@@ -113,14 +114,15 @@ scrape_configs:
   #         instance: g4dn-etl
   # - job_name: cadvisor-etl
   #   static_configs:
-  #     - targets: ["10.0.11.131:8082"]
+  #     - targets: ["10.0.11.131:8080"]
   #       labels:
   #         instance: g4dn-etl
 
   # ── brbs-ai(10.0.11.93 / g6.xlarge) 시스템·컨테이너 메트릭 ──
   # ⚠️ 위 brbs-etl과 다른 호스트다 — GPU 인스턴스가 둘이고, 이쪽 g6가 원래 'GPU'로 불리던 그 인스턴스다(#257).
   # 현재 stopped라 켜면 TargetDown(critical)이 상시 울린다. 인스턴스를 다시 띄운 뒤 IP를 확인하고 해제한다.
-  # 보안그룹: 모니터링 인스턴스 → brbs-ai 인바운드로 9100·8080 을 private(내부)만 허용(외부 노출 금지).
+  # 보안그룹은 brbs-etl과 같은 soma-sg-ai를 공유한다 — 9100·8080이 이미 모니터링 SG 소스로 열려 있어
+  # 따로 열 게 없다(뒤집으면, 한쪽에서 포트를 바꾸면 다른 쪽도 같이 영향받는다).
   # (인스턴스 분리 전엔 t3 → g6이었으나, 스크랩 주체가 모니터링 인스턴스로 바뀌었으므로 소스를 다시 잡아야 한다.)
   # - job_name: node-ai
   #   static_configs:
