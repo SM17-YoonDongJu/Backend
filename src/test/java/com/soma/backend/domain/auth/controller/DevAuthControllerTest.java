@@ -40,7 +40,7 @@ import com.soma.backend.infra.redis.TokenBlacklistRepository;
     RestAuthenticationEntryPoint.class,
     RestAccessDeniedHandler.class
 })
-@DisplayName("DevAuthController 슬라이스 테스트")
+@DisplayName("DevAuthController 슬라이스 테스트 (app.dev-login.secret 미설정 = 로컬 기본)")
 class DevAuthControllerTest {
 
   @Autowired
@@ -53,8 +53,8 @@ class DevAuthControllerTest {
   private TokenBlacklistRepository tokenBlacklistRepository;
 
   @Test
-  @DisplayName("POST /auth/dev/login-인증 없이도 200과 USER 유저를 반환한다")
-  void login_returns200() throws Exception {
+  @DisplayName("POST /auth/dev/login-시크릿 미설정이면 X-Dev-Login-Key 없이도 200 (로컬 기존 동작 회귀 방지)")
+  void login_withoutSecretConfigured_returns200() throws Exception {
     given(devLoginService.login(any(), any()))
         .willReturn(new DevLoginResponse(UUID.randomUUID(), "로컬테스트유저", "USER"));
 
@@ -63,6 +63,20 @@ class DevAuthControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("200"))
         .andExpect(jsonPath("$.data.role").value("USER"))
+        .andExpect(jsonPath("$.data.nickname").value("로컬테스트유저"));
+  }
+
+  @Test
+  @DisplayName("POST /auth/dev/login-시크릿 미설정이면 헤더 값이 무엇이든 무시하고 200")
+  void login_withoutSecretConfigured_ignoresHeader() throws Exception {
+    given(devLoginService.login(any(), any()))
+        .willReturn(new DevLoginResponse(UUID.randomUUID(), "로컬테스트유저", "USER"));
+
+    mockMvc.perform(post("/auth/dev/login")
+            .header(DevAuthController.DEV_LOGIN_KEY_HEADER, "아무-값")
+            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("200"))
         .andExpect(jsonPath("$.data.nickname").value("로컬테스트유저"));
   }
 }

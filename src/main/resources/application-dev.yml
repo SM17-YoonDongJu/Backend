@@ -11,6 +11,14 @@ app:
   oauth:
     # Vercel 프론트가 인가요청에 쓴 redirect_uri(자기 오리진)를 토큰 교환에 그대로 허용
     allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:8080,http://localhost:3000,https://frontend-web-psi-two.vercel.app}
+  dev-login:
+    # 부하테스트(k6) 전용 백도어. 평소엔 반드시 false — 로드테스트 창에만 .env.dev로 true를 주고
+    # 창이 끝나면 false로 되돌린 뒤 backend를 재기동한다. prod는 DevLoginGuard가 기동 자체를 막는다.
+    enabled: ${DEV_LOGIN_ENABLED:false}
+    # 공유 시크릿. 값이 있을 때만 X-Dev-Login-Key 헤더 검증이 켜진다(빈 값=검증 스킵).
+    # dev는 외부에서 닿는 서버라 enabled=true로 여는 동안엔 반드시 채운다.
+    # 로컬(application-local.yml)은 이 키를 두지 않아 기존처럼 헤더 없이 로그인된다.
+    secret: ${DEV_LOGIN_SECRET:}
 
 logging:
   # 콘솔·파일 로그를 구조화 JSON(logstash)으로 출력 → Alloy가 Loki로 수집·필드 필터, traceId로 Tempo 상관.

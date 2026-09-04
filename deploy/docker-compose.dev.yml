@@ -27,6 +27,28 @@ services:
       # backend가 그 이름에서 URL을 런타임 해석한다(URL env 불필요). 접속은 dev 인스턴스 IAM Role 위임(AWS_REGION 아래 참조).
       SQS_OCR_QUEUE_NAME: ${SQS_OCR_QUEUE_NAME}
       JWT_SECRET: ${JWT_SECRET}
+      # k6 부하테스트 전용 dev 로그인 백도어. 기본 false — .env.dev에서 로드테스트 창에만 true로 연다.
+      # 열려 있는 동안엔 DEV_LOGIN_SECRET(공유 시크릿 헤더)도 반드시 함께 채운다.
+      DEV_LOGIN_ENABLED: ${DEV_LOGIN_ENABLED:-false}
+      DEV_LOGIN_SECRET: ${DEV_LOGIN_SECRET:-}
+      # k6 부하테스트용 시드 러너 게이트(부팅 시 1회 실행하고, 꺼져 있으면 아무것도 하지 않는다).
+      # 키 이름 주의: 이 게이트들은 application*.yml에 선언하지 않고 @Value 기본값으로만 존재한다. 그래서
+      # DEV_LOGIN_ENABLED처럼 짧은 이름을 쓸 수 없다 — yml의 ${...} 치환을 거치지 않으므로 Spring이
+      # 프로퍼티명(app.dev-seed.*)에서 직접 env 키를 유도한다. 즉 APP_ 접두어가 반드시 붙어야 하고,
+      # 접두어를 빼면 바인딩이 조용히 실패해 러너가 아무것도 하지 않는다(실측 확인).
+      #   app.dev-seed.k6-scenarios-enabled  →  APP_DEV_SEED_K6_SCENARIOS_ENABLED
+      # 사정사 계정 10명(k6-adjuster-1~10). 시나리오 시딩의 선행 조건이라 먼저 1회 켠다.
+      APP_DEV_SEED_K6_ADJUSTERS_ENABLED: ${APP_DEV_SEED_K6_ADJUSTERS_ENABLED:-false}
+      # 시나리오 데이터(k6-user-N의 리포트·제안·채팅방·메시지). 기본값으로 약 33,700행을 만들고 1~3분이
+      # 걸린다 — 그동안 readiness가 UP이 아니라서 헬스체크(start_period 90s + 30s×3 = 180s)를 넘기면
+      # 컨테이너가 unhealthy로 마킹된다. 반드시 USER_COUNT=3으로 리허설해 1유저당 소요를 재고 켤 것.
+      # 시딩이 끝나면 false로 되돌리고 재기동한다. prod compose에는 이 키들을 두지 않는다.
+      APP_DEV_SEED_K6_SCENARIOS_ENABLED: ${APP_DEV_SEED_K6_SCENARIOS_ENABLED:-false}
+      APP_DEV_SEED_K6_USER_COUNT: ${APP_DEV_SEED_K6_USER_COUNT:-100}
+      APP_DEV_SEED_K6_PROPOSAL_REPORTS_PER_USER: ${APP_DEV_SEED_K6_PROPOSAL_REPORTS_PER_USER:-8}
+      APP_DEV_SEED_K6_CONSULT_ROOMS_PER_USER: ${APP_DEV_SEED_K6_CONSULT_ROOMS_PER_USER:-36}
+      APP_DEV_SEED_K6_DURABLE_ROOMS_PER_USER: ${APP_DEV_SEED_K6_DURABLE_ROOMS_PER_USER:-2}
+      APP_DEV_SEED_K6_INSPECTION_REPORTS_PER_USER: ${APP_DEV_SEED_K6_INSPECTION_REPORTS_PER_USER:-5}
       AWS_REGION: ${AWS_REGION}
       S3_BUCKET: ${S3_BUCKET}
       KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}

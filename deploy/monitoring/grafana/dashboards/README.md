@@ -12,6 +12,7 @@
 | `12900.json` | SpringBoot APM Dashboard | HTTP·HikariCP·로그·메모리풀 | ⚠️ **`application` 라벨 필요** |
 | `4701.json` | JVM (Micrometer) | JVM 힙·GC·스레드·버퍼풀 | ⚠️ **`application` 라벨 필요** |
 | `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | t3 행 즉시. GPU 행은 **brbs-etl(`g4dn-etl`)** 기준이라 #257로 node_exporter를 붙여야 데이터가 찬다 — 처음엔 g6로 적혀 있었으나 실제 GPU 워크로드는 brbs-etl에서 돈다(#258) |
+| `gpu-dcgm.json` | GPU (DCGM) — g6 (커스텀) | GPU VRAM/util·온도·전력·SM/MEM 클럭 (ollama 언로드·큐잉·스로틀링 관측) | dcgm-exporter(g6 `:9400`) UP |
 | `api-latency-percentiles.json` | API 지연시간 (커스텀) | uri별 RPS·p50/p95/p99, 전체 요약, 가장 느린 API Top 10 | ⚠️ **`management.metrics.distribution.percentiles-histogram.http.server.requests=true` 필요**(히스토그램 버킷 없으면 `histogram_quantile`이 No data) + `application` 라벨 |
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |
 | `websocket-chat.json` | 채팅 WebSocket (커스텀) | 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay 발행/전달 처리량 | 배포 즉시(커스텀 계측이라 별도 exporter·설정 불필요) + `application` 라벨 |
