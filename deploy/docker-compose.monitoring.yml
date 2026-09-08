@@ -20,7 +20,10 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.retention.time=3d"
+      # 시간 보존과 별개의 크기 상한(하드 실링) — 스크레이프가 튀어도 TSDB가 볼륨을 못 채우게 방어.
+      # 예: 40GiB 볼륨이면 Prometheus 8GB + Loki/Tempo 3일 + 이미지로 여유. 시간·크기 중 먼저 걸리는 쪽 적용.
+      - "--storage.tsdb.retention.size=8GB"
       - "--web.enable-lifecycle"
       # Tempo metrics_generator가 span 메트릭(서비스 그래프)을 remote_write로 밀어넣게 수신 활성.
       - "--web.enable-remote-write-receiver"

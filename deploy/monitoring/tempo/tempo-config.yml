@@ -1,6 +1,6 @@
 # Tempo 설정 — 분산 트레이스 저장·조회. t3 콜로케이트.
 # OTLP 리시버(4317 gRPC·4318 HTTP)는 brbs-net 내부로만 열고(backend가 tempo:4318로 push), 조회 포트(3200)는 loopback.
-# 저장은 로컬 파일시스템 + 7일 보존. 스케일업 시 storage.trace.backend를 s3로 교체.
+# 저장은 로컬 파일시스템 + 3일 보존. 스케일업 시 storage.trace.backend를 s3로 교체.
 server:
   http_listen_port: 3200
   log_level: warn
@@ -19,7 +19,7 @@ ingester:
 
 compactor:
   compaction:
-    block_retention: 168h          # 7일 트레이스 보존
+    block_retention: 72h          # 3일 트레이스 보존
 
 # 서비스 그래프·span 메트릭을 생성해 Grafana serviceMap/exemplar 연동에 쓴다.
 metrics_generator:
