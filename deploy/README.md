@@ -67,10 +67,10 @@ node-exporter·cAdvisor·Alloy·redis-exporter는 **그 호스트 자체를 감�
 
 | 구성요소 | 인스턴스 | 포트(바인딩) | 역할 |
 |----------|----------|--------------|------|
-| Prometheus | 모니터링 | `127.0.0.1:9090` | 스크랩·저장(로컬 TSDB, retention 15d) |
+| Prometheus | 모니터링 | `127.0.0.1:9090` | 스크랩·저장(로컬 TSDB, retention 3d, size ≤8GB) |
 | Grafana | 모니터링 | `127.0.0.1:3000` | 대시보드(인증 필수, 외부 미노출) |
-| Loki | 모니터링 | `127.0.0.1:3100`(조회) + `3100`(앱→push, private) | 로그 저장(retention 7d) |
-| Tempo | 모니터링 | `127.0.0.1:3200`(조회) + `4318`(앱→push, private) | 트레이스 저장(retention 7d) |
+| Loki | 모니터링 | `127.0.0.1:3100`(조회) + `3100`(앱→push, private) | 로그 저장(retention 3d) |
+| Tempo | 모니터링 | `127.0.0.1:3200`(조회) + `4318`(앱→push, private) | 트레이스 저장(retention 3d) |
 | node-exporter | 앱 | `9100`(모니터링→scrape, private) | 앱 인스턴스 시스템 메트릭 |
 | cAdvisor | 앱 | `8082`(모니터링→scrape, private) | 앱 인스턴스 컨테이너 메트릭 |
 | Alloy | 앱 | `12345`(모니터링→scrape, private) | 앱 인스턴스 컨테이너 로그 수집 → Loki push |

@@ -1,5 +1,5 @@
 # Loki 설정 (single-binary) — 로그 저장·검색. t3 콜로케이트, 외부 미노출(compose에서 127.0.0.1 바인딩).
-# 저장은 로컬 파일시스템(Prometheus 15d TSDB와 동일 철학) + 7일 보존. 스케일업 시 object_store를 s3로 교체.
+# 저장은 로컬 파일시스템(Prometheus 3d TSDB와 동일 철학) + 3일 보존. 스케일업 시 object_store를 s3로 교체.
 # 이 파일은 grafana provisioning처럼 deploy/monitoring/ 로 관리하며 서버에서 직접 편집하지 않는다.
 auth_enabled: false
 
@@ -32,9 +32,9 @@ schema_config:
         period: 24h
 
 limits_config:
-  retention_period: 168h            # 7일 보존 (compactor가 강제)
+  retention_period: 72h            # 3일 보존 (compactor가 강제)
   reject_old_samples: true
-  reject_old_samples_max_age: 168h
+  reject_old_samples_max_age: 72h
   ingestion_rate_mb: 8              # t3 보수값 — 초당 인제스트 상한
   ingestion_burst_size_mb: 16
   max_label_names_per_series: 30
