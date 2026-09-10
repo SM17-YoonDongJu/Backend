@@ -139,6 +139,15 @@ CREATE DATABASE test_db OWNER test;
 
 격리된 일회성 컨테이너 DB가 필요해지면 그때 TestContainers 의존성(`org.testcontainers:postgresql` 등)을 추가하고 `@Testcontainers` + `@DynamicPropertySource`로 배선한다(현재 미도입).
 
+## QA E2E (Playwright) — 별도 스위트
+
+`qa-e2e/`는 Gradle 빌드와 무관한 별도 npm 프로젝트다. JUnit5/MockMvc가 커버하지 못하는, QA 체크리스트의 "결과 = 미확인" 항목(주로 에러 응답·상태전이 확인)을 Playwright의 API 테스트 모드(`request`, 브라우저 UI 클릭 아님)로 백엔드에 직접 검증한다. 통합 UI·WebSocket 소수만 별도 처리한다.
+
+- 1단계(`npm run test:unauth`)는 로그인 불필요 — 미인증 401, 위조 쿠키, CORS, 응답 포맷 검증.
+- 2단계(`npm run test:auth`)는 `spring-security-impl`의 Dev 로그인 백도어(`app.dev-login.enabled=true`)로 세션을 받아 인가 케이스를 검증한다.
+- Java 단위/통합 테스트와 역할을 나눈다 — 이 스위트는 배포된 백엔드를 블랙박스로 때리는 계약 검증, `@SpringBootTest`/MockMvc는 화이트박스 로직 검증. 신규 API를 만들 때 두 쪽 다 채울 필요는 없고, 겹치지 않게 커버리지를 조율한다.
+- 상세 실행법·커버리지 표·확장 가이드는 `qa-e2e/README.md` 참고.
+
 ## 테스트 우선순위
 
 | 우선순위 | 대상 | 이유 |

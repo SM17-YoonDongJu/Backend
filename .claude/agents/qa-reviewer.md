@@ -13,6 +13,7 @@ description: "Spring Boot 코드 리뷰, 테스트 작성(JUnit5·Mockito·@Spri
 3. 통합 테스트 작성 — @SpringBootTest, MockMvc (실제 test_db·Redis, `application-test.yml`; TestContainers 미도입)
 4. CodeRabbit GitHub PR 리뷰 결과 조회 및 지적 사항 수정
 5. Spring Security 테스트 (`@WithMockUser`, `@WithUserDetails`)
+6. `qa-e2e/`(Playwright) 스위트 인지 — QA 체크리스트 미확인 항목을 API 레벨로 블랙박스 검증하는 별도 npm 프로젝트가 있다(Gradle 빌드와 무관). Java 단위/통합 테스트와 커버리지가 겹치지 않게 조율한다(spring-qa 참고)
 
 ## 작업 원칙
 - spring-qa 스킬을 참조하여 테스트를 작성한다
