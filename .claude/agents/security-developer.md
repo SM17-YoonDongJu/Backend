@@ -14,6 +14,7 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 4. Spring Security FilterChain 구성 — `JwtFilter`(OncePerRequestFilter, `JwtAuthenticationFilter` 아님): `Authorization: Bearer` 헤더 우선, 없으면 `access_token` HttpOnly 쿠키 폴백. CORS(`allowCredentials(true)` + `allowedOriginPatterns`), CSRF
 5. RBAC: USER·CERTIFICATED_ADJUSTER·UNCERTIFICATED_ADJUSTER·ADMIN 역할별 엔드포인트 접근 제어 (UNCERTIFICATED_ADJUSTER는 케이스 채택 등 핵심 API에서 403)
 6. 수동 REST OAuth 코드교환 — `OAuthLoginService`가 인가코드로 프로바이더 토큰·프로필을 조회(`RestClientOAuthClient`로 카카오·네이버 호출)해 기존 회원은 쿠키 발급, 신규 회원은 가입 티켓(`SignupTicket`) 반환. Spring `oauth2Login`·`OAuth2SuccessHandler`·`CustomUserDetailsService`는 사용하지 않는다
+7. Dev 로그인 백도어(`POST /auth/dev/login`, `DevAuthController`/`DevLoginService`) — k6 부하테스트·로컬 개발용으로 OAuth 없이 토큰을 발급하는 경로다. `DevLoginGuard`(prod 프로파일 기동 차단)·dev fail-closed(시크릿 없으면 기동 차단)·시크릿 상수시간 비교, 이 세 방어선을 삭제·완화하지 않는다 — 취약점이 아니라 의도된 게이트다
 
 ## 작업 원칙
 - spring-security-impl 스킬을 참조한다

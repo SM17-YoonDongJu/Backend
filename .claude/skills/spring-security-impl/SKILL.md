@@ -67,6 +67,16 @@ Spring `oauth2Login` 필터를 쓰지 않는다. 프론트가 인가코드를 �
 
 > Provider별 응답 파싱·엔드포인트 상세: `references/oauth2-providers.md`
 
+## Dev 로그인 백도어 (`POST /auth/dev/login`)
+
+로컬·k6 부하테스트용으로 소셜 OAuth 없이 닉네임만으로 `access_token` 쿠키를 발급하는 엔드포인트(`DevAuthController`/`DevLoginService`). `app.dev-login.enabled=true`일 때만 빈으로 등록되고(꺼져 있으면 경로 자체가 없음), 다층 방어로 운영 노출을 막는다.
+
+- **prod 하드 블록:** `DevLoginGuard`(`@PostConstruct`)가 `app.dev-login.enabled=true` + `prod` 프로파일이면 기동 자체를 막는다.
+- **dev는 fail-closed:** dev 프로파일에서 `app.dev-login.secret`이 비어 있으면(시크릿 없이 백도어가 열리는 상태) 역시 기동을 막는다 — dev는 CORS로 외부(Vercel 프론트)에서 닿을 수 있는 서버라 설정 실수 하나가 인증 우회로 직결되기 때문. 시크릿이 설정된 경우 `X-Dev-Login-Key` 헤더를 상수 시간 비교(`MessageDigest.isEqual`)로 검증하고, 누락·불일치를 같은 403으로 응답해 오라클을 주지 않는다.
+- **local은 시크릿 미설정이 기본** — `app.dev-login.secret`이 비어 있으면 헤더 검증 자체를 건너뛴다(로컬 개발 편의).
+- k6 부하테스트(`scripts/adjuster-loadtest.k6.js`)가 dev 배포에서 이 경로로 토큰을 받는다 — 자세한 배선은 `spring-infra` 스킬 참고.
+- 이 백도어를 다루는 코드를 수정할 때는 위 세 방어선(prod 하드 블록·dev fail-closed·상수시간 비교)을 모두 유지해야 한다 — 하나라도 빠지면 인증 우회 경로가 된다.
+
 ## RBAC 구현
 
 ### 권한 계층

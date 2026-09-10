@@ -19,7 +19,9 @@ infra-developer 에이전트가 참조하는 운영 준비(production readiness)
 | 의존성 | `build.gradle` |
 | 환경 문서 | `.env.example` |
 | 정책 문서 | `docs/logging-pii-policy.md` *(생성 예정 — 아직 부재)* |
-| 검증 | `scripts/smoke-test.sh`, `scripts/smoke-test.k6.js` |
+| 검증 | `scripts/smoke-test.sh`, `scripts/smoke-test.k6.js`, `scripts/adjuster-loadtest.k6.js` |
+| 관측성 스택(LGTM) | `deploy/monitoring/{prometheus.yml,loki/,tempo/,alloy/,grafana/}` |
+| k6 부하테스트 데이터 시더 | `src/main/java/.../devtools/K6ScenarioSeedRunner.java`, `K6AdjusterSeedRunner.java` |
 
 ## 1. Actuator 헬스체크 / 프로브
 
@@ -182,6 +184,19 @@ logging:
 ## 7. Smoke test (배포 후 검증)
 
 `scripts/smoke-test.sh`(curl)는 health/liveness/readiness 상태코드 + 본문 `UP`을 확인한다. `scripts/smoke-test.k6.js`(k6)는 최소 부하로 실패율·p95 threshold를 검증한다. 엔드포인트가 늘면 스크립트에 추가한다. 스모크=배포 후 헬스 확인, 기능 검증은 통합 테스트(spring-qa) 몫 — 경계를 지킨다.
+
+## 8. 관측성 스택 (Loki·Grafana·Tempo·Alloy) + k6 부하테스트
+
+`deploy/monitoring/`에 로그(Loki)·대시보드(Grafana)·트레이스(Tempo)·수집 에이전트(Alloy)와 Prometheus 스크레이프 설정(`prometheus.yml`)이 있다. Grafana 대시보드는 `grafana/dashboards/*.json`(API 지연시간 percentile·5xx 에러율, WebSocket 채팅 핸드셰이크/relay 지연, RDS(CloudWatch), redis_exporter, 비용 최적화 등)으로 프로비저닝되고 알림 정책은 `grafana/provisioning/alerting/`에 있다.
+
+- **k6 부하테스트 결과는 Grafana가 아니라 Datadog으로 수집한다** — 한때 k6 결과도 Grafana 대시보드로 연동했으나 제거했다(현재는 앱/인프라 관측은 Grafana, 부하테스트 결과는 Datadog으로 역할이 분리돼 있다).
+- **CI 이미지 빌드**는 buildx + GitHub Actions 레이어 캐시를 쓴다(빌드 시간 단축 목적, 런타임 동작과는 무관).
+
+### k6 부하테스트 데이터 시더 (devtools)
+
+`devtools/K6ScenarioSeedRunner`·`K6AdjusterSeedRunner`는 부하테스트용 리포트·제안·채팅방·사정사 데이터를 1회성으로 시딩하는 `ApplicationRunner`다. `app.dev-seed.k6-*` 프로퍼티로 게이트하는데, **어떤 `application*.yml`에도 선언하지 않고** compose `environment:`로만 주입한다(프로퍼티 오주입 한 번으로 운영 DB가 오염되지 않게 이중 차단). `K6ScenarioSeedRunner`는 `@Profile("!test & !prod")`로 사정사 시더(`@Profile("!test")`)보다 더 강하게 잠갔다 — 기본 설정에서 약 3.4만 행(리포트·제안·채팅방·메시지·유저)을 만들기 때문. 도메인 서비스를 호출하지 않고 직접 시딩하므로 OCR 트리거(SQS)·푸시·Redis 브로드캐스트가 발생하지 않는다. 사후 정리 SQL·환경변수 이름 규칙(`APP_` 접두어 필수)은 클래스 Javadoc에 있다.
+
+`scripts/adjuster-loadtest.k6.js`는 시딩된 데이터를 소비하는 사정사(adjuster) role 시나리오다. dev 배포에도 `POST /auth/dev/login`으로 토큰을 받는데(`spring-security-impl`의 Dev 로그인 백도어 참고, `DEV_LOGIN_KEY` 필수 — dev는 시크릿 없이 열리지 않는다), dev의 `access_token` 쿠키가 `Secure`라 k6 기본 쿠키 jar가 http:// 재전송을 거부하므로 `Set-Cookie`에서 토큰을 직접 파싱해 매 요청 `Cookie` 헤더를 수동 구성한다.
 
 ## 검증 절차 (구현 후)
 1. `./gradlew compileJava` — 의존성/컴파일 확인

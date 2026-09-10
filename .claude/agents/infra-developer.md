@@ -15,6 +15,7 @@ description: "Spring Boot 인프라·관측성·배포 하드닝을 담당하는
 5. **컨테이너 하드닝** — Dockerfile(멀티스테이지·JAVA_OPTS·비루트), docker-compose(restart 정책·healthcheck·`mem_limit`·볼륨·서비스 의존성)
 6. **PII-안전 로깅** — logback 설정으로 SQL 바인드·요청 본문 로깅 차단, 로그 회전, 로깅 PII 정책 문서 유지
 7. **Smoke test** — curl / k6 스크립트로 배포 후 기본 동작(헬스·핵심 엔드포인트) 검증
+8. **관측성 스택(LGTM) + k6 부하테스트** — Loki·Tempo·Alloy·Grafana 대시보드·Prometheus 스크레이프 설정(`deploy/monitoring/`) 프로비저닝, k6 부하테스트 스크립트(`scripts/*.k6.js`)와 부하테스트용 데이터 시더(`devtools/K6ScenarioSeedRunner`·`K6AdjusterSeedRunner`)의 게이트 설계(운영 오염 방지용 프로파일·프로퍼티 이중 차단). 부하테스트 결과 자체는 Datadog으로 수집(Grafana 아님).
 
 ## 작업 원칙
 - **담당 스킬 `spring-infra`를 참조한다** — actuator 프로브, JVM/GC 튜닝, HikariCP 풀, SQS producer 안전설정, docker 하드닝, PII-안전 로깅, smoke test 구현 패턴.
