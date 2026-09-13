@@ -9,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
+import com.soma.backend.domain.adjuster.entity.AdjusterRating;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.global.common.RegionFormat;
 
@@ -84,9 +85,7 @@ public record AdjusterMyPageResponse(
       long monthlyCompletedCount,
       long monthlyConsultConvertedCount,
       UnaryOperator<String> urlResolver) {
-    Integer rawReviewCount = profile.getReviewCount();
-    int reviewCount = rawReviewCount == null ? 0 : rawReviewCount;
-    double averageRating = resolveAverageRating(rawReviewCount, profile);
+    AdjusterRating rating = AdjusterRating.of(profile.getRatingMean(), profile.getReviewCount());
     String activityRegion = RegionFormat.toSingle(profile.getActivityRegion());
 
     Profile profileSection = new Profile(
@@ -99,23 +98,16 @@ public record AdjusterMyPageResponse(
         activityRegion,
         user.getRole().name());
 
-    Stats statsSection =
-        new Stats(averageRating, reviewCount, totalCompletedCount, consultationConversionRate);
+    Stats statsSection = new Stats(
+        rating.average(), rating.reviewCount(), totalCompletedCount, consultationConversionRate);
 
     MonthlyActivity monthlyActivitySection =
-        new MonthlyActivity(monthlyCompletedCount, monthlyConsultConvertedCount, averageRating);
+        new MonthlyActivity(monthlyCompletedCount, monthlyConsultConvertedCount, rating.average());
 
     Certification certificationSection =
         new Certification(profile.getLicenseNo(), activityRegion, user.getCreatedAt());
 
     return new AdjusterMyPageResponse(
         profileSection, statsSection, monthlyActivitySection, certificationSection);
-  }
-
-  private static double resolveAverageRating(@Nullable Integer reviewCount, AdjusterProfile profile) {
-    if (reviewCount == null || reviewCount == 0 || profile.getRatingMean() == null) {
-      return 0.0;
-    }
-    return profile.getRatingMean().doubleValue();
   }
 }

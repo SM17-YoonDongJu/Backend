@@ -15,6 +15,7 @@ import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.Adjuster;
 import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.InProgressCases;
 import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.Rating;
 import com.soma.backend.domain.adjuster.dto.AdjusterHomeResponse.Summary;
+import com.soma.backend.domain.adjuster.entity.AdjusterRating;
 import com.soma.backend.domain.adjuster.repository.AdjusterHomeRepository;
 import com.soma.backend.domain.adjuster.repository.AdjusterIdentityRow;
 import com.soma.backend.domain.adjuster.repository.InProgressCaseRow;
@@ -58,8 +59,8 @@ public class AdjusterHomeQueryService {
         LocalDateTime.now().minusHours(NEW_WINDOW_HOURS), adjusterId);
 
     // 완료 집계는 둘 다 report_reviews 실시간 카운트다. 누적은 전체 기간(countByAdjusterId), 이번 달은 그중
-    // 당월분(countCompletedBetween)이라 이번 달이 누적의 부분집합 → '누적 ≥ 이번 달'이 항상 성립한다. 비정규화
-    // cases_reviewed(완료 write 미구현으로 정적)에 의존하지 않아 이중 계상 위험도 없다. 마이페이지 집계와 동일 소스.
+    // 당월분(countCompletedBetween)이라 이번 달이 누적의 부분집합 → '누적 ≥ 이번 달'이 항상 성립한다. 완료
+    // 건수는 비정규화 컬럼을 두지 않으므로(write 경로 없이 값을 신뢰할 수 없음) 이중 계상 위험이 없다. 마이페이지 집계와 동일 소스.
     long monthlyCompletedCount = countMonthlyCompleted(adjusterId);
     long totalCompletedCount = reportReviewRepository.countByAdjusterId(adjusterId);
     long inProgressCount = adjusterHomeRepository.countInProgress(adjusterId);
@@ -100,17 +101,12 @@ public class AdjusterHomeQueryService {
     return new Adjuster(adjusterId, name, s3UploadService.presignedGetUrl(avatarUrl));
   }
 
-  /**
-   * 평점은 adjuster_profiles 비정규화 컬럼(rating_mean·review_count)에서 읽는다.
-   * 집계(후기 POST 시 갱신) 미구현이라 아직 채워지지 않았으면 average=0.0, reviewCount=0으로 내린다
-   * (프론트 계약을 항상 number로 고정 — 평점 유무는 reviewCount로 판별).
-   */
+  /** 평점은 adjuster_profiles 비정규화 컬럼(rating_mean·review_count)에서 읽는다({@link AdjusterRating}). */
   private Rating toRating(AdjusterIdentityRow identity) {
-    if (identity == null) {
-      return new Rating(0.0, 0L);
-    }
-    double average = identity.ratingMean() == null ? 0.0 : identity.ratingMean().doubleValue();
-    return new Rating(average, nullSafe(identity.reviewCount()));
+    AdjusterRating rating = identity == null
+        ? AdjusterRating.of(null, null)
+        : AdjusterRating.of(identity.ratingMean(), identity.reviewCount());
+    return new Rating(rating.average(), rating.reviewCount());
   }
 
   private InProgressCases resolveInProgressCases(UUID adjusterId, long total, int limit) {
