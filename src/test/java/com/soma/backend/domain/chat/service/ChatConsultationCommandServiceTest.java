@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,12 +19,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.BeanUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.soma.backend.domain.adjuster.service.AdjusterProfileStatsCommandService;
 import com.soma.backend.domain.chat.ChatRoomFixture;
 import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
@@ -58,6 +62,8 @@ class ChatConsultationCommandServiceTest {
   private ReportReviewRepository reportReviewRepository;
   @Mock
   private ChatEventPublisher chatEventPublisher;
+  @Mock
+  private AdjusterProfileStatsCommandService adjusterProfileStatsCommandService;
 
   @InjectMocks
   private ChatConsultationCommandService service;
@@ -146,6 +152,12 @@ class ChatConsultationCommandServiceTest {
 
       // 내 방(수락 안내) + 형제 방(종료 안내) 각각 SYSTEM 브로드캐스트 → 2회 발행
       verify(chatEventPublisher, times(2)).publishAfterCommit(any());
+
+      // 담당이 확정됐으므로 사정사 프로필의 상담 완료 수를 재집계한다. 프로필 행 잠금 보유 시간을 줄이려고
+      // 형제 방 정리까지 끝난 트랜잭션 후반부에 호출한다.
+      InOrder order = inOrder(chatRoomRepository, adjusterProfileStatsCommandService);
+      order.verify(chatRoomRepository).findByReportId(reportId);
+      order.verify(adjusterProfileStatsCommandService).refreshCompletedConsultCount(adjusterId);
     }
 
     @Test
@@ -249,6 +261,8 @@ class ChatConsultationCommandServiceTest {
       verify(chatRoomRepository, never()).findByReportId(any());
       verify(chatMessageRepository, never()).save(any());
       verify(chatEventPublisher, never()).publishAfterCommit(any());
+      // 더블클릭 2회차 — 수락이 성립하지 않았으므로 상담 완료 수가 이중 계상되지 않는다.
+      verifyNoInteractions(adjusterProfileStatsCommandService);
     }
   }
 
@@ -283,6 +297,8 @@ class ChatConsultationCommandServiceTest {
       // 되는가"를 판정하기 위한 읽기일 뿐이고, 형제 방은 조회조차 하지 않는다.
       verify(chatRoomRepository, never()).findByReportId(any());
       verify(chatEventPublisher, times(1)).publishAfterCommit(any());
+      // 거절은 담당 확정이 아니다 — completed_consult_count는 건드리지 않는다.
+      verifyNoInteractions(adjusterProfileStatsCommandService);
     }
 
     /**

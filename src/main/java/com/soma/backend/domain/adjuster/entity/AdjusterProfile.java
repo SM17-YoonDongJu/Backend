@@ -1,6 +1,7 @@
 package com.soma.backend.domain.adjuster.entity;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -19,22 +20,28 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import com.soma.backend.domain.common.entity.BaseEntity;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
 
 /**
  * ADJUSTER_PROFILES Aggregate Root — 손해사정사 프로필(자격·전문분야·비정규화 집계).
  *
  * <p>USERS와는 user_id(UUID)로만 연결한다(1:1, user_id UK). 상담·평점(completed_consult_count·
- * rating_mean·review_count)은 비정규화 컬럼이며 갱신 책임은 상담·후기 write 로직에 있다(현재 미구현이라
- * null일 수 있음, 평점 해석은 {@link AdjusterRating} 참고). 검수 완료 건수는 비정규화하지 않는다 —
- * report_reviews를 매번 실시간 집계해 쓴다(write 경로 없이 값을 신뢰할 수 없고, 이중 계상 위험도 없앤다).
- * 지금은 홈 대시보드 조회에서 읽기 전용으로 쓰인다(도메인 성숙 시 자격 신청 승인·프로필 수정 등 write
- * 유스케이스가 붙는다).
+ * rating_mean·review_count)은 비정규화 컬럼이다 — 상담 완료 수는 상담 수락(담당 확정) 시,
+ * 평점은 평가 등록 시 각각 원천 테이블(report_reviews·adjuster_reviews) 전량 재집계로 갱신한다
+ * ({@link #refreshCompletedConsultCount}·{@link #refreshRating}). 증분이 아니라 재집계라 같은 입력에
+ * 대해 멱등이고, 값이 어긋나도 다음 이벤트에서 스스로 복구된다. 백필(V46) 이전에 만들어진 행은 아직
+ * null일 수 있으며 그때의 표시 규칙은 {@link AdjusterRating}가 정한다. 검수 완료 건수는 비정규화하지
+ * 않는다 — report_reviews를 매번 실시간 집계해 쓴다(이중 계상 위험을 없앤다).
  */
 @Entity
 @Table(name = "adjuster_profiles")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AdjusterProfile extends BaseEntity {
+
+  /** rating_mean numeric은 정밀도 미지정이라 AVG의 무한소수가 그대로 박힌다 — 저장 scale을 여기서 고정한다. */
+  private static final int RATING_SCALE = 2;
 
   @Id
   @GeneratedValue
@@ -115,6 +122,42 @@ public class AdjusterProfile extends BaseEntity {
     if (careers != null) {
       this.careers = careers;
     }
+  }
+
+  /**
+   * 평점 비정규화 컬럼(rating_mean·review_count)을 재집계 결과로 덮어쓴다. 인자는 증분이 아니라
+   * adjuster_reviews 전량 집계값이라 같은 입력에 대해 멱등이다.
+   *
+   * <p>불변식: 건수는 음수일 수 없다. {@code reviewCount}가 0이면 {@code ratingMean}을 null로 강제해
+   * "후기 0건 = 평점 없음"을 지키고({@link AdjusterRating#of} 폴백 규칙과 정합), 0보다 크면
+   * {@code ratingMean}이 null이어선 안 된다. 저장 평균은 scale 2(HALF_UP)로 고정해 백필(V46) 값과
+   * 런타임 값이 같은 표현을 갖게 한다.
+   */
+  public void refreshRating(@Nullable BigDecimal ratingMean, int reviewCount) {
+    if (reviewCount < 0) {
+      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    }
+    if (reviewCount == 0) {
+      this.ratingMean = null;
+      this.reviewCount = 0;
+      return;
+    }
+    if (ratingMean == null) {
+      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    }
+    this.ratingMean = ratingMean.setScale(RATING_SCALE, RoundingMode.HALF_UP);
+    this.reviewCount = reviewCount;
+  }
+
+  /**
+   * 상담 완료 수(completed_consult_count)를 재집계 결과로 덮어쓴다 — 사용자가 최종 채택해 담당이 확정된
+   * 제안(report_reviews.status = ACCEPTED) 건수다. 음수는 허용하지 않는다.
+   */
+  public void refreshCompletedConsultCount(int completedConsultCount) {
+    if (completedConsultCount < 0) {
+      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+    }
+    this.completedConsultCount = completedConsultCount;
   }
 
   /** 주요 경력 항목(careers jsonb 요소) — {@code [{period, company}]}. */
