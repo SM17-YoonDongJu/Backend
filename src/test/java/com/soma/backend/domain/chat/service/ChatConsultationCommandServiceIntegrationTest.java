@@ -10,11 +10,18 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
+import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
+import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
 import com.soma.backend.domain.chat.ChatRoomFixture;
 import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
@@ -58,6 +65,10 @@ class ChatConsultationCommandServiceIntegrationTest {
   private ChatRoomRepository chatRoomRepository;
   @Autowired
   private ChatMessageRepository chatMessageRepository;
+  @Autowired
+  private AdjusterProfileRepository adjusterProfileRepository;
+  @PersistenceContext
+  private EntityManager entityManager;
 
   private User customer;
   private User adjuster1;
@@ -91,6 +102,90 @@ class ChatConsultationCommandServiceIntegrationTest {
   private ChatRoom savedRoom(UUID userId, UUID adjusterId, UUID reportId, UUID reportReviewId) {
     ChatRoom room = ChatRoomFixture.build(userId, adjusterId, reportId, reportReviewId, ChatRoomStatus.ACTIVE);
     return chatRoomRepository.save(room);
+  }
+
+  /** 집계 대상 프로필 행 — 자격 승인 플로우가 없어 프로덕션에는 없을 수도 있으므로 테스트에서 직접 만든다. */
+  private void savedProfile(UUID adjusterUserId) {
+    savedProfile(adjusterUserId, null);
+  }
+
+  /**
+   * 상담 완료 수를 미리 채운 프로필 행. 갱신 경로가 아님을 검증할 때 "원래 null이라 null"과 "건드리지 않아
+   * 그대로"를 구분하려면 사전값이 필요하다 — 엔티티에 임의 대입 메서드가 없어 리플렉션으로 심는다.
+   */
+  private void savedProfile(UUID adjusterUserId, Integer completedConsultCount) {
+    AdjusterProfile profile = BeanUtils.instantiateClass(AdjusterProfile.class);
+    ReflectionTestUtils.setField(profile, "userId", adjusterUserId);
+    ReflectionTestUtils.setField(profile, "completedConsultCount", completedConsultCount);
+    adjusterProfileRepository.save(profile);
+  }
+
+  private AdjusterProfile reloadProfile(UUID adjusterUserId) {
+    entityManager.flush();
+    entityManager.clear();
+    return adjusterProfileRepository.findByUserId(adjusterUserId).orElseThrow();
+  }
+
+  @Test
+  @DisplayName("수락하면 담당 사정사 프로필의 completed_consult_count가 채택 건수로 갱신된다(이슈 #304 AC 2)")
+  void accept_syncsCompletedConsultCount() {
+    savedProfile(adjuster1.getId());
+    Report report = counselingReport();
+    ReportReview myReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
+
+    chatConsultationCommandService.accept(customer.getId(), myRoom.getId());
+
+    assertThat(reloadProfile(adjuster1.getId()).getCompletedConsultCount()).isEqualTo(1);
+  }
+
+  /** 재집계라 채택이 누적되면 그만큼 올라간다(증분 누락·이중 계상 없음). */
+  @Test
+  @DisplayName("같은 사정사가 두 리포트에서 채택되면 completed_consult_count는 2가 된다")
+  void accept_accumulatesAcrossReports() {
+    savedProfile(adjuster1.getId());
+    for (int i = 0; i < 2; i++) {
+      Report report = counselingReport();
+      ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+      ChatRoom room = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), review.getId());
+      chatConsultationCommandService.accept(customer.getId(), room.getId());
+    }
+
+    assertThat(reloadProfile(adjuster1.getId()).getCompletedConsultCount()).isEqualTo(2);
+  }
+
+  /**
+   * 사전값(7)을 심어두고 검증한다 — 기본값(null)에서 시작하면 "거절이 갱신을 부르지 않았다"와 "부르긴 했는데
+   * 마침 0이라 티가 안 났다"를 구분할 수 없다. 잘못 갱신되면 이 사정사의 ACCEPTED 건수인 0으로 덮어써진다.
+   */
+  @Test
+  @DisplayName("거절은 담당 확정이 아니므로 기존 completed_consult_count(7)를 그대로 둔다")
+  void reject_leavesCompletedConsultCountUntouched() {
+    savedProfile(adjuster1.getId(), 7);
+    Report report = counselingReport();
+    ReportReview myReview = counselingReview(report.getId(), adjuster1.getId());
+    ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
+
+    chatConsultationCommandService.reject(customer.getId(), myRoom.getId());
+
+    assertThat(reloadProfile(adjuster1.getId()).getCompletedConsultCount()).isEqualTo(7);
+  }
+
+  /**
+   * adjuster_profiles 행을 만드는 프로덕션 경로가 아직 없다 — 행이 비어 있다고 상담 수락 자체가 실패하면
+   * 사용자가 담당 사정사를 정할 수 없게 된다.
+   */
+  @Test
+  @DisplayName("프로필 행이 없는 사정사를 수락해도 상담 수락은 성립한다(집계만 건너뛴다)")
+  void accept_succeedsWithoutAdjusterProfileRow() {
+    Report report = counselingReport();
+    ReportReview myReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
+
+    ConsultationDecisionResponse response = chatConsultationCommandService.accept(customer.getId(), myRoom.getId());
+
+    assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
+    assertThat(adjusterProfileRepository.findByUserId(adjuster1.getId())).isEmpty();
   }
 
   @Test

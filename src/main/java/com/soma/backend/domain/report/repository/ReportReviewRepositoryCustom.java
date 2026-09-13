@@ -17,4 +17,10 @@ public interface ReportReviewRepositoryCustom {
    */
   Page<ReviewedReportRow> findReviewedReportRows(
       UUID adjusterId, ReviewStatus status, LocalDateTime monthFrom, LocalDateTime monthTo, Pageable pageable);
+
+  /**
+   * API#6 제안 목록(design.md §6) — 리포트에 달린 사정사 제안을 최신순으로 조회한다. REJECTED는 노출하지 않는다.
+   * rating은 ADJUSTER_PROFILES.rating_mean(scale 2)을 그대로 읽으며, 프로필 행이 없거나 평가가 없으면 null이다.
+   */
+  Page<ProposalRow> findProposalRows(UUID reportId, Pageable pageable);
 }

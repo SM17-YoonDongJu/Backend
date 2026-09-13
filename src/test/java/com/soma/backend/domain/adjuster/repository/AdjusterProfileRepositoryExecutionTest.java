@@ -2,6 +2,8 @@ package com.soma.backend.domain.adjuster.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 사정사 공개 목록/검색 QueryDSL이 실제 PostgreSQL에서 SQL로 번역·실행되는지 검증한다
@@ -104,6 +107,21 @@ class AdjusterProfileRepositoryExecutionTest {
   @DisplayName("findAdjusterCards — 모든 필터 결합(keyword+specialty+region+sort)이 실행된다")
   void findAdjusterCards_allFilters_executes() {
     assertExecutesEmpty(condition("김", "교통사고", "서울,경기", "career"));
+  }
+
+  /**
+   * 집계 갱신 경로가 쓰는 잠금 조회 — {@code PESSIMISTIC_WRITE} + JPQL 조합이 PostgreSQL Dialect에서 깨지지
+   * 않고 실행되는지까지만 본다(다른 실행 테스트와 같은 성격). 대상 행이 없으면 잠기는 행도 없으므로
+   * <b>잠금의 효과(동시 갱신 직렬화)는 여기서 검증되지 않는다</b> — 그건 실제로 두 트랜잭션을 붙이는
+   * {@code AdjusterReviewCommandServiceConcurrencyIntegrationTest}(E11)·
+   * {@code ChatConsultationAcceptConcurrencyIntegrationTest}(E12)가 맡는다.
+   * 잠금은 트랜잭션을 요구하므로 이 테스트만 트랜잭션 안에서 돈다(다른 테스트는 잠금과 무관해 기존대로 둔다).
+   */
+  @Test
+  @Transactional
+  @DisplayName("findByUserIdForUpdate — PESSIMISTIC_WRITE 잠금 조회가 실행된다(대상 행이 없으면 empty)")
+  void findByUserIdForUpdate_executes() {
+    assertThat(adjusterProfileRepository.findByUserIdForUpdate(UUID.randomUUID())).isEmpty();
   }
 
   @Test
