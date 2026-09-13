@@ -151,10 +151,10 @@ public class K6AdjusterSeedRunner implements ApplicationRunner {
   private void insertAdjusterProfile(UUID userId, int seq, LocalDateTime now) {
     jdbcTemplate.update(
         "INSERT INTO adjuster_profiles ("
-            + "id, user_id, license_no, name, headline, specialties, career, cases_accepted, "
-            + "cases_reviewed, completed_consult_count, rating_mean, review_count, consult_methods, "
+            + "id, user_id, license_no, name, headline, specialties, career, "
+            + "completed_consult_count, rating_mean, review_count, consult_methods, "
             + "activity_region, verified_at, introduction, created_at, updated_at"
-            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ps -> {
           ps.setObject(1, UUID.randomUUID());
           ps.setObject(2, userId);
@@ -163,17 +163,15 @@ public class K6AdjusterSeedRunner implements ApplicationRunner {
           ps.setString(5, "부하테스트용 손해사정사");
           ps.setArray(6, ps.getConnection().createArrayOf("text", SPECIALTIES.toArray()));
           ps.setInt(7, CAREER_YEARS);
-          ps.setInt(8, 0);
-          ps.setInt(9, 0);
-          ps.setInt(10, COMPLETED_CONSULT_COUNT);
-          ps.setBigDecimal(11, RATING_MEAN);
-          ps.setInt(12, REVIEW_COUNT);
-          ps.setArray(13, ps.getConnection().createArrayOf("text", CONSULT_METHODS.toArray()));
-          ps.setArray(14, ps.getConnection().createArrayOf("text", new Object[] {REGION}));
+          ps.setInt(8, COMPLETED_CONSULT_COUNT);
+          ps.setBigDecimal(9, RATING_MEAN);
+          ps.setInt(10, REVIEW_COUNT);
+          ps.setArray(11, ps.getConnection().createArrayOf("text", CONSULT_METHODS.toArray()));
+          ps.setArray(12, ps.getConnection().createArrayOf("text", new Object[] {REGION}));
+          ps.setObject(13, now);
+          ps.setString(14, "k6 부하테스트용으로 생성된 계정입니다.");
           ps.setObject(15, now);
-          ps.setString(16, "k6 부하테스트용으로 생성된 계정입니다.");
-          ps.setObject(17, now);
-          ps.setObject(18, now);
+          ps.setObject(16, now);
         });
   }
 

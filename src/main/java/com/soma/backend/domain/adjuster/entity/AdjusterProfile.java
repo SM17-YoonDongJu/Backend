@@ -23,9 +23,12 @@ import com.soma.backend.domain.common.entity.BaseEntity;
 /**
  * ADJUSTER_PROFILES Aggregate Root — 손해사정사 프로필(자격·전문분야·비정규화 집계).
  *
- * <p>USERS와는 user_id(UUID)로만 연결한다(1:1, user_id UK). 누적 검수·상담·평점은 비정규화 컬럼이며
- * 갱신 책임은 검수 완료·상담·후기 write 로직에 있다(현재 미구현이라 null일 수 있음). 지금은 홈 대시보드
- * 조회에서 읽기 전용으로 쓰인다(도메인 성숙 시 자격 신청 승인·프로필 수정 등 write 유스케이스가 붙는다).
+ * <p>USERS와는 user_id(UUID)로만 연결한다(1:1, user_id UK). 상담·평점(completed_consult_count·
+ * rating_mean·review_count)은 비정규화 컬럼이며 갱신 책임은 상담·후기 write 로직에 있다(현재 미구현이라
+ * null일 수 있음, 평점 해석은 {@link AdjusterRating} 참고). 검수 완료 건수는 비정규화하지 않는다 —
+ * report_reviews를 매번 실시간 집계해 쓴다(write 경로 없이 값을 신뢰할 수 없고, 이중 계상 위험도 없앤다).
+ * 지금은 홈 대시보드 조회에서 읽기 전용으로 쓰인다(도메인 성숙 시 자격 신청 승인·프로필 수정 등 write
+ * 유스케이스가 붙는다).
  */
 @Entity
 @Table(name = "adjuster_profiles")
@@ -55,12 +58,6 @@ public class AdjusterProfile extends BaseEntity {
 
   @Column(name = "career")
   private Integer career;
-
-  @Column(name = "cases_accepted")
-  private Integer casesAccepted;
-
-  @Column(name = "cases_reviewed")
-  private Integer casesReviewed;
 
   @Column(name = "completed_consult_count")
   private Integer completedConsultCount;

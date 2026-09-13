@@ -10,6 +10,7 @@ import org.jspecify.annotations.Nullable;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
+import com.soma.backend.domain.adjuster.entity.AdjusterRating;
 import com.soma.backend.domain.report.repository.AdjusterReviewRow;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.global.common.RegionFormat;
@@ -67,9 +68,7 @@ public record AdjusterProfileResponse(
   public static AdjusterProfileResponse from(
       AdjusterProfile profile, User user, List<AdjusterReviewRow> recent,
       long handledCaseCount, int pendingReviewCount, UnaryOperator<String> urlResolver) {
-    Integer rawReviewCount = profile.getReviewCount();
-    int reviewCount = rawReviewCount == null ? 0 : rawReviewCount;
-    double averageRating = resolveAverageRating(rawReviewCount, profile);
+    AdjusterRating rating = AdjusterRating.of(profile.getRatingMean(), profile.getReviewCount());
 
     return new AdjusterProfileResponse(
         profile.getUserId(),
@@ -81,20 +80,13 @@ public record AdjusterProfileResponse(
         profile.getSpecialties() == null ? List.of() : profile.getSpecialties(),
         toCareerItems(profile.getCareers()),
         profile.getCareer() == null ? 0 : profile.getCareer(),
-        averageRating,
-        reviewCount,
+        rating.average(),
+        rating.reviewCount(),
         toRecentReviews(recent),
         profile.getCompletedConsultCount() == null ? 0 : profile.getCompletedConsultCount(),
         handledCaseCount,
         pendingReviewCount,
         profile.getUpdatedAt() != null ? profile.getUpdatedAt() : profile.getCreatedAt());
-  }
-
-  private static double resolveAverageRating(@Nullable Integer reviewCount, AdjusterProfile profile) {
-    if (reviewCount == null || reviewCount == 0 || profile.getRatingMean() == null) {
-      return 0.0;
-    }
-    return profile.getRatingMean().doubleValue();
   }
 
   private static List<CareerItem> toCareerItems(@Nullable List<AdjusterProfile.Career> careers) {
