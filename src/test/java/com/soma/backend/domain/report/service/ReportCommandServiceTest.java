@@ -22,9 +22,13 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.soma.backend.domain.chat.dto.ConsultationRoomResult;
 import com.soma.backend.domain.chat.service.ChatRoomCommandService;
@@ -71,6 +75,10 @@ class ReportCommandServiceTest {
   private ChatRoomCommandService chatRoomCommandService;
   @Mock
   private ApplicationEventPublisher eventPublisher;
+  // 구간 타이머(#306)가 Timer.start(registry)로 registry.config().clock()을 타므로 mock이 아니라
+  // 실제 레지스트리를 준다. mock이면 config()가 null을 돌려줘 NPE로 떨어진다.
+  @Spy
+  private MeterRegistry meterRegistry = new SimpleMeterRegistry();
   @InjectMocks
   private ReportCommandService service;
 
@@ -82,6 +90,24 @@ class ReportCommandServiceTest {
   private static <T> T withId(T entity) {
     ReflectionTestUtils.setField(entity, "id", UUID.randomUUID());
     return entity;
+  }
+
+  @Test
+  @DisplayName("createReport는 구간 타이머 3종을 기록한다 — 총 지연을 락·저장으로 쪼개 보기 위한 계측(#306)")
+  void createReport_recordsStageTimers() {
+    given(reportRepository.nextCaseNoSequence(any())).willReturn(1);
+    given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    CreateReportRequest request = new CreateReportRequest(
+        UUID.randomUUID(), AccidentType.MEDICAL_INDEMNITY, LocalDate.now(), List.of("급성 충수염"),
+        1_420_000, List.of(), "사고 경위", null, List.of(), null);
+
+    service.createReport(userId, request);
+
+    assertThat(meterRegistry.get("report.create.caseno").timer().count()).isEqualTo(1L);
+    assertThat(meterRegistry.get("report.create.persist").timer().count()).isEqualTo(1L);
+    // 트랜잭션 동기화가 없는 단위 테스트에서는 afterCompletion 대신 즉시 정지 경로를 탄다.
+    assertThat(meterRegistry.get("report.create.lock_hold").timer().count()).isEqualTo(1L);
   }
 
   @Test

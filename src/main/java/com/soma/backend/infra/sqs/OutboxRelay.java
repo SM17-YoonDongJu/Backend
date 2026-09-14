@@ -1,5 +1,6 @@
 package com.soma.backend.infra.sqs;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,13 +11,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
 import com.soma.backend.infra.outbox.OcrOutboxEvent;
 import com.soma.backend.infra.outbox.OcrOutboxRepository;
+import com.soma.backend.infra.outbox.OcrOutboxStatus;
 
 /**
  * 아웃박스 릴레이. PENDING 이벤트를 고정 지연(fixedDelay) 폴링으로 조회해 SQS로 발행한다(design.md §4).
@@ -33,7 +35,6 @@ import com.soma.backend.infra.outbox.OcrOutboxRepository;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 @EnableScheduling
 public class OutboxRelay {
 
@@ -45,6 +46,12 @@ public class OutboxRelay {
   // 발행 결과 카운터. 태그는 queue(=아웃박스 topic) 하나뿐이라 카디널리티가 낮다.
   private static final String METRIC_SENT = "outbox.relay.sent";
   private static final String METRIC_FAILED = "outbox.relay.failed";
+  // 적재(created_at)→발행까지의 지연. 카운터만으론 "발행이 되고 있다"까지만 알 뿐, 202를 받은 뒤
+  // OCR 트리거가 실제로 나가기까지 얼마나 걸리는지는 알 수 없었다(#306).
+  private static final String METRIC_LATENCY = "outbox.relay.latency";
+  // 스크레이프 시점의 status별 적체 깊이. 릴레이(2초 × 배치 5)가 생성 속도를 못 따라가면 PENDING이
+  // 쌓이는데 그동안 지표가 없어 DB를 직접 조회해야만 보였다.
+  private static final String METRIC_BACKLOG = "outbox.events";
 
   private final OcrOutboxRepository outboxRepository;
   private final SqsClient sqsClient;
@@ -57,6 +64,28 @@ public class OutboxRelay {
   // 다른 스케줄러(OutboxProcessor)가 살아있으므로, 빈 조건부 대신 실행 시점 플래그로 no-op 처리한다.
   @Value("${app.outbox.enabled:true}")
   private boolean outboxEnabled;
+
+  public OutboxRelay(
+      OcrOutboxRepository outboxRepository, SqsClient sqsClient, MeterRegistry meterRegistry) {
+    this.outboxRepository = outboxRepository;
+    this.sqsClient = sqsClient;
+    this.meterRegistry = meterRegistry;
+    registerBacklogGauges(outboxRepository, meterRegistry);
+  }
+
+  /**
+   * 적체 게이지 등록. 값은 스크레이프 시점에 평가되므로 폴링 주기(2초)와 무관하게 DB 카운트가
+   * 스크레이프 간격으로만 나간다 — {@code idx_kafka_outbox_status_created}가 받는 단순 카운트다.
+   * FAILED는 MAX_ATTEMPTS 초과로 파킹돼 자동 재시도가 끊긴 상태라 운영 개입 신호로 따로 뽑는다.
+   */
+  private static void registerBacklogGauges(OcrOutboxRepository repository, MeterRegistry registry) {
+    for (OcrOutboxStatus status : List.of(OcrOutboxStatus.PENDING, OcrOutboxStatus.FAILED)) {
+      Gauge.builder(METRIC_BACKLOG, repository, repo -> repo.countByStatus(status))
+          .description("아웃박스 이벤트 적체 — 스크레이프 시점의 status별 행 수")
+          .tag("status", status.name())
+          .register(registry);
+    }
+  }
 
   /** 이전 실행이 끝난 뒤 2초 후 재실행 — 폴링 간 최소 간격을 보장해 배치 처리가 길어져도 중첩 실행을 막는다. */
   @Scheduled(fixedDelay = 2000)
@@ -76,13 +105,30 @@ public class OutboxRelay {
       String queueUrl = resolveQueueUrl(event.getTopic());
       sqsClient.sendMessage(builder -> builder.queueUrl(queueUrl).messageBody(event.getPayload()));
       event.markSent();
-      meterRegistry.counter(METRIC_SENT, "queue", event.getTopic()).increment();
-      log.info("아웃박스 이벤트 발행 완료. id={}, queue={}", event.getId(), event.getTopic());
     } catch (RuntimeException ex) {
       // SdkException(타임아웃·직렬화·네트워크 등)을 폭넓게 흡수한다 — 한 이벤트의 실패가 이 트랜잭션을
       // 롤백시켜, 배치 안에서 먼저 markSent()된 다른 이벤트가 중복 발행되는 상황을 막기 위함이다.
       markFailed(event, ex);
+      return;
     }
+    // 계측·로그는 catch 밖에 둔다. 위 catch가 RuntimeException을 통째로 삼키므로 안에 두면 관측 코드의
+    // 사소한 오류(예: 지연 계산의 NPE)가 "SQS 발행 실패"로 둔갑해 attempts를 올리고 failed 카운터를
+    // 증가시킨다 — 실제로 발행은 성공한 상태인데도. 관측이 비즈니스 결과를 바꾸면 안 된다.
+    meterRegistry.counter(METRIC_SENT, "queue", event.getTopic()).increment();
+    recordRelayLatency(event);
+    log.info("아웃박스 이벤트 발행 완료. id={}, queue={}", event.getId(), event.getTopic());
+  }
+
+  /**
+   * 적재→발행 지연 기록. {@code createdAt}은 {@code @CreationTimestamp}라 DB를 거치지 않은 엔티티
+   * (단위 테스트에서 직접 만든 객체 등)에서는 비어 있으므로 그 경우 조용히 건너뛴다.
+   */
+  private void recordRelayLatency(OcrOutboxEvent event) {
+    if (event.getCreatedAt() == null || event.getSentAt() == null) {
+      return;
+    }
+    meterRegistry.timer(METRIC_LATENCY, "queue", event.getTopic())
+        .record(Duration.between(event.getCreatedAt(), event.getSentAt()));
   }
 
   private String resolveQueueUrl(String queueName) {
