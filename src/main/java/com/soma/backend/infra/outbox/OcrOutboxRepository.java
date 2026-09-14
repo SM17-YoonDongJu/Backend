@@ -20,4 +20,10 @@ public interface OcrOutboxRepository extends JpaRepository<OcrOutboxEvent, UUID>
       + "FOR UPDATE SKIP LOCKED "
       + "LIMIT :limit", nativeQuery = true)
   List<OcrOutboxEvent> findBatchForRelay(@Param("limit") int limit);
+
+  /**
+   * 적체 게이지용 status별 행 수(#306). 파생 쿼리로 충분한 단순 카운트라 QueryDSL을 쓰지 않는다
+   * (하네스 쿼리 규칙). {@code idx_kafka_outbox_status_created}의 선두 컬럼이 status라 그대로 받는다.
+   */
+  long countByStatus(OcrOutboxStatus status);
 }

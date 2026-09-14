@@ -11,9 +11,12 @@ import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 
 import com.soma.backend.domain.chat.dto.ConsultationRoomResult;
 import com.soma.backend.domain.chat.service.ChatRoomCommandService;
@@ -42,7 +45,6 @@ import com.soma.backend.infra.sqs.OcrJobOutboxPort;
  * OcrJob에 claim/report/attachment 참조 키를 실어, FastAPI가 OCR·AI 결과로 해당 행을 UPDATE하게 한다.
  */
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class ReportCommandService {
 
@@ -58,6 +60,42 @@ public class ReportCommandService {
   private final OcrJobOutboxPort ocrJobOutboxPort;
   private final ChatRoomCommandService chatRoomCommandService;
   private final ApplicationEventPublisher eventPublisher;
+  private final MeterRegistry meterRegistry;
+
+  // 쓰기 경로 구간 계측(#306). http.server.requests는 엔드포인트 총 시간만 주고, JDBC span도 메서드
+  // span도 없어서 그 총 시간을 커넥션 대기·락 대기·flush로 쪼갤 수단이 없었다. 세 타이머가 각각
+  // 다른 질문에 답한다 — 구간이 서로 겹치는 건 의도된 것이다.
+  private final Timer caseNoTimer;
+  private final Timer persistTimer;
+  private final Timer lockHoldTimer;
+
+  public ReportCommandService(
+      UserClaimRepository userClaimRepository,
+      ReportRepository reportRepository,
+      ReportAttachmentRepository reportAttachmentRepository,
+      ReportReviewRepository reportReviewRepository,
+      OcrJobOutboxPort ocrJobOutboxPort,
+      ChatRoomCommandService chatRoomCommandService,
+      ApplicationEventPublisher eventPublisher,
+      MeterRegistry meterRegistry) {
+    this.userClaimRepository = userClaimRepository;
+    this.reportRepository = reportRepository;
+    this.reportAttachmentRepository = reportAttachmentRepository;
+    this.reportReviewRepository = reportReviewRepository;
+    this.ocrJobOutboxPort = ocrJobOutboxPort;
+    this.chatRoomCommandService = chatRoomCommandService;
+    this.eventPublisher = eventPublisher;
+    this.meterRegistry = meterRegistry;
+    this.caseNoTimer = Timer.builder("report.create.caseno")
+        .description("당일 case_no 시퀀스 발급 — 카운터 행 락 획득 대기 + UPSERT 실행 시간")
+        .register(meterRegistry);
+    this.persistTimer = Timer.builder("report.create.persist")
+        .description("리포트 생성의 영속화 호출 구간(claim·report·첨부·아웃박스). 커밋 flush는 제외")
+        .register(meterRegistry);
+    this.lockHoldTimer = Timer.builder("report.create.lock_hold")
+        .description("case_no 카운터 락 보유 구간(발급~커밋 완료). 같은 날짜 동시 생성의 직렬화 구간")
+        .register(meterRegistry);
+  }
 
   /** POST /reports — 사고 정보 입력 수신 → 저장 → OCR 트리거 발행. 202(비동기). */
   public CreateReportResponse createReport(UUID userId, CreateReportRequest request) {
@@ -80,11 +118,15 @@ public class ReportCommandService {
         ClaimDetails.of(request.accidentType(), request.diagnosis(), request.hospitalizations());
 
     //DB 저장
+    Timer.Sample persistSample = Timer.start(meterRegistry);
     UserClaim claim = userClaimRepository.save(UserClaim.create(
         userId, request.productId(), request.offeredAmount(), request.accidentDate(),
         request.accidentType(), details, request.question(), request.description(),
         request.additionalInformation()));
 
+    // 여기부터 커밋까지가 case_no 카운터 행 락을 쥔 구간이다(generateCaseNo가 인자로 먼저 평가된다).
+    // 같은 날짜의 동시 생성이 전부 이 구간에서 직렬화되므로 구간 길이가 곧 처리량 상한을 정한다.
+    Timer.Sample lockSample = Timer.start(meterRegistry);
     //Reports 테이블 스켈레톤 저장
     Report report = reportRepository.save(Report.createPending(
         userId, request.productId(), claim.getId(), request.accidentType(), request.question(),
@@ -117,6 +159,9 @@ public class ReportCommandService {
           docTotal,
           Instant.now().toString()));
     }
+
+    persistSample.stop(persistTimer);
+    stopOnCommit(lockSample);
 
     return CreateReportResponse.from(report);
   }
@@ -200,8 +245,29 @@ public class ReportCommandService {
    */
   private String generateCaseNo() {
     LocalDate today = LocalDate.now();
-    int sequence = reportRepository.nextCaseNoSequence(today);
+    int sequence = caseNoTimer.record(() -> reportRepository.nextCaseNoSequence(today));
     return String.format("%s-%03d", today.format(CASE_NO_DAY), sequence);
+  }
+
+  /**
+   * 락 보유 타이머를 <b>커밋 이후</b>에 정지한다. case_no 카운터 행 락은 트랜잭션이 끝나야 풀리므로,
+   * 서비스 메서드가 반환하는 시점에 재면 flush·커밋에 걸린 시간이 통째로 빠져 실제 직렬화 구간을
+   * 과소평가한다 — 첨부·아웃박스 INSERT가 배치로 묶여 커밋 시점에 나가는 구조라 그 누락이 특히 크다.
+   *
+   * <p>트랜잭션 동기화가 없는 컨텍스트(단위 테스트 등)에서는 등록이 {@code IllegalStateException}이므로
+   * 즉시 정지한다. 그 경우 값은 커밋을 뺀 근사치다.
+   */
+  private void stopOnCommit(Timer.Sample sample) {
+    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      sample.stop(lockHoldTimer);
+      return;
+    }
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+      @Override
+      public void afterCompletion(int status) {
+        sample.stop(lockHoldTimer);
+      }
+    });
   }
 
   private String toS3Key(String s3Url) {
