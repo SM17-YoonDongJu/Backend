@@ -37,8 +37,8 @@ Refresh Token : { sub: "{UUID}", iat, exp }
 ### JwtFilter (`global/security/JwtFilter.java`)
 
 - `OncePerRequestFilter` 확장, `@Component`
-- 토큰 조회(`resolveToken`): **`Authorization: Bearer {token}` 헤더 우선**, 없으면 `access_token` 쿠키로 폴백
-- `shouldNotFilter`: `/auth/**`는 access 검증을 건너뛴다 (재발급·로그아웃은 refresh 쿠키로 동작 — 만료 access 쿠키가 딸려와도 막히면 안 됨)
+- 토큰 조회(`resolveToken`): **`access_token` 쿠키 전용** — `Authorization: Bearer` 헤더는 읽지 않는다(PR #169 `fix/cookie-only-auth`에서 제거). 헤더 폴백이 없으므로 쿠키가 안 실리는 클라이언트는 인증 자체가 불가능하다
+- `shouldNotFilter`: `/auth/**`·`/api/v1/auth/oauth2/**`는 access 검증을 건너뛴다 (재발급·로그아웃은 refresh 쿠키로 동작 — 만료 access 쿠키가 딸려와도 막히면 안 됨)
 - 유효한 토큰 → 블랙리스트 검사(`tokenBlacklistRepository.isBlacklisted(userId)`, 등록됐으면 `INVALID_TOKEN`) → `CustomUserDetails(userId, role)` 생성 → `SecurityContext` 저장
 - `BusinessException` 발생 시 필터 내에서 `ErrorResponse` JSON 직접 반환 (체인 중단)
 - 토큰 없는 요청은 통과(익명) → 이후 인가 단계에서 `RestAuthenticationEntryPoint`(401) 또는 `@PreAuthorize`에서 차단
