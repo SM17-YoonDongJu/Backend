@@ -33,8 +33,8 @@ String getRole(String token)                           // "role" 클레임
 
 ### JwtFilter (`global/security/JwtFilter.java`)
 - `OncePerRequestFilter` 확장, `@Component`
-- 토큰 조회: **`Authorization: Bearer` 헤더 우선**, 없으면 `access_token` 쿠키로 폴백(`resolveToken`)
-- `shouldNotFilter`: `/auth/**`는 access 검증을 건너뛴다 — 재발급·로그아웃에 만료된 access 쿠키가 딸려와도 막히면 안 되기 때문(해당 경로는 refresh 쿠키로 동작)
+- 토큰 조회: **`access_token` 쿠키 전용**(`resolveToken`) — `Authorization: Bearer` 헤더는 읽지 않는다(PR #169에서 제거)
+- `shouldNotFilter`: `/auth/**`·`/api/v1/auth/oauth2/**`는 access 검증을 건너뛴다 — 재발급·로그아웃에 만료된 access 쿠키가 딸려와도 막히면 안 되기 때문(해당 경로는 refresh 쿠키로 동작)
 - 유효 토큰 → `CustomUserDetails(userId, role)` 생성 → `SecurityContextHolder` 저장
 - `BusinessException` 발생 시 필터 내에서 `ErrorResponse` JSON 직접 응답 후 체인 중단
 - 토큰 없는 요청은 통과(익명) → 이후 인가 단계에서 `RestAuthenticationEntryPoint`(401)
