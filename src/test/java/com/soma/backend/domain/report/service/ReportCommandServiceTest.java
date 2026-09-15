@@ -72,6 +72,8 @@ class ReportCommandServiceTest {
   @Mock
   private OcrJobOutboxPort ocrJobOutboxPort;
   @Mock
+  private CaseNoGenerator caseNoGenerator;
+  @Mock
   private ChatRoomCommandService chatRoomCommandService;
   @Mock
   private ApplicationEventPublisher eventPublisher;
@@ -95,7 +97,7 @@ class ReportCommandServiceTest {
   @Test
   @DisplayName("createReport는 구간 타이머 3종을 기록한다 — 총 지연을 락·저장으로 쪼개 보기 위한 계측(#306)")
   void createReport_recordsStageTimers() {
-    given(reportRepository.nextCaseNoSequence(any())).willReturn(1);
+    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     CreateReportRequest request = new CreateReportRequest(
@@ -112,7 +114,7 @@ class ReportCommandServiceTest {
 
   @Test
   void createReport_persistsClaimReportAttachments_andEnqueuesOcrJobPerDocument() {
-    given(reportRepository.nextCaseNoSequence(any())).willReturn(1);
+    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportAttachmentRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
@@ -147,7 +149,7 @@ class ReportCommandServiceTest {
 
   @Test
   void createReport_succeeds_whenProductIdNull() {
-    given(reportRepository.nextCaseNoSequence(any())).willReturn(1);
+    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
 
@@ -191,7 +193,7 @@ class ReportCommandServiceTest {
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.REPORT_TOO_MANY_DOCUMENTS));
 
-    verify(reportRepository, never()).nextCaseNoSequence(any());
+    verify(caseNoGenerator, never()).generate();
     verify(userClaimRepository, never()).save(any());
     verify(reportRepository, never()).save(any());
     verify(reportAttachmentRepository, never()).save(any());
