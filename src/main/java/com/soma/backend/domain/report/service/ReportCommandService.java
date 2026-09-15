@@ -2,8 +2,6 @@ package com.soma.backend.domain.report.service;
 
 import java.net.URI;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -48,9 +46,8 @@ import com.soma.backend.infra.sqs.OcrJobOutboxPort;
 @Transactional
 public class ReportCommandService {
 
-  private static final DateTimeFormatter CASE_NO_DAY = DateTimeFormatter.ofPattern("yyyyMMdd");
-  // 한 리포트의 첨부 문서 수 상한. 무제한이면 요청 하나가 한 트랜잭션의 INSERT 수와 case_no 카운터 락
-  // 점유 시간을 무한정 늘려(로컬 DoS) 같은 날짜의 다른 생성까지 막는다.
+  // 한 리포트의 첨부 문서 수 상한. 무제한이면 요청 하나가 한 트랜잭션의 INSERT 수와 커밋 flush 시간을
+  // 무한정 늘려(로컬 DoS) 커넥션을 오래 점유한다.
   private static final int MAX_DOCUMENTS = 20;
 
   private final UserClaimRepository userClaimRepository;
@@ -58,6 +55,7 @@ public class ReportCommandService {
   private final ReportAttachmentRepository reportAttachmentRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final OcrJobOutboxPort ocrJobOutboxPort;
+  private final CaseNoGenerator caseNoGenerator;
   private final ChatRoomCommandService chatRoomCommandService;
   private final ApplicationEventPublisher eventPublisher;
   private final MeterRegistry meterRegistry;
@@ -75,6 +73,7 @@ public class ReportCommandService {
       ReportAttachmentRepository reportAttachmentRepository,
       ReportReviewRepository reportReviewRepository,
       OcrJobOutboxPort ocrJobOutboxPort,
+      CaseNoGenerator caseNoGenerator,
       ChatRoomCommandService chatRoomCommandService,
       ApplicationEventPublisher eventPublisher,
       MeterRegistry meterRegistry) {
@@ -83,17 +82,18 @@ public class ReportCommandService {
     this.reportAttachmentRepository = reportAttachmentRepository;
     this.reportReviewRepository = reportReviewRepository;
     this.ocrJobOutboxPort = ocrJobOutboxPort;
+    this.caseNoGenerator = caseNoGenerator;
     this.chatRoomCommandService = chatRoomCommandService;
     this.eventPublisher = eventPublisher;
     this.meterRegistry = meterRegistry;
     this.caseNoTimer = Timer.builder("report.create.caseno")
-        .description("당일 case_no 시퀀스 발급 — 카운터 행 락 획득 대기 + UPSERT 실행 시간")
+        .description("사건번호 발급 — 랜덤 코드 생성 + 중복 확인(#309). 이전에는 카운터 락 대기 + UPSERT였다")
         .register(meterRegistry);
     this.persistTimer = Timer.builder("report.create.persist")
         .description("리포트 생성의 영속화 호출 구간(claim·report·첨부·아웃박스). 커밋 flush는 제외")
         .register(meterRegistry);
     this.lockHoldTimer = Timer.builder("report.create.lock_hold")
-        .description("case_no 카운터 락 보유 구간(발급~커밋 완료). 같은 날짜 동시 생성의 직렬화 구간")
+        .description("리포트 생성 임계 구간(사건번호 발급~커밋 완료). #309 이전에는 case_no 카운터 락 보유 구간이었다")
         .register(meterRegistry);
   }
 
@@ -104,8 +104,8 @@ public class ReportCommandService {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
 
-    // 문서 수 상한은 DB 쓰기·case_no 카운터 락 획득 전에 검증한다 — 초과 요청이 카운터를 증가시켰다
-    // 롤백해 사건번호에 구멍을 내지 않도록 fail-fast 한다.
+    // 문서 수 상한은 DB 쓰기 전에 검증한다 — 어차피 400으로 끝날 요청이 트랜잭션을 열고 커넥션을
+    // 점유했다 롤백하지 않도록 fail-fast 한다.
     List<CreateReportRequest.Document> documents =
         request.documents() == null ? List.of() : request.documents();
     if (documents.size() > MAX_DOCUMENTS) {
@@ -124,17 +124,19 @@ public class ReportCommandService {
         request.accidentType(), details, request.question(), request.description(),
         request.additionalInformation()));
 
-    // 여기부터 커밋까지가 case_no 카운터 행 락을 쥔 구간이다(generateCaseNo가 인자로 먼저 평가된다).
-    // 같은 날짜의 동시 생성이 전부 이 구간에서 직렬화되므로 구간 길이가 곧 처리량 상한을 정한다.
+    // 리포트 생성의 임계 구간(사건번호 발급~커밋). #309 이전에는 여기서 잡은 case_no 카운터 행 락이
+    // 커밋까지 유지돼 같은 날짜의 동시 생성이 전부 직렬화됐다 — 랜덤 발급으로 바꿔 그 락을 없앴고,
+    // 타이머 이름을 그대로 둬 전후를 같은 시계열로 비교한다.
     Timer.Sample lockSample = Timer.start(meterRegistry);
+    String caseNo = caseNoTimer.record(caseNoGenerator::generate);
     //Reports 테이블 스켈레톤 저장
     Report report = reportRepository.save(Report.createPending(
         userId, request.productId(), claim.getId(), request.accidentType(), request.question(),
-        generateCaseNo()));
+        caseNo));
 
     // 첨부 저장과 OCR 발행을 두 패스로 나눈다(문서마다 번갈아 저장하지 않는다) — 같은 타입 INSERT가
-    // 연속돼야 JDBC 배치로 묶여 커밋 flush의 DB 왕복이 준다. 이 flush는 case_no 카운터 락 구간 안에서
-    // 일어나므로, 왕복을 줄이면 동시 생성의 직렬화 대기도 그만큼 짧아진다.
+    // 연속돼야 JDBC 배치로 묶여 커밋 flush의 DB 왕복이 준다. 왕복이 줄면 트랜잭션이 커넥션을 쥐는
+    // 시간도 그만큼 짧아진다.
     List<ReportAttachment> attachments = new ArrayList<>(docTotal);
     for (CreateReportRequest.Document document : documents) {
       attachments.add(reportAttachmentRepository.save(ReportAttachment.of(
@@ -238,21 +240,9 @@ public class ReportCommandService {
   }
 
   /**
-   * 사람용 사건번호 yyyyMMdd-NNN. 당일 시퀀스는 DB 원자 카운터로 발급해 동시 생성 경합(case_no UNIQUE
-   * 위반)을 막는다. 다만 이 카운터 행 락은 트랜잭션 커밋까지 유지돼 같은 날짜 동시 생성이 직렬화된다 —
-   * 첨부·아웃박스 INSERT를 배치로 묶고 문서 수를 제한해 락 구간을 줄였다. 카운터 자체의 구조 개편
-   * (SEQUENCE·독립 트랜잭션)은 부하 측정 후 #266에서 다룬다.
-   */
-  private String generateCaseNo() {
-    LocalDate today = LocalDate.now();
-    int sequence = caseNoTimer.record(() -> reportRepository.nextCaseNoSequence(today));
-    return String.format("%s-%03d", today.format(CASE_NO_DAY), sequence);
-  }
-
-  /**
-   * 락 보유 타이머를 <b>커밋 이후</b>에 정지한다. case_no 카운터 행 락은 트랜잭션이 끝나야 풀리므로,
-   * 서비스 메서드가 반환하는 시점에 재면 flush·커밋에 걸린 시간이 통째로 빠져 실제 직렬화 구간을
-   * 과소평가한다 — 첨부·아웃박스 INSERT가 배치로 묶여 커밋 시점에 나가는 구조라 그 누락이 특히 크다.
+   * 임계 구간 타이머를 <b>커밋 이후</b>에 정지한다. 서비스 메서드가 반환하는 시점에 재면 flush·커밋에
+   * 걸린 시간이 통째로 빠져 구간을 과소평가한다 — 첨부·아웃박스 INSERT가 배치로 묶여 커밋 시점에
+   * 나가는 구조라 그 누락이 특히 크다.
    *
    * <p>트랜잭션 동기화가 없는 컨텍스트(단위 테스트 등)에서는 등록이 {@code IllegalStateException}이므로
    * 즉시 정지한다. 그 경우 값은 커밋을 뺀 근사치다.

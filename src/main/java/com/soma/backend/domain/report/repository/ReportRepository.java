@@ -55,10 +55,18 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
    */
   List<Report> findAllByStatusAndNeedsReuploadNotifiedAtIsNull(ReportStatus status, Pageable pageable);
 
+  /** 사건번호 중복 확인(#309). {@code case_no} UNIQUE 인덱스를 타는 단순 조회라 행 락을 잡지 않는다. */
+  boolean existsByCaseNo(String caseNo);
+
   /**
    * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이
    * 원자 증가하므로, count-then-insert 경쟁으로 인한 case_no UNIQUE 위반(→500)을 원천 차단한다(ReportHold 관례).
+   *
+   * @deprecated 사건번호가 연번에서 랜덤 코드로 바뀌어(#309, {@link com.soma.backend.domain.report.service.CaseNoGenerator})
+   *     리포트 생성 경로는 더 이상 이 카운터를 쓰지 않는다. 되돌려야 할 상황에 대비해 메서드와
+   *     {@code report_case_sequences} 테이블을 함께 남겨 뒀으며, 전환이 안정화되면 후속 이슈에서 같이 제거한다.
    */
+  @Deprecated(since = "#309")
   @Query(value = "INSERT INTO report_case_sequences (day, seq) VALUES (:day, 1) "
       + "ON CONFLICT (day) DO UPDATE SET seq = report_case_sequences.seq + 1 "
       + "RETURNING seq", nativeQuery = true)
