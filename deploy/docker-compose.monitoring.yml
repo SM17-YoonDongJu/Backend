@@ -135,8 +135,11 @@ services:
     volumes:
       - ./monitoring/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
       - tempo-data:/var/tempo
-    # 256m에서는 anon-rss가 문턱을 넘어 cgroup OOM으로 반복 크래시(재기동 중 스크랩 실패로 TargetDown 알럿 flapping).
-    mem_limit: 512m
+    # 메모리 한계 상향 이력: 256m→512m(anon-rss가 문턱 초과, cgroup OOM)→1g. 512m에서도 시작 시
+    # metrics_generator(span-metrics)+WAL 재생이 겹쳐 cgroup OOM으로 반복 크래시했다(OOMKilled=true,
+    # 재시작 7118회, 2026-09-16 확인). 호스트가 3.7Gi라 1g는 충분히 여유. 트래픽이 계속 늘면
+    # app 샘플링(TRACING_SAMPLE_PROBABILITY)·metrics_generator 축소를 병행한다.
+    mem_limit: 1g
     mem_reservation: 256m
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready || exit 1"]
