@@ -57,10 +57,19 @@ services:
       # actuator 관리 포트 분리(9292). health·metrics·prometheus를 관리 포트로 격리
       MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
       TZ: Asia/Seoul
+      # FCM 푸시 발송용 Firebase service account 키 경로(컨테이너 내부). 이 값이 있어야 FcmConfig가
+      # FirebaseApp 빈을 만들어 실제로 발송한다 — 미설정이면 stub 모드로 발송을 건너뛴다. 키 파일 자체는
+      # 시크릿이라 레포에 커밋하지 않고 아래 volumes로 호스트 파일을 마운트한다.
+      # ⚠️ 이 값을 켠 채 배포하면 키 파일이 호스트에 없을 때 앱이 부팅에 실패한다 — prod 인스턴스에 파일 배치가 선행돼야 함.
+      FCM_SERVICE_ACCOUNT_PATH: /etc/secrets/firebase-adminsdk.json
     # JVM은 -XX:MaxRAMPercentage=75.0(Dockerfile)이라 mem_limit 없으면 호스트 전체 메모리 기준으로 힙을 잡는다.
     # 인스턴스 축소(t3.medium) 대비 컨테이너 몫을 명시해 report·redis와 공존 가능하게 고정.
     mem_limit: 1536m
     mem_reservation: 768m
+    volumes:
+      # 호스트의 service account JSON을 read-only로 마운트(컨테이너는 root 실행이라 600 파일도 읽힘).
+      # 호스트 경로는 FCM_SA_HOST_PATH로 덮어쓸 수 있고, 기본값은 prod 인스턴스 배치 위치다.
+      - ${FCM_SA_HOST_PATH:-/home/ubuntu/secrets/firebase-adminsdk.json}:/etc/secrets/firebase-adminsdk.json:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
       interval: 30s
