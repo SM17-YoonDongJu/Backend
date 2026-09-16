@@ -85,8 +85,10 @@ services:
       # 값은 .env.dev의 OTLP_TRACING_ENDPOINT(모니터링 인스턴스 private IP 기준)로 주입.
       TRACING_ENABLED: "true"
       OTLP_TRACING_ENDPOINT: ${OTLP_TRACING_ENDPOINT}
-      # 샘플링(dev 전량=1.0). 운영 조정은 이 값만 교체.
-      TRACING_SAMPLE_PROBABILITY: ${TRACING_SAMPLE_PROBABILITY:-1.0}
+      # 샘플링 기본 0.5(50%). 전량(1.0)은 Tempo push 부하가 커 OOM을 유발했다(2026-09-16, Tempo
+      # mem_limit 상향과 함께 조정) — 볼륨을 절반으로 줄여 ingester·WAL·저장 부하를 낮춘다. prod은 0.1.
+      # 더 조정하려면 .env.dev의 TRACING_SAMPLE_PROBABILITY로 이 기본값을 덮어쓴다.
+      TRACING_SAMPLE_PROBABILITY: ${TRACING_SAMPLE_PROBABILITY:-0.5}
       TZ: Asia/Seoul
       # FCM 푸시 발송용 Firebase service account 키 경로(컨테이너 내부). 이 값이 있어야 FcmConfig가
       # FirebaseApp 빈을 만들어 실제로 발송한다 — 미설정이면 stub 모드로 발송을 건너뛴다. 키 파일 자체는
