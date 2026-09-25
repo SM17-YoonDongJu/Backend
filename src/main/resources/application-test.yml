@@ -13,9 +13,15 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+    defer-datasource-initialization: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      # test는 Flyway 비활성이라 시퀀스(엔티티가 아님)를 ddl-auto가 못 만든다 — 이 스크립트로 보충한다.
+      mode: always
+      schema-locations: classpath:sql/test-schema.sql
   flyway:
     enabled: false
   data:
