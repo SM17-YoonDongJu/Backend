@@ -16,6 +16,14 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      # test는 Flyway 비활성이라 시퀀스(엔티티가 아님)를 ddl-auto가 못 만든다 — 이 스크립트로 보충한다.
+      # defer-datasource-initialization은 켜지 않는다: 초기화기가 EMF에 의존하게 되면 PII 컨버터→piiCipher→
+      # piiDataKeyProvider→jdbcTemplate→초기화기로 빈 순환이 생긴다. 시퀀스는 테이블 의존이 없어 datasource
+      # 초기화 시점(EMF 이전)에 만들어도 충분하다.
+      mode: always
+      schema-locations: classpath:sql/test-schema.sql
   flyway:
     enabled: false
   data:
