@@ -55,8 +55,14 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
    */
   List<Report> findAllByStatusAndNeedsReuploadNotifiedAtIsNull(ReportStatus status, Pageable pageable);
 
-  /** 사건번호 중복 확인(#309). {@code case_no} UNIQUE 인덱스를 타는 단순 조회라 행 락을 잡지 않는다. */
-  boolean existsByCaseNo(String caseNo);
+  /**
+   * 사건번호 발급용 시퀀스의 원자 증가값. {@code nextval}은 무락·비트랜잭셔널이라 동시 호출에도 서로 막지 않고
+   * 각기 다른 값을 돌려줘 사전확인·재시도가 필요 없다(롤백 시 gap 허용). 시퀀스 이름을 스키마 수식하지 않아
+   * search_path로 해석된다 — 운영은 {@code core}(V47), 테스트는 {@code public}(sql/test-schema.sql)이다
+   * (옛 {@code report_case_sequences} 카운터와 같은 관례). JPQL로 표현할 수 없어 문서화된 native 예외로 둔다.
+   */
+  @Query(value = "SELECT nextval('report_case_seq')", nativeQuery = true)
+  long nextCaseNoSeq();
 
   /**
    * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이

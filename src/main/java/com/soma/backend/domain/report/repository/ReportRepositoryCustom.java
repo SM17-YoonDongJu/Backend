@@ -30,7 +30,7 @@ public interface ReportRepositoryCustom {
 
   /**
    * GET /me/received-proposals 받은 제안 목록(per-review, non-REJECTED). 소유자 리포트에 달린 리뷰 중
-   * REJECTED를 제외한 것(제안 받은 건)을 1건당 1행으로 반환한다. 응답 shape는 GET /reports와 동일이다.
+   * REJECTED를 제외한 것(제안 받은 건)을 1건당 1행으로 반환
    */
   Page<ReportCardRow> findReportsWithProposals(UUID userId, Pageable pageable);
 
