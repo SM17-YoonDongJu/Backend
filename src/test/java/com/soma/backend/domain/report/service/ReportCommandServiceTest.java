@@ -179,7 +179,7 @@ class ReportCommandServiceTest {
   @Test
   @DisplayName("문서 수가 상한을 넘으면 400 REPORT_TOO_MANY_DOCUMENTS — DB 쓰기·발행 전에 막는다")
   void createReport_throwsTooManyDocuments_whenExceedsLimit() {
-    // MAX_DOCUMENTS(20)를 넘는 21건 — 카운터·claim·report·첨부·발행 어느 것도 일어나면 안 된다
+    // 상한(ReportAttachment.MAX_PER_REPORT=20)을 넘는 21건 — 카운터·claim·report·첨부·발행 어느 것도 일어나면 안 된다
     List<CreateReportRequest.Document> tooMany = IntStream.rangeClosed(1, 21)
         .mapToObj(n -> new CreateReportRequest.Document(
             "https://bucket.s3.ap-northeast-2.amazonaws.com/uploads/" + n + ".pdf",
