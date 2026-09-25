@@ -1,7 +1,6 @@
 package com.soma.backend.domain.report.service;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,7 +22,6 @@ import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
-import com.soma.backend.domain.report.entity.ReportReviewIssue;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.repository.CustomerReportDetailRow;
 import com.soma.backend.domain.report.repository.ReportCardRow;
@@ -60,8 +58,7 @@ public class ReportQueryService {
   }
 
   /**
-   * 받은 제안 목록(GET /me/received-proposals) — 제안 받은(REJECTED 제외) 리뷰를 per-review 카드로 반환한다.
-   * 응답 shape는 GET /reports와 동일이며 page는 1-based다.
+   * 받은 제안 목록(GET /me/received-proposals) — 제안 받은(REJECTED 제외) 리뷰를 per-review 카드로 반환한다.ㅌ
    */
   public ReportCardListResponse getReceivedProposals(UUID userId, int page, int size) {
     Pageable pageable = PageRequest.of(Math.max(page - 1, 0), clampSize(size));
@@ -71,19 +68,24 @@ public class ReportQueryService {
 
   /**
    * 고객 리포트 상세(GET /reports/{reportId}). 인가는 리포트 소유자(USER, report.userId=principal) 또는
-   * 사정사(CERTIFICATED/UNCERTIFICATED_ADJUSTER)만 허용하고, 둘 다 아니면 403 FORBIDDEN을 던진다.
+   * 사정사(CERTIFICATED/UNCERTIFICATED_ADJUSTER)만 허용, 예외는 403 FORBIDDEN
    * 존재하지 않는 리포트는 404 REPORT_NOT_FOUND. 확정 배열·검수 코멘트·담당 사정사는 크로스-애그리거트
-   * 읽기 모델로, 쟁점은 report_issues에서 조립한다.
+   * 읽기 모델로, 쟁점은 report_issues에서 조립
    */
   public CustomerReportDetailResponse getReportDetail(UUID userId, String role, UUID reportId) {
     Report report = reportRepository.findById(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+    //인가
     if (!report.isOwnedBy(userId) && !isAdjuster(role)) {
       throw new BusinessException(ErrorCode.FORBIDDEN);
     }
+
     List<ReportIssue> issues = reportIssueRepository.findAllByReportId(reportId);
+
     CustomerReportDetailRow row = reportRepository.findCustomerReportDetail(reportId);
+
     Map<UUID, String> opinions = loadAdjusterOpinions(row.acceptedReviewId());
+
     ReportAnalysis analysis = analysesOrDegrade(List.of(reportId)).get(reportId);
     return CustomerReportDetailResponse.from(report, issues, row, opinions, analysis);
   }
@@ -123,19 +125,12 @@ public class ReportQueryService {
     if (acceptedReviewId == null) {
       return Map.of();
     }
-    ReportReview review = reportReviewRepository.findById(acceptedReviewId).orElse(null);
-    if (review == null) {
-      return Map.of();
-    }
-    Map<UUID, String> opinions = new HashMap<>();
-    for (ReportReviewIssue overlay : review.getIssues()) {
-      if (overlay.getReportIssueId() != null && overlay.getAdjusterOpinion() != null) {
-        opinions.put(overlay.getReportIssueId(), overlay.getAdjusterOpinion());
-      }
-    }
-    return opinions;
+    return reportReviewRepository.findById(acceptedReviewId)
+        .map(ReportReview::adjusterOpinionsByIssue)
+        .orElse(Map.of());
   }
 
+  // 도메인 엔티티로
   /** 사정사 역할(자격 유무 무관)이면 임의 리포트 상세 조회를 허용한다(파트너 draft-preview 부분집합 소비). */
   private boolean isAdjuster(String role) {
     return "CERTIFICATED_ADJUSTER".equals(role) || "UNCERTIFICATED_ADJUSTER".equals(role);
@@ -146,6 +141,7 @@ public class ReportQueryService {
     return Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
   }
 
+  //도메인 엔티티로
   /** status 파라미터를 enum으로 파싱한다. 빈 값이면 필터 없음(null), 알 수 없는 값이면 400 VALIDATION_ERROR. */
   private ReportStatus parseStatus(String status) {
     if (!StringUtils.hasText(status)) {
