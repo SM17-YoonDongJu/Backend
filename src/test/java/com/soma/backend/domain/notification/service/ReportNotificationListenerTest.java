@@ -268,7 +268,7 @@ class ReportNotificationListenerTest {
         Map.of(reportId, List.of(
             OcrJobFailureViewFixture.terminal(reportId, attachmentId, "unreadable_file", null))));
     ReportAttachment attachment = ReportAttachment.of(reportId, "보험증권.pdf", "https://example.test/doc",
-        "application/pdf", "policy");
+        "pdf", "policy");
     ReflectionTestUtils.setField(attachment, "id", attachmentId);
     given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
     given(notificationDispatchService.record(
@@ -315,7 +315,7 @@ class ReportNotificationListenerTest {
     given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(
         Map.of(reportId, List.of(OcrResultViewFixture.needsReupload(reportId, attachmentId, "diagnosis"))));
     ReportAttachment attachment = ReportAttachment.of(reportId, "진단서.pdf", "https://example.test/doc",
-        "application/pdf", "diagnosis");
+        "pdf", "diagnosis");
     ReflectionTestUtils.setField(attachment, "id", attachmentId);
     given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
     given(notificationDispatchService.record(

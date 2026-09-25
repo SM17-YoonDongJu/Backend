@@ -46,10 +46,6 @@ import com.soma.backend.infra.sqs.OcrJobOutboxPort;
 @Transactional
 public class ReportCommandService {
 
-  // 한 리포트의 첨부 문서 수 상한. 무제한이면 요청 하나가 한 트랜잭션의 INSERT 수와 커밋 flush 시간을
-  // 무한정 늘려(로컬 DoS) 커넥션을 오래 점유한다.
-  private static final int MAX_DOCUMENTS = 20;
-
   private final UserClaimRepository userClaimRepository;
   private final ReportRepository reportRepository;
   private final ReportAttachmentRepository reportAttachmentRepository;
@@ -104,13 +100,12 @@ public class ReportCommandService {
       throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
     }
 
-    // 문서 수 상한은 DB 쓰기 전에 검증한다 — 어차피 400으로 끝날 요청이 트랜잭션을 열고 커넥션을
-    // 점유했다 롤백하지 않도록 fail-fast 한다.
+    // 문서 수 상한은 DB 쓰기 전에 검증한다 — fail-fast
     List<CreateReportRequest.Document> documents =
         request.documents() == null ? List.of() : request.documents();
-    if (documents.size() > MAX_DOCUMENTS) {
-      throw new BusinessException(ErrorCode.REPORT_TOO_MANY_DOCUMENTS);
-    }
+
+    ReportAttachment.validateCount(documents.size());
+
     int docTotal = documents.size();
 
     //accidentType에 따른 claimDetails 생성
@@ -119,35 +114,39 @@ public class ReportCommandService {
 
     //DB 저장
     Timer.Sample persistSample = Timer.start(meterRegistry);
+
     UserClaim claim = userClaimRepository.save(UserClaim.create(
         userId, request.productId(), request.offeredAmount(), request.accidentDate(),
         request.accidentType(), details, request.question(), request.description(),
         request.additionalInformation()));
 
-    // 리포트 생성의 임계 구간(사건번호 발급~커밋). #309 이전에는 여기서 잡은 case_no 카운터 행 락이
-    // 커밋까지 유지돼 같은 날짜의 동시 생성이 전부 직렬화됐다 — 랜덤 발급으로 바꿔 그 락을 없앴고,
-    // 타이머 이름을 그대로 둬 전후를 같은 시계열로 비교한다.
+    // 리포트 생성의 임계 구간(사건번호 발급~커밋)
+    // case_no 카운터 행 락이 커밋까지 유지됐으나 랜덤 발급으로 바꿔 락 해소
     Timer.Sample lockSample = Timer.start(meterRegistry);
+
     String caseNo = caseNoTimer.record(caseNoGenerator::generate);
+
     //Reports 테이블 스켈레톤 저장
     Report report = reportRepository.save(Report.createPending(
         userId, request.productId(), claim.getId(), request.accidentType(), request.question(),
         caseNo));
 
-    // 첨부 저장과 OCR 발행을 두 패스로 나눈다(문서마다 번갈아 저장하지 않는다) — 같은 타입 INSERT가
-    // 연속돼야 JDBC 배치로 묶여 커밋 flush의 DB 왕복이 준다. 왕복이 줄면 트랜잭션이 커넥션을 쥐는
-    // 시간도 그만큼 짧아진다.
+    // 첨부 저장과 OCR 발행을 두 패스로 나눈다(문서마다 번갈아 저장하지 않는다) — 같은 타입 INSERT으로 JDBC 배치 활용
     List<ReportAttachment> attachments = new ArrayList<>(docTotal);
+
     for (CreateReportRequest.Document document : documents) {
       attachments.add(reportAttachmentRepository.save(ReportAttachment.of(
           report.getId(), document.name(), document.s3Url(),
-          toContentType(document.fileType()), document.reportType())));
+          document.fileType(), document.reportType())));
     }
 
     // document 1건당 OCR 트리거 발행 (doc_index 1-based, doc_total로 FastAPI가 OCR 완료(fan-in) 판별)
     for (int i = 0; i < documents.size(); i++) {
+
       CreateReportRequest.Document document = documents.get(i);
+
       ReportAttachment attachment = attachments.get(i);
+
       ocrJobOutboxPort.enqueue(new OcrJob(
           UUID.randomUUID().toString(),
           toS3Key(document.s3Url()),
@@ -270,19 +269,5 @@ public class ReportCommandService {
     } catch (IllegalArgumentException ex) {
       throw new BusinessException(ErrorCode.VALIDATION_ERROR);
     }
-  }
-
-  private String toContentType(String fileType) {
-    if (!StringUtils.hasText(fileType)) {
-      return null;
-    }
-    String normalized = fileType.toLowerCase().replaceFirst("^\\.", "");
-    return switch (normalized) {
-      case "pdf" -> "application/pdf";
-      case "jpg", "jpeg" -> "image/jpeg";
-      case "png" -> "image/png";
-      case "tiff", "tif" -> "image/tiff";
-      default -> null;
-    };
   }
 }

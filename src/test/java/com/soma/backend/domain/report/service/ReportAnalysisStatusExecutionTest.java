@@ -81,7 +81,7 @@ class ReportAnalysisStatusExecutionTest {
 
   private UUID saveAttachment(UUID targetReportId, String name) {
     ReportAttachment attachment =
-        ReportAttachment.of(targetReportId, name, "https://example.test/doc", "application/pdf", "diagnosis");
+        ReportAttachment.of(targetReportId, name, "https://example.test/doc", "pdf", "diagnosis");
     return reportAttachmentRepository.save(attachment).getId();
   }
 

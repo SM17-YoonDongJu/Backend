@@ -87,7 +87,7 @@ class ReportAnalysisStatusControllerTest {
 
   private UUID saveAttachment(String name) {
     return reportAttachmentRepository.save(
-        ReportAttachment.of(reportId, name, "https://example.test/doc", "application/pdf", "diagnosis")).getId();
+        ReportAttachment.of(reportId, name, "https://example.test/doc", "pdf", "diagnosis")).getId();
   }
 
   private UUID insertTerminalFailure(UUID attachmentId, String failureClass) {
