@@ -103,7 +103,7 @@ class ProposalCounselingIntegrationTest {
 
     // When
     ProposalDecisionResponse response = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review.getId(), true);
 
     // Then — 응답 계약
     assertThat(response.chatRoomId()).isNotNull();
@@ -141,9 +141,9 @@ class ProposalCounselingIntegrationTest {
 
     // When
     ProposalDecisionResponse first = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review.getId(), true);
     ProposalDecisionResponse second = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review.getId(), true);
 
     // Then
     assertThat(second.chatRoomId()).isEqualTo(first.chatRoomId());
@@ -163,9 +163,9 @@ class ProposalCounselingIntegrationTest {
 
     // When
     ProposalDecisionResponse first = reportCommandService.decide(
-        customer.getId(), report.getId(), review1.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review1.getId(), true);
     ProposalDecisionResponse second = reportCommandService.decide(
-        customer.getId(), report.getId(), review2.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review2.getId(), true);
 
     // Then
     assertThat(second.chatRoomId()).isNotEqualTo(first.chatRoomId());
@@ -181,7 +181,7 @@ class ProposalCounselingIntegrationTest {
 
     // When
     ProposalDecisionResponse response = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review.getId(), true);
 
     // Then
     List<ChatRoomListRow> customerRooms = chatRoomRepository.findMyRoomRows(customer.getId());
@@ -216,7 +216,7 @@ class ProposalCounselingIntegrationTest {
     Report report = awaitingAdoptionReport("20260815-006");
     ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review.getId(), true);
 
     // When
     chatConsultationCommandService.accept(customer.getId(), counseling.chatRoomId());
@@ -240,12 +240,12 @@ class ProposalCounselingIntegrationTest {
     Report report = awaitingAdoptionReport("20260815-007");
     ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review.getId(), true);
     chatConsultationCommandService.reject(customer.getId(), counseling.chatRoomId());
 
     // When & Then
     assertThatThrownBy(() -> reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED"))
+        customer.getId(), report.getId(), review.getId(), true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     assertThat(chatRoomRepository.findByReportId(report.getId())).hasSize(1);
@@ -261,7 +261,7 @@ class ProposalCounselingIntegrationTest {
 
     // When & Then
     assertThatThrownBy(() -> reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED"))
+        customer.getId(), report.getId(), review.getId(), true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     assertThat(chatRoomRepository.findByReportReviewId(review.getId())).isEmpty();
@@ -276,7 +276,7 @@ class ProposalCounselingIntegrationTest {
 
     // When & Then
     assertThatThrownBy(() -> reportCommandService.decide(
-        adjuster1.getId(), report.getId(), review.getId(), "ACCEPTED"))
+        adjuster1.getId(), report.getId(), review.getId(), true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     assertThat(chatRoomRepository.findByReportReviewId(review.getId())).isEmpty();
@@ -291,7 +291,7 @@ class ProposalCounselingIntegrationTest {
 
     // When
     ProposalDecisionResponse response = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "REJECTED");
+        customer.getId(), report.getId(), review.getId(), false);
 
     // Then — 응답 계약
     assertThat(response.chatRoomId()).isNull();
@@ -314,11 +314,11 @@ class ProposalCounselingIntegrationTest {
     Report report = awaitingAdoptionReport("20260815-011");
     ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "ACCEPTED");
+        customer.getId(), report.getId(), review.getId(), true);
 
     // When
     ProposalDecisionResponse response = reportCommandService.decide(
-        customer.getId(), report.getId(), review.getId(), "REJECTED");
+        customer.getId(), report.getId(), review.getId(), false);
 
     // Then — 상담 상태도 방도 그대로다(정리는 PATCH /chats/{id}/reject 담당)
     assertThat(response.chatRoomId()).isNull();

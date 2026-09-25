@@ -2,6 +2,7 @@ package com.soma.backend.domain.report.controller;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -333,7 +334,7 @@ class ReportControllerAuthTest {
     UUID proposalId = UUID.randomUUID();
     UUID adjusterId = UUID.randomUUID();
     UUID chatRoomId = UUID.randomUUID();
-    given(reportCommandService.decide(any(), any(), any(), eq("ACCEPTED")))
+    given(reportCommandService.decide(any(), any(), any(), eq(true)))
         .willReturn(new ProposalDecisionResponse(reportId, proposalId, adjusterId,
             ReportStatus.COUNSELING, ReviewStatus.COUNSELING, chatRoomId));
 
@@ -356,7 +357,7 @@ class ReportControllerAuthTest {
   void decideRejectedReturnsNullChatRoomId() throws Exception {
     UUID reportId = UUID.randomUUID();
     UUID proposalId = UUID.randomUUID();
-    given(reportCommandService.decide(any(), any(), any(), eq("REJECTED")))
+    given(reportCommandService.decide(any(), any(), any(), eq(false)))
         .willReturn(new ProposalDecisionResponse(reportId, proposalId, UUID.randomUUID(),
             ReportStatus.AWAITING_ADOPTION, ReviewStatus.SENT, null));
 
@@ -373,7 +374,7 @@ class ReportControllerAuthTest {
   @Test
   @DisplayName("비소유자가 상담을 수락하려 하면 서비스가 던진 403 FORBIDDEN을 그대로 전달한다")
   void decideByNonOwnerReturns403() throws Exception {
-    given(reportCommandService.decide(any(), any(), any(), any()))
+    given(reportCommandService.decide(any(), any(), any(), anyBoolean()))
         .willThrow(new BusinessException(ErrorCode.FORBIDDEN));
 
     mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
@@ -397,7 +398,7 @@ class ReportControllerAuthTest {
   @Test
   @DisplayName("제안이 이미 종료 상태면 서비스가 던진 409 INVALID_STATE_TRANSITION을 그대로 전달한다")
   void decideOnTerminalProposalReturns409() throws Exception {
-    given(reportCommandService.decide(any(), any(), any(), any()))
+    given(reportCommandService.decide(any(), any(), any(), anyBoolean()))
         .willThrow(new BusinessException(ErrorCode.INVALID_STATE_TRANSITION));
 
     mockMvc.perform(patch("/reports/{id}/proposals/{pid}", UUID.randomUUID(), UUID.randomUUID())
