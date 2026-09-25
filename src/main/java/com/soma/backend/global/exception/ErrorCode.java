@@ -73,7 +73,6 @@ public enum ErrorCode {
   REPORT_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종결된 리포트입니다."),
   CLAIM_DETAILS_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "청구 상세 유형이 사고 유형과 일치하지 않습니다."),
   REPORT_TOO_MANY_DOCUMENTS(HttpStatus.BAD_REQUEST, "첨부 문서 개수가 허용 범위를 초과했습니다."),
-  CASE_NO_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "사건번호 발급에 실패했습니다."),
 
   // Matching (도메인 특화)
   MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),
