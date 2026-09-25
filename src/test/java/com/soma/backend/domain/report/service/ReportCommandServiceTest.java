@@ -217,7 +217,7 @@ class ReportCommandServiceTest {
         .willReturn(new ConsultationRoomResult(chatRoomId, true));
 
     // When
-    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "ACCEPTED");
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, true);
 
     // Then — 요청값 "ACCEPTED"(상담 수락)와 응답값 COUNSELING(실제 제안 상태)이 다른 건 의도된 계약이다
     assertThat(response.chatRoomId()).isEqualTo(chatRoomId);
@@ -239,7 +239,7 @@ class ReportCommandServiceTest {
     given(chatRoomCommandService.openConsultationRoom(any(), any(), any(), any()))
         .willReturn(new ConsultationRoomResult(chatRoomId, true));
 
-    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "ACCEPTED");
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, true);
 
     assertThat(response.reportStatus()).isEqualTo(ReportStatus.COUNSELING);
     assertThat(response.chatRoomId()).isEqualTo(chatRoomId);
@@ -257,7 +257,7 @@ class ReportCommandServiceTest {
         .willReturn(new ConsultationRoomResult(chatRoomId, true));
 
     // When
-    service.decide(userId, reportId, proposalId, "ACCEPTED");
+    service.decide(userId, reportId, proposalId, true);
 
     // Then
     ArgumentCaptor<ConsultationRequestedEvent> eventCaptor =
@@ -285,7 +285,7 @@ class ReportCommandServiceTest {
         .willReturn(new ConsultationRoomResult(chatRoomId, false));
 
     // When
-    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "ACCEPTED");
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, true);
 
     // Then
     assertThat(response.chatRoomId()).isEqualTo(chatRoomId);
@@ -303,7 +303,7 @@ class ReportCommandServiceTest {
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
 
     // When & Then — 상태 전이 검증을 방 INSERT 앞에 모아둔 순서 계약(실제 롤백은 트랜잭션이 담당)
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
@@ -317,7 +317,7 @@ class ReportCommandServiceTest {
         .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.CLOSED)));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
 
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
@@ -330,7 +330,7 @@ class ReportCommandServiceTest {
         .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.BLOCKED)));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
 
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
@@ -345,7 +345,7 @@ class ReportCommandServiceTest {
     ReflectionTestUtils.setField(decided, "status", ReviewStatus.ACCEPTED);
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(decided));
 
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     // 제안 검증이 리포트 전이보다 먼저다 — 리포트 상태도 오염되지 않는다
@@ -362,7 +362,7 @@ class ReportCommandServiceTest {
     ReflectionTestUtils.setField(decided, "status", ReviewStatus.REJECTED);
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(decided));
 
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
@@ -384,7 +384,7 @@ class ReportCommandServiceTest {
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review));
 
     // When
-    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "REJECTED");
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, false);
 
     // Then — 제안·리포트 어느 쪽도 건드리지 않는다
     assertThat(response.reviewStatus()).isEqualTo(initial);
@@ -407,7 +407,7 @@ class ReportCommandServiceTest {
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
 
     // When
-    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "REJECTED");
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, false);
 
     // Then
     assertThat(response.reportStatus()).isEqualTo(initial);
@@ -426,7 +426,7 @@ class ReportCommandServiceTest {
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(accepted));
 
-    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, "REJECTED");
+    ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, false);
 
     assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
     assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.ACCEPTED);
@@ -443,7 +443,7 @@ class ReportCommandServiceTest {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportOwnedBy(UUID.randomUUID(), ReportStatus.COUNSELING)));
 
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
@@ -459,7 +459,7 @@ class ReportCommandServiceTest {
         .willReturn(Optional.of(reportOwnedBy(UUID.randomUUID(), ReportStatus.AWAITING_ADOPTION)));
 
     // When & Then
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "REJECTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, false))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     verify(reportReviewRepository, never()).findById(any());
@@ -472,54 +472,9 @@ class ReportCommandServiceTest {
         .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.COUNSELING)));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "ACCEPTED"))
+    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.PROPOSAL_NOT_FOUND));
-  }
-
-  @Test
-  @DisplayName("status=COUNSELING은 더 이상 유효한 요청값이 아니라 400 VALIDATION_ERROR다")
-  void decide_validationError_whenStatusCounseling() {
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "COUNSELING"))
-        .isInstanceOfSatisfying(BusinessException.class,
-            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
-  }
-
-  @Test
-  @DisplayName("status=SENT는 enum이지만 결정 값이 아니라 400 VALIDATION_ERROR다")
-  void decide_validationError_whenStatusSent() {
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "SENT"))
-        .isInstanceOfSatisfying(BusinessException.class,
-            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
-  }
-
-  @Test
-  void decide_validationError_whenStatusInvalid() {
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "MAYBE"))
-        .isInstanceOfSatisfying(BusinessException.class,
-            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
-  }
-
-  @Test
-  @DisplayName("소문자 accepted는 허용값이 아니다(대소문자 구분) — 400 VALIDATION_ERROR")
-  void decide_validationError_whenStatusLowercase() {
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "accepted"))
-        .isInstanceOfSatisfying(BusinessException.class,
-            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
-  }
-
-  @Test
-  @DisplayName("status가 비어 있으면 400 MISSING_REQUIRED_FIELD")
-  void decide_missingRequiredField_whenStatusBlank() {
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, "  "))
-        .isInstanceOfSatisfying(BusinessException.class,
-            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD));
-    assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, null))
-        .isInstanceOfSatisfying(BusinessException.class,
-            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD));
   }
 
   private Report reportOwnedBy(UUID ownerId, ReportStatus status) {

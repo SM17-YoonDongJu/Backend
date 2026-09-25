@@ -179,9 +179,7 @@ public class ReportCommandService {
    * 결과로 제안은 실제 도메인 전이인 SENT→COUNSELING을 밟으므로 응답에는 COUNSELING이 담긴다.
    * 요청 문자열과 응답 상태값이 다른 건 의도된 계약이다(프론트 화면 흐름에 맞춘 명명).
    */
-  public ProposalDecisionResponse decide(UUID userId, UUID reportId, UUID proposalId, String status) {
-    boolean startsCounseling = parseDecision(status);
-
+  public ProposalDecisionResponse decide(UUID userId, UUID reportId, UUID proposalId, boolean startsCounseling) {
     Report report = reportRepository.findById(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
     if (!report.isOwnedBy(userId)) {
@@ -218,25 +216,6 @@ public class ReportCommandService {
           review.getAdjusterId(), report.getUserId(), report.getId(), review.getId(), room.chatRoomId()));
     }
     return room.chatRoomId();
-  }
-
-  /**
-   * ACCEPTED(상담 수락 — 채팅방 개설) 또는 REJECTED(현재 아무 동작 없음, 거절은
-   * PATCH /chats/{chatRoomId}/reject 전용)만 허용한다. 반환값은 상담 수락 여부(true=ACCEPTED)다.
-   * ReviewStatus enum을 재사용하지 않는 이유: 이 요청값은 더 이상 REPORT_REVIEWS.status와
-   * 1:1 대응하지 않는다(ACCEPTED 요청 → 실제로는 review가 COUNSELING이 된다).
-   */
-  private boolean parseDecision(String status) {
-    if (!StringUtils.hasText(status)) {
-      throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
-    }
-    if ("ACCEPTED".equals(status)) {
-      return true;
-    }
-    if ("REJECTED".equals(status)) {
-      return false;
-    }
-    throw new BusinessException(ErrorCode.VALIDATION_ERROR);
   }
 
   /**

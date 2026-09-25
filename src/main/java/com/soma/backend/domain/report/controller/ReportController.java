@@ -98,7 +98,6 @@ public class ReportController {
 
   /**
    * 리포트 분석(OCR·AI) 처리 상태 조회. POST /reports가 202로 끝나므로 FE가 결과를 폴링하는 얇은 엔드포인트다.
-   *
    * <p>인가는 상세 조회와 달리 <b>소유자 전용</b>이다(사정사 포함 그 외 403, 없으면 404). 실패 문서 파일명이
    * 실리는 유일한 응답이라 최소 권한으로 닫았다 — 근거는 {@code ReportAnalysisStatusQueryService}
    * javadoc(design.md §12 S3). 사정사에게 필요한 분석 상태는 목록·상세의 평면 3필드로 전달된다.
@@ -134,7 +133,7 @@ public class ReportController {
       @PathVariable UUID proposalId,
       @RequestBody ProposalDecisionRequest request) {
     ProposalDecisionResponse data =
-        reportCommandService.decide(principal.getUserId(), reportId, proposalId, request.status());
+        reportCommandService.decide(principal.getUserId(), reportId, proposalId, request.startsCounseling());
     return ResponseEntity.ok(ApiResponse.ok(data));
   }
 }
