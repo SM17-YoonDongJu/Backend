@@ -1,7 +1,9 @@
 package com.soma.backend.domain.report.entity;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
@@ -164,6 +166,21 @@ public class ReportReview extends BaseEntity {
     target.updateContent(desired.getTitle(), desired.getDescription(), desired.getImpactAmount(),
         desired.getReviewStatus(), desired.getAdjusterOpinion(), desired.getModifiedReason(),
         desired.getExcludedReason());
+  }
+
+  /**
+   * 채택된 검수의 쟁점 오버레이(report_issues_reviews)에서 report_issue_id → adjuster_opinion 맵을 만든다
+   * (고객 상세 조회용). 둘 다 있는 쟁점만 담고, 없으면 빈 맵이다. 검수 로딩은 호출 서비스(repository)가 하고,
+   * 이 파생은 자기 자식(issues)만 보므로 애그리거트 안에 둔다(외부가 issues를 직접 헤집지 않게).
+   */
+  public Map<UUID, String> adjusterOpinionsByIssue() {
+    Map<UUID, String> opinions = new HashMap<>();
+    for (ReportReviewIssue issue : this.issues) {
+      if (issue.getReportIssueId() != null && issue.getAdjusterOpinion() != null) {
+        opinions.put(issue.getReportIssueId(), issue.getAdjusterOpinion());
+      }
+    }
+    return opinions;
   }
 
   private ReportReviewIssue findByReviewIssueId(UUID reviewIssueId) {
