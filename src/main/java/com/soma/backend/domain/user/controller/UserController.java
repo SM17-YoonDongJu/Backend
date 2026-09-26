@@ -1,6 +1,5 @@
 package com.soma.backend.domain.user.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,34 +33,34 @@ public class UserController {
    * 내 정보 조회. 200 + 사용자 정보.
    */
   @GetMapping("/me")
-  public ResponseEntity<ApiResponse<UserMeResponse>> getMe(
+  public ApiResponse<UserMeResponse> getMe(
       @AuthenticationPrincipal CustomUserDetails principal) {
 
     UserMeResponse result = userService.getMe(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   /**
    * 내 정보 수정(전화번호·지역·프로필사진 부분 수정). 200 + 수정된 정보.
    */
   @PatchMapping("/me")
-  public ResponseEntity<ApiResponse<UserMeResponse>> updateMe(
+  public ApiResponse<UserMeResponse> updateMe(
       @AuthenticationPrincipal CustomUserDetails principal,
       @Valid @RequestBody UserUpdateRequest request) {
 
     UserMeResponse result = userService.updateMe(principal.getUserId(), request);
-    return ResponseEntity.ok(ApiResponse.ok("회원 정보가 수정되었습니다.", result));
+    return ApiResponse.ok("회원 정보가 수정되었습니다.", result);
   }
 
   /**
    * 회원 탈퇴. Redis RT 삭제 + access blacklist + 쿠키 만료 후 200.
    */
   @DeleteMapping("/me")
-  public ResponseEntity<ApiResponse<Void>> withdraw(
+  public ApiResponse<Void> withdraw(
       @AuthenticationPrincipal CustomUserDetails principal,
       HttpServletResponse response) {
 
     userService.withdraw(principal.getUserId(), response);
-    return ResponseEntity.ok(ApiResponse.ok("회원 탈퇴가 완료되었습니다.", null));
+    return ApiResponse.ok("회원 탈퇴가 완료되었습니다.", null);
   }
 }

@@ -1,12 +1,12 @@
 package com.soma.backend.domain.adjuster.controller;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
@@ -36,21 +36,21 @@ public class AdjusterApplicationController {
    * 자격 신청 접수. 201 + 신청 ID·상태.
    */
   @PostMapping
-  public ResponseEntity<ApiResponse<CreateAdjusterApplicationResponse>> apply(
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<CreateAdjusterApplicationResponse> apply(
       @AuthenticationPrincipal CustomUserDetails principal,
       @Valid @RequestBody CreateAdjusterApplicationRequest request) {
     CreateAdjusterApplicationResponse data = adjusterApplicationCommandService.apply(principal.getUserId(), request);
-    return ResponseEntity.status(HttpStatus.CREATED)
-        .body(ApiResponse.created("자격 신청이 접수되었습니다.", data));
+    return ApiResponse.created("자격 신청이 접수되었습니다.", data);
   }
 
   /**
    * 내 자격 신청 상태 조회. 200 + 신청 상세(문서 심사 상태 포함).
    */
   @GetMapping("/me")
-  public ResponseEntity<ApiResponse<AdjusterApplicationResponse>> getMyApplication(
+  public ApiResponse<AdjusterApplicationResponse> getMyApplication(
       @AuthenticationPrincipal CustomUserDetails principal) {
     AdjusterApplicationResponse data = adjusterApplicationQueryService.getMyApplication(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(data));
+    return ApiResponse.ok(data);
   }
 }

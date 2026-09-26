@@ -3,7 +3,6 @@ package com.soma.backend.domain.report.controller;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,7 +32,7 @@ public class ReviewedReportController {
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/adjusters/me/reviewed-reports")
-  public ResponseEntity<ApiResponse<ReviewedReportListResponse>> reviewedReports(
+  public ApiResponse<ReviewedReportListResponse> reviewedReports(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestParam(required = false, defaultValue = "ALL") String status,
       @RequestParam(required = false) String month,
@@ -42,6 +41,6 @@ public class ReviewedReportController {
     Pageable pageable = PageRequest.of(page, size);
     ReviewedReportListResponse result =
         reviewedReportQueryService.getReviewedReports(principal.getUserId(), status, month, pageable);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

@@ -4,7 +4,6 @@ import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -47,7 +47,7 @@ public class AuthController {
    * 프론트가 받은 인가코드로 로그인/가입 분기. 기존 회원은 쿠키 발급, 신규 회원은 가입 티켓 반환.
    */
   @GetMapping("/oauth2/{provider}/callback")
-  public ResponseEntity<ApiResponse<OAuthCallbackResponse>> oauthCallback(
+  public ApiResponse<OAuthCallbackResponse> oauthCallback(
       @PathVariable String provider,
       @RequestParam String code,
       @RequestParam(required = false) @Nullable String state,
@@ -56,45 +56,45 @@ public class AuthController {
 
     OAuthCallbackResponse result =
         oAuthLoginService.handleCallback(response, provider, code, state, redirectUri);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   /**
    * 가입 티켓 기반 회원가입. 성공 시 201 + 쿠키 발급.
    */
   @PostMapping("/register")
-  public ResponseEntity<ApiResponse<RegisterResponse>> register(
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<RegisterResponse> register(
       @Valid @RequestBody RegisterRequest request,
       HttpServletResponse response) {
 
     RegisterResponse result = authRegisterService.register(response, request);
-    return ResponseEntity.status(HttpStatus.CREATED)
-        .body(ApiResponse.created("회원가입이 완료되었습니다.", result));
+    return ApiResponse.created("회원가입이 완료되었습니다.", result);
   }
 
   /**
    * 로그아웃. Redis RT 삭제 + 쿠키 만료. 인증이 없어도 멱등하게 200.
    */
   @PostMapping("/logout")
-  public ResponseEntity<ApiResponse<Void>> logout(
+  public ApiResponse<Void> logout(
       @AuthenticationPrincipal @Nullable CustomUserDetails principal,
       HttpServletRequest request,
       HttpServletResponse response) {
 
     UUID userId = principal != null ? principal.getUserId() : null;
     authLogoutService.logout(request, response, userId);
-    return ResponseEntity.ok(ApiResponse.ok());
+    return ApiResponse.ok();
   }
 
   /**
    * 토큰 재발급(RTR). refresh 쿠키를 검증하고 새 토큰 쌍을 쿠키로 발급. 200.
    */
   @PostMapping("/reissue")
-  public ResponseEntity<ApiResponse<Void>> reissue(
+  public ApiResponse<Void> reissue(
       HttpServletRequest request,
       HttpServletResponse response) {
 
     authReissueService.reissue(request, response);
-    return ResponseEntity.ok(ApiResponse.ok());
+    return ApiResponse.ok();
   }
 }

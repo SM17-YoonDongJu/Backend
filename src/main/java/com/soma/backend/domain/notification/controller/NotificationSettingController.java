@@ -1,6 +1,5 @@
 package com.soma.backend.domain.notification.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,19 +27,19 @@ public class NotificationSettingController {
 
   /** 내 알림 설정 조회(없으면 기본값 생성 후 반환). 200. */
   @GetMapping
-  public ResponseEntity<ApiResponse<NotificationSettingResponse>> getMySettings(
+  public ApiResponse<NotificationSettingResponse> getMySettings(
       @AuthenticationPrincipal CustomUserDetails principal) {
     NotificationSettingResponse result = notificationSettingService.getMySettings(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   /** 내 알림 설정 부분 수정(전달한 토글만 변경). 200. */
   @PatchMapping
-  public ResponseEntity<ApiResponse<NotificationSettingResponse>> updateMySettings(
+  public ApiResponse<NotificationSettingResponse> updateMySettings(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestBody NotificationSettingUpdateRequest request) {
     NotificationSettingResponse result =
         notificationSettingService.updateMySettings(principal.getUserId(), request);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }
