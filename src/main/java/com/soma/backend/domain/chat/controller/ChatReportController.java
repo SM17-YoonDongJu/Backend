@@ -2,11 +2,12 @@ package com.soma.backend.domain.chat.controller;
 
 import java.util.UUID;
 
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
@@ -27,13 +28,14 @@ public class ChatReportController {
   private final ChatReportCommandService chatReportCommandService;
 
   @PostMapping("/chats/{chatRoomId}/report")
-  public ResponseEntity<ApiResponse<ChatReportResponse>> report(
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<ChatReportResponse> report(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID chatRoomId,
       @RequestBody ChatReportRequest request) {
     UUID me = requireUserId(principal);
     ChatReportResponse data = chatReportCommandService.report(me, chatRoomId, request);
-    return ResponseEntity.status(201).body(ApiResponse.created("신고가 접수되었습니다.", data));
+    return ApiResponse.created("신고가 접수되었습니다.", data);
   }
 
   private UUID requireUserId(CustomUserDetails principal) {

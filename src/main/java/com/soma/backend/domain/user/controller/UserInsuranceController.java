@@ -1,6 +1,5 @@
 package com.soma.backend.domain.user.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,9 +23,9 @@ public class UserInsuranceController {
   private final UserInsuranceQueryService userInsuranceQueryService;
 
   @GetMapping("/users/me/insurances")
-  public ResponseEntity<ApiResponse<UserInsuranceListResponse>> getMyInsurances(
+  public ApiResponse<UserInsuranceListResponse> getMyInsurances(
       @AuthenticationPrincipal CustomUserDetails principal) {
     UserInsuranceListResponse result = userInsuranceQueryService.getMyInsurances(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

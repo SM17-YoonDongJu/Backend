@@ -1,7 +1,6 @@
 package com.soma.backend.domain.upload.controller;
 
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,13 +34,13 @@ public class UploadController {
    * 파일 업로드. multipart 파트 file(바이너리)·purpose(용도)를 받아 200 + s3_url을 반환한다.
    */
   @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public ResponseEntity<ApiResponse<UploadResponse>> upload(
+  public ApiResponse<UploadResponse> upload(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestParam("file") MultipartFile file,
       @RequestParam("purpose") String purpose) {
 
     UploadResponse result = uploadService.upload(file, parsePurpose(purpose));
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   /**

@@ -1,6 +1,5 @@
 package com.soma.backend.domain.adjuster.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,27 +32,27 @@ public class AdjusterProfileController {
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/adjusters/me/profile")
-  public ResponseEntity<ApiResponse<AdjusterProfileResponse>> getProfile(
+  public ApiResponse<AdjusterProfileResponse> getProfile(
       @AuthenticationPrincipal CustomUserDetails principal) {
     AdjusterProfileResponse result = adjusterProfileQueryService.getProfile(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @PatchMapping("/adjusters/me/profile")
-  public ResponseEntity<ApiResponse<AdjusterProfileResponse>> updateProfile(
+  public ApiResponse<AdjusterProfileResponse> updateProfile(
       @AuthenticationPrincipal CustomUserDetails principal,
       @Valid @RequestBody UpdateAdjusterProfileRequest request) {
     AdjusterProfileResponse result =
         adjusterProfileCommandService.updateProfile(principal.getUserId(), request);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/adjusters/me/mypage")
-  public ResponseEntity<ApiResponse<AdjusterMyPageResponse>> getMyPage(
+  public ApiResponse<AdjusterMyPageResponse> getMyPage(
       @AuthenticationPrincipal CustomUserDetails principal) {
     AdjusterMyPageResponse result = adjusterProfileQueryService.getMyPage(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

@@ -7,7 +7,6 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -63,7 +62,7 @@ public class DevAuthController {
    * 시크릿이 설정된 환경에서 헤더가 없거나 값이 다르면 403.
    */
   @PostMapping("/login")
-  public ResponseEntity<ApiResponse<DevLoginResponse>> login(
+  public ApiResponse<DevLoginResponse> login(
       @Parameter(description = "dev 로그인 공유 시크릿. 서버에 app.dev-login.secret이 설정된 경우에만 필수이며, "
           + "누락·불일치 시 403을 반환한다. 설정되지 않은 환경(로컬)에서는 무시된다.")
       @RequestHeader(name = DEV_LOGIN_KEY_HEADER, required = false) @Nullable String devLoginKey,
@@ -71,7 +70,7 @@ public class DevAuthController {
       HttpServletResponse response) {
     verifySecret(devLoginKey);
     DevLoginResponse data = devLoginService.login(response, request);
-    return ResponseEntity.ok(ApiResponse.ok("로컬 개발용 로그인이 완료되었습니다.", data));
+    return ApiResponse.ok("로컬 개발용 로그인이 완료되었습니다.", data);
   }
 
   /**

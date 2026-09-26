@@ -3,7 +3,6 @@ package com.soma.backend.domain.report.controller;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -11,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
@@ -52,24 +52,24 @@ public class ReportController {
    * 사건 정보 입력
    */
   @PostMapping("/reports")
-  public ResponseEntity<ApiResponse<CreateReportResponse>> create(
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public ApiResponse<CreateReportResponse> create(
       @AuthenticationPrincipal CustomUserDetails principal, @RequestBody CreateReportRequest request) {
     CreateReportResponse data = reportCommandService.createReport(principal.getUserId(), request);
-    return ResponseEntity.status(HttpStatus.ACCEPTED)
-        .body(ApiResponse.accepted("리포트 생성을 시작했습니다.", data));
+    return ApiResponse.accepted("리포트 생성을 시작했습니다.", data);
   }
 
   /**
    * 고객 본인 리포트 목록 조회(소유자 스코프, 전 상태). status는 옵션 필터, page는 1-based.
    */
   @GetMapping("/reports")
-  public ResponseEntity<ApiResponse<ReportCardListResponse>> list(
+  public ApiResponse<ReportCardListResponse> list(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestParam(required = false) String status,
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "10") int size) {
     ReportCardListResponse data = reportQueryService.getUserReports(principal.getUserId(), status, page, size);
-    return ResponseEntity.ok(ApiResponse.ok(data));
+    return ApiResponse.ok(data);
   }
 
   /**
@@ -77,23 +77,23 @@ public class ReportController {
    * 반환한다(응답 shape는 GET /reports와 동일). page는 1-based.
    */
   @GetMapping("/me/received-proposals")
-  public ResponseEntity<ApiResponse<ReportCardListResponse>> receivedProposals(
+  public ApiResponse<ReportCardListResponse> receivedProposals(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "10") int size) {
     ReportCardListResponse data = reportQueryService.getReceivedProposals(principal.getUserId(), page, size);
-    return ResponseEntity.ok(ApiResponse.ok(data));
+    return ApiResponse.ok(data);
   }
 
   /**
    * 고객 리포트 상세 조회(고객·사정사 공용 shape). 소유자(USER) 또는 사정사만 조회 가능(그 외 403), 없으면 404.
    */
   @GetMapping("/reports/{reportId}")
-  public ResponseEntity<ApiResponse<CustomerReportDetailResponse>> detail(
+  public ApiResponse<CustomerReportDetailResponse> detail(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
     CustomerReportDetailResponse data =
         reportQueryService.getReportDetail(principal.getUserId(), principal.getRole(), reportId);
-    return ResponseEntity.ok(ApiResponse.ok(data));
+    return ApiResponse.ok(data);
   }
 
   /**
@@ -103,37 +103,36 @@ public class ReportController {
    * javadoc(design.md §12 S3). 사정사에게 필요한 분석 상태는 목록·상세의 평면 3필드로 전달된다.
    */
   @GetMapping("/reports/{reportId}/analysis-status")
-  public ResponseEntity<ApiResponse<ReportAnalysisStatusResponse>> analysisStatus(
+  public ApiResponse<ReportAnalysisStatusResponse> analysisStatus(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
     ReportAnalysisStatusResponse data =
         reportAnalysisStatusQueryService.getAnalysisStatus(principal.getUserId(), reportId);
-    return ResponseEntity.ok(ApiResponse.ok(data));
+    return ApiResponse.ok(data);
   }
 
   /**
    * 검수+제안 목록 조회
    */
   @GetMapping("/reports/{reportId}/proposals")
-  public ResponseEntity<ApiResponse<ProposalListResponse>> proposals(
+  public ApiResponse<ProposalListResponse> proposals(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID reportId,
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "10") int size) {
-    return ResponseEntity.ok(
-        ApiResponse.ok(proposalQueryService.getProposals(principal.getUserId(), reportId, page, size)));
+    return ApiResponse.ok(proposalQueryService.getProposals(principal.getUserId(), reportId, page, size));
   }
 
   /**
    * 제안 상담 수락(ACCEPTED)/거절(REJECTED, 현재 미동작)
    */
   @PatchMapping("/reports/{reportId}/proposals/{proposalId}")
-  public ResponseEntity<ApiResponse<ProposalDecisionResponse>> decide(
+  public ApiResponse<ProposalDecisionResponse> decide(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID reportId,
       @PathVariable UUID proposalId,
       @RequestBody ProposalDecisionRequest request) {
     ProposalDecisionResponse data =
         reportCommandService.decide(principal.getUserId(), reportId, proposalId, request.startsCounseling());
-    return ResponseEntity.ok(ApiResponse.ok(data));
+    return ApiResponse.ok(data);
   }
 }
