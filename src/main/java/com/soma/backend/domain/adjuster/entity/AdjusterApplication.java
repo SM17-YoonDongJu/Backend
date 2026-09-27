@@ -91,23 +91,27 @@ public class AdjusterApplication extends BaseEntity {
 
   /**
    * 자격 신청서 생성(정적 팩터리). 상태는 PENDING으로 시작하고, 증빙 문서 2종(자격증·등록증)을
-   * PENDING으로 함께 생성한다. licenseNo/licenseImageUrl 최소 하나 충족 검증은 호출 서비스가 수행한다.
+   * PENDING으로 함께 생성한다.
+   *
+   * <p>인자는 의미 단위로 묶어 받는다 — 인적사항({@link ApplicantProfile}), 자격 증빙
+   * ({@link LicenseProof}), 활동 범위({@link ActivityScope}). 자격 증빙의 "번호·파일 중 최소 하나"
+   * 불변식은 {@code LicenseProof}가 생성 시점에 이미 보장하므로 여기서 다시 검사하지 않는다.
+   * 저장 필드는 평평하게 유지해 DB 매핑은 그대로 둔다(묶음은 생성 계약에만 쓰인다).
    */
   public static AdjusterApplication create(
-      UUID userId, String name, String phone, List<String> specialties, String licenseNo,
-      String licenseImageUrl, Integer career, String introduction, Affiliation affiliation,
-      String region, String registrationImageUrl) {
+      UUID userId, ApplicantProfile profile, LicenseProof licenseProof, ActivityScope scope,
+      String registrationImageUrl) {
     AdjusterApplication application = new AdjusterApplication();
     application.userId = userId;
-    application.name = name;
-    application.phone = phone;
-    application.specialties = specialties;
-    application.licenseNo = licenseNo;
-    application.licenseImageUrl = licenseImageUrl;
-    application.career = career;
-    application.introduction = introduction;
-    application.affiliation = affiliation;
-    application.region = region;
+    application.name = profile.name();
+    application.phone = profile.phone();
+    application.career = profile.career();
+    application.introduction = profile.introduction();
+    application.licenseNo = licenseProof.licenseNo();
+    application.licenseImageUrl = licenseProof.licenseImageUrl();
+    application.specialties = scope.specialties();
+    application.region = scope.region();
+    application.affiliation = scope.affiliation();
     application.registrationImageUrl = registrationImageUrl;
     application.status = ApplicationStatus.PENDING;
     application.documents.add(AdjusterApplicationDocument.pending(DocumentType.LICENSE));
