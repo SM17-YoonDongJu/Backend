@@ -16,8 +16,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.soma.backend.domain.adjuster.dto.AdjusterApplicationResponse;
+import com.soma.backend.domain.adjuster.entity.ActivityScope;
 import com.soma.backend.domain.adjuster.entity.AdjusterApplication;
 import com.soma.backend.domain.adjuster.entity.Affiliation;
+import com.soma.backend.domain.adjuster.entity.ApplicantProfile;
+import com.soma.backend.domain.adjuster.entity.LicenseProof;
 import com.soma.backend.domain.adjuster.repository.AdjusterApplicationRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -37,8 +40,11 @@ class AdjusterApplicationQueryServiceTest {
   @DisplayName("신청이 있으면 상태·문서 2종을 담아 반환한다")
   void getMyApplication_success() {
     AdjusterApplication application = AdjusterApplication.create(
-        userId, "홍길동", "010-1234-5678", List.of("신체"), "제2024-0001호", null, 5, "소개",
-        Affiliation.INDEPENDENT, "서울 송파", "https://x/reg.pdf");
+        userId,
+        new ApplicantProfile("홍길동", "010-1234-5678", 5, "소개"),
+        new LicenseProof("제2024-0001호", null),
+        new ActivityScope(List.of("신체"), "서울 송파", Affiliation.INDEPENDENT),
+        "https://x/reg.pdf");
     given(adjusterApplicationRepository.findTopByUserIdOrderByCreatedAtDesc(userId))
         .willReturn(Optional.of(application));
 
