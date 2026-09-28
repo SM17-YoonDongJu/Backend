@@ -89,6 +89,9 @@ services:
       # mem_limit 상향과 함께 조정) — 볼륨을 절반으로 줄여 ingester·WAL·저장 부하를 낮춘다. prod은 0.1.
       # 더 조정하려면 .env.dev의 TRACING_SAMPLE_PROBABILITY로 이 기본값을 덮어쓴다.
       TRACING_SAMPLE_PROBABILITY: ${TRACING_SAMPLE_PROBABILITY:-0.5}
+      # 슬로우쿼리 로그 임계(ms). 초과 쿼리가 org.hibernate.SQL_SLOW 로거로 남아 Loki에서 조회된다.
+      # 조정은 .env.dev의 SLOW_QUERY_THRESHOLD_MS로(0이면 비활성).
+      SLOW_QUERY_THRESHOLD_MS: ${SLOW_QUERY_THRESHOLD_MS:-1000}
       TZ: Asia/Seoul
       # FCM 푸시 발송용 Firebase service account 키 경로(컨테이너 내부). 이 값이 있어야 FcmConfig가
       # FirebaseApp 빈을 만들어 실제로 발송한다 — 미설정이면 stub 모드로 발송을 건너뛴다. 키 파일 자체는

@@ -48,6 +48,13 @@ spring:
         # 연속되도록 정렬해야 실제로 묶인다(order_inserts는 매핑 안 된 FK 순서 리스크가 있어 미사용).
         jdbc:
           batch_size: 50
+        # 임계(ms) 초과 쿼리를 org.hibernate.SQL_SLOW 로거(INFO)로 남긴다 — 실행시간·SQL 텍스트만 찍히고
+        # 바인드 값은 포함되지 않는다(PII 로깅 정책과 충돌 없음). dev·prod 구조화 로그엔 MDC traceId가
+        # 함께 실려 Loki에서 SQL_SLOW 검색 → Tempo 트레이스 점프가 된다. 기본 1초 — 그 이상이면 명백한
+        # 병목이라 노이즈 없이 잡힌다. 조정은 SLOW_QUERY_THRESHOLD_MS 주입으로(0이면 비활성).
+        # 키는 Hibernate 7 canonical(JdbcSettings.LOG_SLOW_QUERY)이다 — 구 hibernate.session.events.log.*
+        # 키도 하위호환으로 아직 읽히지만 7.x 문서에서 빠진 별칭이라 쓰지 않는다(PR #325 리뷰 반영).
+        log_slow_query: ${SLOW_QUERY_THRESHOLD_MS:1000}
     open-in-view: false
   
   flyway:
@@ -250,6 +257,18 @@ info:
     name: ${spring.application.name}
     description: 손해사정 매칭·검수 리포트 백엔드 API
     environment: ${SPRING_PROFILES_ACTIVE:local}
+
+# JDBC 쿼리 관측(datasource-micrometer, #324) — DataSource를 프록시해 쿼리 실행을 Micrometer Observation으로
+# 기록한다. 트레이싱이 켜진 환경(dev)에선 HTTP 스팬 아래에 쿼리 스팬이 달려 느린 요청을 쿼리 단위로
+# 내려볼 수 있고, 꺼진 환경에서도 jdbc.query 타이머는 /actuator/prometheus에 남는다.
+jdbc:
+  # query 스팬만 생성(connection·fetch 제외) — 스팬 수가 요청당 몇 배로 늘면 Tempo push 부하가 커진다
+  # (샘플링 0.5에서도 OOM 전력, 2026-09-16). 커넥션 획득 대기는 hikaricp.connections.acquire p95로 이미 본다.
+  includes: query
+  datasource-proxy:
+    # 라이브러리 기본값도 false지만 명시 고정 — true면 바인드 파라미터(=PII 실값)가 관측 태그에 실린다.
+    # logback의 org.hibernate.orm.jdbc.bind 억제와 같은 정책(PII 로깅 금지)의 트레이스 버전이다.
+    include-parameter-values: false
 
 logging:
   file:
