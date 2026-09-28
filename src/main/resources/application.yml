@@ -52,10 +52,9 @@ spring:
         # 바인드 값은 포함되지 않는다(PII 로깅 정책과 충돌 없음). dev·prod 구조화 로그엔 MDC traceId가
         # 함께 실려 Loki에서 SQL_SLOW 검색 → Tempo 트레이스 점프가 된다. 기본 1초 — 그 이상이면 명백한
         # 병목이라 노이즈 없이 잡힌다. 조정은 SLOW_QUERY_THRESHOLD_MS 주입으로(0이면 비활성).
-        session:
-          events:
-            log:
-              LOG_QUERIES_SLOWER_THAN_MS: ${SLOW_QUERY_THRESHOLD_MS:1000}
+        # 키는 Hibernate 7 canonical(JdbcSettings.LOG_SLOW_QUERY)이다 — 구 hibernate.session.events.log.*
+        # 키도 하위호환으로 아직 읽히지만 7.x 문서에서 빠진 별칭이라 쓰지 않는다(PR #325 리뷰 반영).
+        log_slow_query: ${SLOW_QUERY_THRESHOLD_MS:1000}
     open-in-view: false
   
   flyway:
