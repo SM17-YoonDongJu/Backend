@@ -39,7 +39,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	// 메트릭을 Prometheus 포맷으로 노출 (/actuator/prometheus) — Micrometer Prometheus registry
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
-	// 분산 트레이싱 (Boot 4.0): Spring Observation(MVC·RestClient·JDBC·Kafka) → Micrometer Tracing → OTel 브리지
+	// 분산 트레이싱 (Boot 4.0): Spring Observation(MVC·RestClient 등) → Micrometer Tracing → OTel 브리지
 	// → OTLP span export(→ Tempo). 세 조각이 모두 있어야 배선된다(starter-opentelemetry를 안 쓰므로 명시):
 	//  - spring-boot-micrometer-tracing-opentelemetry: 자동구성(OtlpTracingAutoConfiguration 등)
 	//  - micrometer-tracing-bridge-otel: OtelTracer·Slf4JBaggageEventListener 등 실제 브리지 클래스
@@ -50,6 +50,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry'
 	implementation 'io.micrometer:micrometer-tracing-bridge-otel'
 	implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+	// JDBC 쿼리 관측(#324): DataSource를 프록시해 쿼리 실행을 Micrometer Observation으로 기록한다.
+	// 트레이싱이 켜진 환경에선 HTTP 스팬 아래에 쿼리 스팬이 달리고(느린 요청 → 느린 쿼리 드릴다운),
+	// 꺼진 환경에서도 jdbc.query 타이머 메트릭은 남는다. 관측 범위·PII 설정은 application.yml jdbc.* 참고.
+	// 2.x가 Boot 4 대응 라인이며 2.2.1은 Boot 4.0.5 기준 빌드다(2.3.0부터는 Boot 4.1 대상이라 보류).
+	implementation 'net.ttddyy.observation:datasource-micrometer-spring-boot:2.2.1'
 
 	// API Docs (OpenAPI 3 생성 → Scalar 렌더). 3.x = Spring Boot 4 대응 라인
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3'

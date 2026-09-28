@@ -18,6 +18,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # 슬로우쿼리 로그 임계(ms). 초과 쿼리가 org.hibernate.SQL_SLOW 로거로 남는다(관측 스택 미배포라 docker logs·파일 로그로 확인).
+      SLOW_QUERY_THRESHOLD_MS: ${SLOW_QUERY_THRESHOLD_MS:-1000}
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
