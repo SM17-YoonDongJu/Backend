@@ -28,9 +28,18 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * <h2>왜 {@code @Profile}을 선례보다 강하게 잡았나</h2>
  * {@code K6AdjusterSeedRunner}·{@code DevMockDataSeedRunner}는 {@code @Profile("!test")}인데 이 러너만
  * {@code "!test & !prod"}다. 폭발 반경이 다르기 때문이다 — 사정사 러너가 만드는 건 20행이지만 이 러너는
- * 기본 설정에서 <b>약 33,700행</b>(reports 5,100 / report_reviews 11,800 / chatroom 3,800 /
- * chatroom_messages 7,800 / user_claims 5,100 / users 100)을 만든다. 프로퍼티 오주입 한 번으로 운영 DB가
+ * 기본 설정에서 <b>약 202,200행</b>(reports 30,600 / report_reviews 70,800 / chatroom 22,800 /
+ * chatroom_messages 46,800 / user_claims 30,600 / users 600)을 만든다. 프로퍼티 오주입 한 번으로 운영 DB가
  * 오염되지 않게 프로파일로도 이중 차단한다. 의도적인 편차다.
+ *
+ * <p><b>왜 하필 이 규모인가.</b> dev RDS(db.t4g.small, 2GiB)의 기본 {@code shared_buffers}는
+ * {@code default.postgres16} 파라미터 그룹의 공식({@code DBInstanceClassMemory/32768})대로 약 512MB다 —
+ * 이 크기를 실데이터로 넘기려면 수백만 행이 필요해 로드테스트 준비 자체가 비현실적이다. 대신 커스텀
+ * 파라미터 그룹으로 {@code shared_buffers=32MB}·{@code work_mem=1MB}·{@code effective_cache_size=64MB}로
+ * 낮춰 두면(팀 Notion "DB 데이터 채워넣기" 문서 기준) 약 20만 행만으로도 디스크 I/O가 재현된다 — 이 러너의
+ * 기본값은 그 20만 행 문턱을 넘도록 역산한 수치다(절차는 {@code deploy/README.md} "k6 부하테스트 — DB 버퍼
+ * 풀 축소" 참고). 버퍼를 낮추지 않고 기본값(512MB)을 그대로 쓴다면 이 정도 행 수로는 전부 메모리에 캐시돼
+ * 디스크 I/O 재현이라는 목적을 달성하지 못한다.
  *
  * <h2>게이트 프로퍼티</h2>
  * <b>어떤 {@code application*.yml}에도 선언하지 않는다</b>(선례 {@code app.dev-seed.enabled}·
@@ -40,7 +49,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
  *
  * <pre>
  * app.dev-seed.k6-scenarios-enabled            false  마스터 게이트
- * app.dev-seed.k6-user-count                     100  k6-user-1 ~ k6-user-N (k6 VU와 1:1 매핑 전제)
+ * app.dev-seed.k6-user-count                     600  k6-user-1 ~ k6-user-N (k6 VU와 1:1 매핑 전제)
  * app.dev-seed.k6-proposal-reports-per-user        8  P 풀 — 리포트당 SENT 제안 10건, 방 없음
  * app.dev-seed.k6-consult-rooms-per-user          36  D 풀 — review/report COUNSELING + room ACTIVE
  * app.dev-seed.k6-durable-rooms-per-user           2  M 풀 — review ACCEPTED + report CLOSED + room ACTIVE
@@ -91,8 +100,10 @@ import com.soma.backend.domain.user.repository.UserRepository;
  *   <li>{@code (1유저 소요) × 유저수 + 90s < 180s}인지 확인한다. 시딩 중에는
  *       {@code /actuator/health/readiness}가 UP이 아니고({@code ApplicationRunner}는
  *       {@code ApplicationReadyEvent} 이전에 돈다) dev compose 헬스체크가 {@code start_period 90s} +
- *       {@code 30s × 3}이라 180초를 넘기면 컨테이너가 unhealthy로 마킹된다. 넘으면 풀별 수량을 줄이거나
- *       시딩 창에 한해 {@code start_period}를 임시로 올린다.</li>
+ *       {@code 30s × 3}이라 180초를 넘기면 컨테이너가 unhealthy로 마킹된다. <b>기본값 600유저(약 20만 행)는
+ *       거의 확실히 180초를 넘긴다</b> — 풀별 수량을 줄이지 않는 한, 시딩 창에 한해 dev compose의
+ *       {@code start_period}를 리허설로 잰 총 소요시간 이상으로(예: 20~30분) 임시로 올려야 한다. 시딩이
+ *       끝나면 반드시 90s로 되돌린다(영구히 높여 두면 실제 배포 실패를 감지하는 데도 같은 유예가 걸린다).</li>
  *   <li>본 시딩 실행 → 요약 로그 확인 → 게이트를 {@code false}로 되돌리고 재기동한다.</li>
  * </ol>
  *
@@ -160,7 +171,7 @@ public class K6ScenarioSeedRunner implements ApplicationRunner {
 
   public K6ScenarioSeedRunner(
       @Value("${app.dev-seed.k6-scenarios-enabled:false}") boolean enabled,
-      @Value("${app.dev-seed.k6-user-count:100}") int userCount,
+      @Value("${app.dev-seed.k6-user-count:600}") int userCount,
       @Value("${app.dev-seed.k6-proposal-reports-per-user:8}") int proposalReportsPerUser,
       @Value("${app.dev-seed.k6-consult-rooms-per-user:36}") int consultRoomsPerUser,
       @Value("${app.dev-seed.k6-durable-rooms-per-user:2}") int durableRoomsPerUser,

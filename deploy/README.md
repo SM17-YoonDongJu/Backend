@@ -129,6 +129,67 @@ curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'
 > 수동 편집 금지). 배포 시 prometheus·grafana·loki·tempo를 전부 `--force-recreate`한다(bind 마운트 stale 방지).
 > **grafana provisioning(datasource·alerting) 변경도 이 재생성으로 함께 반영**된다.
 
+## k6 부하테스트 — DB 버퍼 풀 축소
+
+디스크 I/O 재현이 목적인 부하테스트에서 "진짜 기준은 행 수가 아니라 데이터 크기가 버퍼 풀을 넘는가"다(팀
+Notion "부하테스트 / DB 데이터 채워넣기" 문서). dev RDS(`brbs-rds-dev`, `db.t4g.small` 2GiB)는
+`default.postgres16` 파라미터 그룹을 쓰는데, 이 그룹의 `shared_buffers` 기본값은 인스턴스 메모리 공식
+(`DBInstanceClassMemory/32768`)에 따라 약 **512MB**다 — 이 크기를 실데이터로 넘기려면 수백만 행이 필요해
+로드테스트 준비 자체가 비현실적이다.
+
+**해법은 버퍼 풀을 낮추는 것이다.** 커스텀 파라미터 그룹으로 `shared_buffers=32MB` /
+`work_mem=1MB` / `effective_cache_size=64MB`로 낮추면 약 20만 행만으로도 디스크 I/O가 재현된다(위 Notion
+문서 예시 그대로). `K6ScenarioSeedRunner`의 기본값(`APP_DEV_SEED_K6_USER_COUNT=600`, 약 202,200행)이 이
+20만 행 문턱을 넘도록 역산한 수치다 — 자세한 근거는 그 클래스 Javadoc 참고.
+
+`default.postgres16`은 AWS 기본 그룹이라 값을 직접 못 바꾼다. 커스텀 그룹을 만들어 인스턴스에 붙여야 하고,
+`shared_buffers`는 **static 파라미터라 reboot 없이는 적용되지 않는다.**
+
+> ⚠️ **`brbs-rds-dev`는 backend·report-worker·chatbot이 공유하는 dev DB다.** reboot은 그 순간 모든 연결을
+> 끊는다(수십 초~1~2분). 팀에 미리 공지하고, 아무도 dev를 쓰지 않는 시간대에 진행할 것. 버퍼를 낮춘 채로
+> 오래 두면 부하테스트와 무관한 평소 dev 작업(다른 사람의 API 호출·쿼리)도 느려지므로, **테스트 창이 끝나면
+> 반드시 원복(reboot 1회 더)한다.**
+
+```bash
+# 1) 커스텀 파라미터 그룹 생성 (최초 1회만 — 이후엔 재사용)
+aws rds create-db-parameter-group \
+  --db-parameter-group-name brbs-postgres16-loadtest \
+  --db-parameter-group-family postgres16 \
+  --description "k6 부하테스트용 - shared_buffers 32MB 축소"
+
+# 2) 파라미터 설정 (단위 주의: shared_buffers·effective_cache_size는 8kB 페이지, work_mem은 kB)
+aws rds modify-db-parameter-group \
+  --db-parameter-group-name brbs-postgres16-loadtest \
+  --parameters \
+    "ParameterName=shared_buffers,ParameterValue=4096,ApplyMethod=pending-reboot" \
+    "ParameterName=work_mem,ParameterValue=1024,ApplyMethod=pending-reboot" \
+    "ParameterName=effective_cache_size,ParameterValue=8192,ApplyMethod=pending-reboot"
+
+# 3) 인스턴스에 연결
+aws rds modify-db-instance \
+  --db-instance-identifier brbs-rds-dev \
+  --db-parameter-group-name brbs-postgres16-loadtest \
+  --apply-immediately
+
+# 4) reboot (static 파라미터 적용에 필수)
+aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
+
+# 5) 확인 (psql 접속 후)
+# SHOW shared_buffers;          -- 32MB
+# SHOW work_mem;                -- 1MB
+# SHOW effective_cache_size;    -- 64MB
+```
+
+테스트 창이 끝나면 원복한다:
+
+```bash
+aws rds modify-db-instance \
+  --db-instance-identifier brbs-rds-dev \
+  --db-parameter-group-name default.postgres16 \
+  --apply-immediately
+aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
+```
+
 ## 주의
 - 자격증명: S3는 **EC2 IAM Role** 자동 사용(정적 키 불필요).
 - backend healthcheck는 alpine 이미지 기준 **`wget` + `/actuator/health/readiness`** (curl 미설치).
