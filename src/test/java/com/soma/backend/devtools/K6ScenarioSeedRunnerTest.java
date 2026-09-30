@@ -21,7 +21,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * K6ScenarioSeedRunner 단위 테스트. 러너는 {@code @Profile("!test & !prod")}라 테스트 컨텍스트에 빈으로
  * 뜨지 않으므로({@code @SpringBootTest}로는 잡을 수 없다) 생성자를 직접 호출하는 순수 단위 테스트로 둔다.
  *
- * <p>이 1회성 러너의 유일한 회귀 위험은 <b>게이트 사고</b>다 — 기본값 기준 폭발 반경이 약 202,200행이라
+ * <p>이 1회성 러너의 유일한 회귀 위험은 <b>게이트 사고</b>다 — 기본값 기준 폭발 반경이 약 226,200행이라
  * 게이트가 새면 dev DB가 통째로 오염된다. 그래서 (1) 게이트가 꺼져 있을 때, (2) 선행 사정사 시딩이 없을 때
  * 쓰기가 한 번도 일어나지 않는지만 검증한다(시딩 결과 자체는 dev 실행 로그로 확인한다).
  */

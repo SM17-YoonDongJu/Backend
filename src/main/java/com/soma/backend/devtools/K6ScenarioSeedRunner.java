@@ -28,8 +28,8 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * <h2>왜 {@code @Profile}을 선례보다 강하게 잡았나</h2>
  * {@code K6AdjusterSeedRunner}·{@code DevMockDataSeedRunner}는 {@code @Profile("!test")}인데 이 러너만
  * {@code "!test & !prod"}다. 폭발 반경이 다르기 때문이다 — 사정사 러너가 만드는 건 20행이지만 이 러너는
- * 기본 설정에서 <b>약 202,200행</b>(reports 30,600 / report_reviews 70,800 / chatroom 22,800 /
- * chatroom_messages 46,800 / user_claims 30,600 / users 600)을 만든다. 프로퍼티 오주입 한 번으로 운영 DB가
+ * 기본 설정에서 <b>약 226,200행</b>(reports 30,600 / report_reviews 70,800 / chatroom 22,800 /
+ * chatroom_messages 70,800 / user_claims 30,600 / users 600)을 만든다. 프로퍼티 오주입 한 번으로 운영 DB가
  * 오염되지 않게 프로파일로도 이중 차단한다. 의도적인 편차다.
  *
  * <p><b>왜 하필 이 규모인가.</b> dev RDS(db.t4g.small, 2GiB)의 기본 {@code shared_buffers}는

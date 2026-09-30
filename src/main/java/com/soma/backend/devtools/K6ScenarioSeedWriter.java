@@ -55,7 +55,7 @@ import com.soma.backend.domain.report.repository.UserClaimRepository;
  * 만들 수 있기 때문이다.
  *
  * <p>{@code @Profile}을 {@link K6ScenarioSeedRunner}와 동일하게 맞춘다 — 호출자(러너)가 이미 prod에서
- * 빈으로 등록되지 않으므로 실행 경로는 없지만, 33,700행을 실제로 쓰는 이 컴포넌트 자체가 prod 컨텍스트에
+ * 빈으로 등록되지 않으므로 실행 경로는 없지만, 226,200행을 실제로 쓰는 이 컴포넌트 자체가 prod 컨텍스트에
  * 남아 있지 않게 해서 "프로파일로 이중 차단"이라는 서술을 쓰기 주체에도 그대로 적용한다.
  */
 @Component

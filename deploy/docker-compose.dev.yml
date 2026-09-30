@@ -39,7 +39,7 @@ services:
       #   app.dev-seed.k6-scenarios-enabled  →  APP_DEV_SEED_K6_SCENARIOS_ENABLED
       # 사정사 계정 10명(k6-adjuster-1~10). 시나리오 시딩의 선행 조건이라 먼저 1회 켠다.
       APP_DEV_SEED_K6_ADJUSTERS_ENABLED: ${APP_DEV_SEED_K6_ADJUSTERS_ENABLED:-false}
-      # 시나리오 데이터(k6-user-N의 리포트·제안·채팅방·메시지). 기본값(USER_COUNT=600)으로 약 202,200행을
+      # 시나리오 데이터(k6-user-N의 리포트·제안·채팅방·메시지). 기본값(USER_COUNT=600)으로 약 226,200행을
       # 만든다 — dev RDS shared_buffers를 32MB로 낮춘(deploy/README.md "k6 부하테스트 — DB 버퍼 풀 축소"
       # 참고) 상태에서 디스크 I/O를 재현하기 위한 문턱값이다(Notion "DB 데이터 채워넣기" 기준 ~20만 행).
       # 이 규모는 시딩에 수 분~수십 분이 걸릴 수 있다 — 그동안 readiness가 UP이 아니라서 헬스체크

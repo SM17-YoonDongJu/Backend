@@ -139,7 +139,7 @@ Notion "부하테스트 / DB 데이터 채워넣기" 문서). dev RDS(`brbs-rds-
 
 **해법은 버퍼 풀을 낮추는 것이다.** 커스텀 파라미터 그룹으로 `shared_buffers=32MB` /
 `work_mem=1MB` / `effective_cache_size=64MB`로 낮추면 약 20만 행만으로도 디스크 I/O가 재현된다(위 Notion
-문서 예시 그대로). `K6ScenarioSeedRunner`의 기본값(`APP_DEV_SEED_K6_USER_COUNT=600`, 약 202,200행)이 이
+문서 예시 그대로). `K6ScenarioSeedRunner`의 기본값(`APP_DEV_SEED_K6_USER_COUNT=600`, 약 226,200행)이 이
 20만 행 문턱을 넘도록 역산한 수치다 — 자세한 근거는 그 클래스 Javadoc 참고.
 
 `default.postgres16`은 AWS 기본 그룹이라 값을 직접 못 바꾼다. 커스텀 그룹을 만들어 인스턴스에 붙여야 하고,
