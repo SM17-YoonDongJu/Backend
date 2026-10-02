@@ -67,7 +67,7 @@ node-exporter·cAdvisor·Alloy·redis-exporter는 **그 호스트 자체를 감�
 
 | 구성요소 | 인스턴스 | 포트(바인딩) | 역할 |
 |----------|----------|--------------|------|
-| Prometheus | 모니터링 | `127.0.0.1:9090` | 스크랩·저장(로컬 TSDB, retention 3d, size ≤8GB) |
+| Prometheus | 모니터링 | `9090`(조회 + soma-k8s→remote_write push, private) | 스크랩·저장(로컬 TSDB, retention 3d, size ≤8GB) + soma-k8s 메트릭 수신(#328) |
 | Grafana | 모니터링 | `127.0.0.1:3000` | 대시보드(인증 필수, 외부 미노출) |
 | Loki | 모니터링 | `127.0.0.1:3100`(조회) + `3100`(앱→push, private) | 로그 저장(retention 3d) |
 | Tempo | 모니터링 | `127.0.0.1:3200`(조회) + `4318`(앱→push, private) | 트레이스 저장(retention 3d) |
@@ -79,11 +79,15 @@ node-exporter·cAdvisor·Alloy·redis-exporter는 **그 호스트 자체를 감�
 - **원격 스크랩/push는 전부 프라이빗 IP + 보안그룹으로 제한**(외부 미노출). 양방향이라 보안그룹도 양방향으로 연다:
   - 모니터링 → 앱: `9292`(backend actuator)·`9100`(node-exporter)·`8082`(cadvisor)·`12345`(alloy)·`9121`(redis-exporter)
   - 앱 → 모니터링: `3100`(loki push)·`4318`(tempo OTLP push)
-- private IP: 앱 인스턴스(`brbs-backend-dev`) `10.0.11.42`, 모니터링 인스턴스(`brbs-monitoring`) `10.0.11.48`.
+  - soma-k8s 노드 → 모니터링: `9090`(prometheus remote_write push, #328)
+- private IP: 앱 인스턴스(`brbs-backend-dev`) `10.0.11.42`, 모니터링 인스턴스(`brbs-monitoring`) `10.0.11.48`,
+  soma-k8s 노드 `10.0.41.203`(control-plane)·`10.0.41.18`(worker).
   `deploy/monitoring/prometheus.yml`·`deploy/monitoring/alloy/config.alloy`에 반영됨. 인스턴스를 재생성해 IP가
   바뀌면 두 파일을 PR로 갱신한다. `.env.dev`(앱 인스턴스용, 시크릿이라 리포 밖)의 `OTLP_TRACING_ENDPOINT`도
   `http://10.0.11.48:4318/v1/traces`로 채워야 한다.
-- **외부 노출 최소화**: Prometheus·Grafana·Loki·Tempo 조회 포트는 `127.0.0.1` 바인딩 → 퍼블릭 접근 불가. 접근은 **SSM 포트포워드**로:
+- **외부 노출 최소화**: Grafana(`3000`)·Tempo 조회(`3200`)는 `127.0.0.1` 바인딩 → 퍼블릭 접근 불가.
+  Loki(`3100`)·Prometheus(`9090`)는 원격 push 수신 때문에 호스트 게시지만 보안그룹이 private 소스만 허용한다.
+  로컬 접근은 **SSM 포트포워드**로:
   ```bash
   aws ssm start-session --target <모니터링-instance-id> \
     --document-name AWS-StartPortForwardingSession \

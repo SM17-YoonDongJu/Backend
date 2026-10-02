@@ -214,10 +214,8 @@ jobs:
     if: needs.detect-monitoring-changes.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
+    # EC2가 레포 tarball을 직접 받으므로(아래 참고) 러너 쪽 checkout이 필요 없다.
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -246,19 +244,11 @@ jobs:
           INSTANCE_ID: ${{ steps.find-instance.outputs.instance_id }}
         run: |
           # compose + deploy/monitoring/(prometheus·grafana provisioning·대시보드·loki·tempo 설정) 동기화.
-          # 볼륨 바인드 마운트 대상이라 EC2 디스크에 실파일이 있어야 한다. 대시보드 JSON이 커서 tar.gz로 묶어 싣고,
-          # SSM Parameters 총량 한도(100KB) 보호를 위해 90KB 초과 시 실패시킨다(초과하게 되면 S3 경유로 전환할 것).
-          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.monitoring.yml)
-
-          # 문서(*.md)는 서버 런타임에 쓰이지 않으므로 페이로드에서 뺀다 — Grafana 파일 프로비저너도 *.json만 읽는다.
-          # 대시보드가 하나 늘 때마다 한도에 붙는 구조라, README 하나(base64 기준 약 3.6KB)만 빼도 여유가 그만큼 생긴다.
-          tar -czf /tmp/monitoring.tar.gz -C deploy --exclude='*.md' monitoring
-          MONITORING_B64=$(base64 -w0 /tmp/monitoring.tar.gz)
-          if [ "${#MONITORING_B64}" -gt 92160 ]; then
-            echo "::error::deploy/monitoring 페이로드(${#MONITORING_B64}B)가 SSM 한도(90KB)에 근접 — S3 경유 동기화로 전환 필요"
-            exit 1
-          fi
-
+          # 볼륨 바인드 마운트 대상이라 EC2 디스크에 실파일이 있어야 한다.
+          # 예전엔 tar.gz를 base64로 SSM 커맨드에 실어 보냈는데, SSM 커맨드 한도(100KB) 보호용 90KB 가드에
+          # 대시보드가 늘면서 실제로 걸렸다(#328 시점 실측 93KB — k8s 대시보드 5종을 더하면 130KB). 지금은
+          # EC2가 이 커밋(github.sha)의 레포 tarball을 GitHub에서 직접 받아 풀므로 페이로드 한도가 없다.
+          # 공개 레포라 토큰 없이 받는 방식이다 — 레포가 private로 전환되면 S3 presigned 경유로 바꿔야 한다.
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -267,13 +257,15 @@ jobs:
               \"commands\": [
                 \"set -e\",
                 \"cd $EC2_HOME/monitoring\",
-                \"echo '===== compose 동기화(리포 기준) ====='\",
-                \"echo $COMPOSE_B64 | base64 -d > docker-compose.yml\",
-                \"echo '===== monitoring 설정 동기화(리포 기준, #214) ====='\",
-                \"echo $MONITORING_B64 | base64 -d > /tmp/monitoring.tar.gz\",
+                \"echo '===== 리포 tarball 다운로드 (커밋: $GITHUB_SHA) ====='\",
+                \"curl -fsSL --retry 3 -o /tmp/repo-sync.tar.gz https://codeload.github.com/$GITHUB_REPOSITORY/tar.gz/$GITHUB_SHA\",
+                \"rm -rf /tmp/repo-sync && mkdir -p /tmp/repo-sync\",
+                \"tar -xzf /tmp/repo-sync.tar.gz -C /tmp/repo-sync --strip-components=1\",
+                \"echo '===== compose·monitoring 설정 동기화(리포 기준, #214) ====='\",
+                \"cp /tmp/repo-sync/deploy/docker-compose.monitoring.yml docker-compose.yml\",
                 \"rm -rf monitoring\",
-                \"tar -xzf /tmp/monitoring.tar.gz -C .\",
-                \"rm -f /tmp/monitoring.tar.gz\",
+                \"cp -R /tmp/repo-sync/deploy/monitoring monitoring\",
+                \"rm -rf /tmp/repo-sync.tar.gz /tmp/repo-sync\",
                 \"echo '===== 관측성 컨테이너 재생성 (monitoring rm -rf 재동기화로 bind 마운트가 stale해지므로 전부 다시 붙인다) ====='\",
                 \"docker compose --env-file .env.dev up -d --force-recreate prometheus grafana loki tempo\",
                 \"echo '===== 이미지 정리 ====='\",

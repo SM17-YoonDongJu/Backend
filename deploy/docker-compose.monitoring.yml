@@ -15,8 +15,12 @@ services:
     image: prom/prometheus:v3.1.0
     container_name: brbs-prometheus
     restart: unless-stopped
+    # soma-k8s 클러스터 Prometheus의 remote_write(원격 push, brbs-net 밖)를 받아야 해서 호스트 전체에 게시한다
+    # (#328, 보안그룹으로 클러스터 노드 private IP만 허용 — loki 3100과 같은 패턴). 127.0.0.1 바인딩을 따로 더
+    # 두면 0.0.0.0이 loopback을 포함해 같은 포트를 두 번 바인딩하게 돼 충돌한다. 수신 기능 자체는 아래
+    # --web.enable-remote-write-receiver가 담당하고, 이 게시는 도달 경로만 연다.
     ports:
-      - "127.0.0.1:9090:9090"
+      - "9090:9090"
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"

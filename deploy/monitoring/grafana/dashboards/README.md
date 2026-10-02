@@ -17,6 +17,16 @@
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |
 | `websocket-chat.json` | 채팅 WebSocket (커스텀) | 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay 발행/전달 처리량 | 배포 즉시(커스텀 계측이라 별도 exporter·설정 불필요) + `application` 라벨 |
 | `insurance-chunker.json` | 약관 인덱싱 (커스텀, #259) | 마지막 성공 이후 경과·사이클 성패·상태별 문서·격리/경계 weak 문서·단계별 시간 비중 | `insurance-chunker` 잡 UP(brbs-etl 10.0.11.131:9101). **7일 주기 배치라 카운터가 안 움직이는 게 정상** — 주 신호는 '마지막 실행 상태' 게이지다. 첫 사이클이 성공하기 전에는 신선도 패널이 `성공 기록 없음`으로 뜬다(지표 자체가 없음) |
+| `15757.json` | Kubernetes / Views / Global | soma-k8s 클러스터 전체 — 실사용(usage)과 예약(requests/limits vs allocatable) 요약 | ⚠️ **soma-k8s remote_write(#328) 필요** — 아래 참고 |
+| `15758.json` | Kubernetes / Views / Namespaces | 네임스페이스별 리소스 | 〃 |
+| `15759.json` | Kubernetes / Views / Nodes | 클러스터 노드(=EC2)별 시스템 | 〃 |
+| `15760.json` | Kubernetes / Views / Pods | 파드·컨테이너별 리소스/재시작 | 〃 |
+| `15761.json` | Kubernetes / System / API Server | 컨트롤플레인(apiserver) 요청량·지연·에러 | 〃. 원본(dotdc) 단위 버그를 고쳐서 받았다 — 지연 패널 2개 `ms`→`s`(쿼리 결과가 초), CPU 패널 `percent`→`percentunit`(코어 분율, 1.0=코어 1개 100%) |
+
+> ⚠️ Kubernetes 5종(dotdc 세트)은 soma-k8s의 kube-prometheus-stack이 중앙 Prometheus로 **remote_write**해야
+> 데이터가 찬다(#328 — node-exporter DaemonSet·kube-state-metrics·kubelet/cAdvisor 메트릭). 전부 `cluster` 변수
+> (`label_values(kube_node_info, cluster)`)로 필터하므로 클러스터 쪽 설치 전에는 변수부터 비어 No data가 정상이고,
+> EC2 쪽 시리즈(t3 cadvisor의 `container_*` 등)는 `cluster`·k8s 라벨이 없어 여기 섞이지 않는다.
 
 > ⚠️ `application` 라벨은 앱의 `management.metrics.tags.application=${spring.application.name}`
 > (PR #132)이 채운다. 이 설정 없이는 12900·4701의 application 변수가 비어 패널이 No data가 된다.
