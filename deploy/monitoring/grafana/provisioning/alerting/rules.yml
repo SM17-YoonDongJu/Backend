@@ -1,8 +1,10 @@
-# 알림 룰 17종 (#88 보너스 6종 + OCR 파이프라인 3종 + GPU 3종 + 약관 인덱싱 5종) — 1분 평가, BRBS 폴더.
+# 알림 룰 20종 (#88 보너스 6종 + OCR 파이프라인 3종 + GPU 3종 + 약관 인덱싱 5종 + k8s 3종 #328) — 1분 평가, BRBS 폴더.
 # 설계 원칙:
 #  - NoData → OK: dev 무트래픽·미배포 exporter(brbs-etl #257, brbs-ai) 침묵(오발화 방지)
 #  - Error → OK, 단 TargetDown만 Error → Alerting: Prometheus(데이터소스) 자체 장애를 대표 1건으로 감지
 #  - TargetDown은 job 무관 up 전체 커버 → brbs-etl·brbs-ai 타깃이 추가되는 순간 자동 커버(후속 룰 불필요)
+#  - k8s 룰(#328)은 remote_write된 kube_*·up 시계열로 중앙에서 평가한다 — in-cluster Alertmanager는 켜지
+#    않는다(알림 발송 경로를 기존 Discord 웹훅 하나로 일원화, 실험 클러스터에 별도 발송 경로를 두지 않는 결정)
 #  - 임계값은 보수적 초기값 — 운영하며 튜닝
 apiVersion: 1
 groups:
@@ -840,6 +842,157 @@ groups:
               instant: true
               range: false
               refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── k8s 클러스터 상태(soma-k8s, #328) — remote_write된 kube_*·up 시계열 기반, 중앙에서 평가 ──
+      # 노드 CPU·메모리·디스크는 기존 HighCpu·HighMemory·DiskFilling이 node-exporter DaemonSet 시계열로
+      # 이미 커버한다(instance 라벨 기준이라 클러스터 노드가 자동 포함). 여기는 k8s 고유 신호만 다룬다.
+
+      - uid: brbs-k8s-collect-stopped
+        title: "K8sCollectStopped - soma-k8s 수집 파이프라인 중단"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "soma-k8s 메트릭이 중앙에 더 이상 도착하지 않음"
+          description: "클러스터발 up 시계열이 전부 사라졌다(staleness 5분 경과 후 absent가 1이 된다). TargetDown은 up==0만 보므로 시계열 소멸 — 클러스터 Prometheus 다운·remote_write 단절·SG 변경 — 은 이 룰만 잡는다. CP에서 kubectl -n monitoring get pods 와 prometheus 파드 로그의 remote_write 에러를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
+            model:
+              expr: 'absent(up{cluster="soma-k8s"})'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-k8s-pod-crashloop
+        title: "K8sPodCrashLooping - 파드 크래시루프"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크래시루프: {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "10분 넘게 CrashLoopBackOff 대기 상태가 관측됐다. 백오프 사이에 잠깐 Running으로 돌아오는 플랩은 max_over_time(10m)으로 눌렀다. kubectl -n <ns> logs <pod> --previous 또는 Loki {namespace=\"<ns>\", pod=\"<pod>\"}로 마지막 스택을 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'max by (namespace, pod) (max_over_time(kube_pod_container_status_waiting_reason{cluster="soma-k8s", reason="CrashLoopBackOff"}[10m]))'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{namespace}}/{{pod}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-k8s-deploy-unavailable
+        title: "K8sDeploymentUnavailable - 디플로이 가용 레플리카 부족"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "가용 레플리카 부족: {{ $labels.namespace }}/{{ $labels.deployment }}"
+          description: "10분 넘게 spec 대비 available이 모자라다 — 크래시루프·스케줄 불가·이미지 풀 실패 등 원인과 무관한 공통 증상이다. report는 OcrWorkerDown(critical)이 따로 보고 이 룰은 backend를 포함한 전 디플로이를 warning으로 커버한다. kubectl -n <ns> describe deploy <이름>으로 원인을 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'sum by (namespace, deployment) (kube_deployment_spec_replicas{cluster="soma-k8s"} - kube_deployment_status_replicas_available{cluster="soma-k8s"})'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{namespace}}/{{deployment}}"
           - refId: C
             relativeTimeRange:
               from: 0
