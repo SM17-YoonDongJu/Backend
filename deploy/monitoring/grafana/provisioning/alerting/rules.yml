@@ -306,19 +306,22 @@ groups:
                   type: query
 
       # ── OCR 파이프라인(발행=backend / 소비=report 워커) ──
-      # 워커는 HTTP 서버가 없어 /metrics 스크랩이 불가하다(TargetDown 룰이 못 잡는다) — 그래서 "컨테이너가
-      # 떠 있는가"는 cAdvisor로, "일을 하고 있는가"는 로그로 본다. 워커가 /metrics를 노출하면
-      # prometheus.yml의 ocr-worker job을 켜고 여기에 처리량·실패율 룰을 추가한다.
+      # 워커는 HTTP 서버가 없어 /metrics 스크랩이 불가하다(TargetDown 룰이 못 잡는다). dev가 soma-k8s로
+      # 이주하면서(#328) 워커도 k8s Deployment(report)가 됐다 — "떠 있는가"는 구 cAdvisor(name 라벨)가 아니라
+      # kube-state-metrics의 가용 레플리카로 보고, "일을 하고 있는가"는 로그로 본다(alloy DaemonSet 복구 후).
+      # 워커가 /metrics를 노출하면 클러스터 쪽 스크랩을 추가하고 여기에 처리량·실패율 룰을 추가한다.
       - uid: brbs-ocr-worker-down
-        title: "OcrWorkerDown - OCR 워커 컨테이너 없음"
+        title: "OcrWorkerDown - OCR 워커 파드 없음"
         condition: C
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "OCR 워커(brbs-report) 컨테이너가 보이지 않음"
-          description: "5분 이상 cAdvisor에 brbs-report가 없다 — 컨테이너가 죽었거나 이름이 바뀌었다. OCR 트리거를 아무도 소비하지 않으므로 리포트 생성이 멈춘다(메시지는 큐에 4일 보관). 앱 인스턴스에서 docker ps·docker logs brbs-report 확인."
-        noDataState: OK
+          summary: "OCR 워커(report) 가용 파드가 없음"
+          description: "5분 이상 report Deployment의 가용 레플리카가 0이다 — 파드가 죽었거나 스케줄되지 못하고 있다. OCR 트리거를 아무도 소비하지 않으므로 리포트 생성이 멈춘다(메시지는 큐에 4일 보관). CP에서 kubectl -n default get pods · kubectl -n default logs deploy/report 확인."
+        # NoData=Alerting 예외: 구 absent() 의미 승계 — Deployment가 삭제되거나 kube-state-metrics/remote_write가
+        # 끊겨 시계열 자체가 사라져도 알린다(원칙 NoData→OK의 의도적 예외, TargetDown execErr 예외와 같은 결).
+        noDataState: Alerting
         execErrState: OK
         isPaused: false
         data:
@@ -327,9 +330,8 @@ groups:
               from: 600
               to: 0
             datasourceUid: prometheus
-            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
             model:
-              expr: 'absent(container_last_seen{name="brbs-report"})'
+              expr: 'kube_deployment_status_replicas_available{cluster="soma-k8s", namespace="default", deployment="report"}'
               instant: true
               range: false
               refId: A
@@ -347,8 +349,8 @@ groups:
                 uid: __expr__
               conditions:
                 - evaluator:
-                    type: gt
-                    params: [0]
+                    type: lt
+                    params: [1]
                   operator:
                     type: and
                   query:
@@ -572,7 +574,9 @@ groups:
           description: "5분 이상 cAdvisor(g6)에 brbs-ollama가 없다 — 컨테이너가 죽었거나 이름이 바뀌었다. ollama가 없으면 report·chatbot의 LLM/임베딩과 ocr-worker 임베딩이 전부 실패한다. g6에서 docker ps·docker logs brbs-ollama 확인."
         noDataState: OK
         execErrState: OK
-        isPaused: false
+        # ⚠️ g6(brbs-ai)가 stopped인 동안 absent()가 상시 1이라 영구 발화한다 — 인스턴스 재기동 +
+        # prometheus.yml의 cadvisor-gpu 잡 주석 해제와 함께 unpause할 것(#328 시점 pause).
+        isPaused: true
         data:
           - refId: A
             relativeTimeRange:
@@ -725,7 +729,9 @@ groups:
           description: "함정 대응 룰이다. exporter는 last_success_at이 있을 때만 이 지표를 내보내므로, 한 번도 성공한 적이 없으면 시계열 자체가 없고 IndexStale의 뺄셈은 빈 결과가 된다(NoData=OK로 조용히 침묵). 즉 '한 번도 성공 못 한' 최악의 상태를 신선도 룰이 못 잡는다. 스크랩 타깃이 통째로 죽어도 같이 발화하지만 그건 TargetDown(2m)이 먼저 알려준다. 첫 사이클이 성공하면 자동으로 해제되고 이후로는 IndexStale이 이어받는다."
         noDataState: OK
         execErrState: OK
-        isPaused: false
+        # ⚠️ brbs-etl이 stopped인 동안 absent()가 상시 1이라 영구 발화한다 — 인스턴스 재기동 +
+        # prometheus.yml의 insurance-chunker 잡 주석 해제와 함께 unpause할 것(#328 시점 pause).
+        isPaused: true
         data:
           - refId: A
             relativeTimeRange:

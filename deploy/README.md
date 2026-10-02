@@ -57,13 +57,14 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:9292/actuator/health/readines
 **별도 모니터링 인스턴스(`brbs-monitoring`)** 에서 `docker-compose.monitoring.yml`로 기동한다. 설정은
 `deploy/monitoring/`(prometheus·grafana provisioning·loki·tempo 설정)으로 관리. 전부 `restart: unless-stopped`로 상주.
 
-node-exporter·cAdvisor·Alloy·redis-exporter는 **그 호스트 자체를 감시/수집하는 에이전트**라 이동할 수 없어 앱 인스턴스에
-남아 있고(`docker-compose.dev.yml`), 모니터링 인스턴스의 Prometheus/Loki/Tempo가 원격으로 스크랩·수신한다.
+**dev 앱 스택은 soma-k8s 클러스터로 이주했다(#328).** 구 앱 인스턴스의 compose 에이전트(node-exporter·cAdvisor·
+Alloy·redis-exporter)는 docker 제거와 함께 소멸했고, 수집은 클러스터 안 kube-prometheus-stack(node-exporter
+DaemonSet·kubelet cAdvisor·kube-state-metrics)이 맡아 이 인스턴스의 Prometheus로 remote_write한다
+(`cluster="soma-k8s"` 라벨로 유입). 로그는 alloy DaemonSet 전환 전까지 Loki 신규 유입이 없다(후속).
 
-> ⚠️ **이 관측성 스택은 현재 dev 전용이다.** `docker-compose.prod.yml`에는 node-exporter·cAdvisor·Alloy·
-> redis-exporter가 전혀 없고, `deploy/monitoring/prometheus.yml`의 앱 스크랩 타깃도 `10.0.11.42`(t3.brbs-backend-dev)
-> 하나뿐이다. prod 부하테스트·장애 조사 시 이 Grafana에서 prod 쪽 데이터는 보이지 않는다 — prod에도 같은
-> 에이전트를 배포하고 별도 스크랩 타깃을 추가해야 커버된다(별도 이슈로 분리할 것).
+> ⚠️ **이 관측성 스택은 현재 dev 전용이다.** prod(`docker-compose.prod.yml`)에는 수집 에이전트가 전혀 없고
+> remote_write를 보내는 클러스터도 dev(soma-k8s)뿐이다. prod 부하테스트·장애 조사 시 이 Grafana에서 prod 쪽
+> 데이터는 보이지 않는다 — prod 수집을 따로 배선해야 커버된다(별도 이슈로 분리할 것).
 
 | 구성요소 | 인스턴스 | 포트(바인딩) | 역할 |
 |----------|----------|--------------|------|
@@ -71,20 +72,22 @@ node-exporter·cAdvisor·Alloy·redis-exporter는 **그 호스트 자체를 감�
 | Grafana | 모니터링 | `127.0.0.1:3000` | 대시보드(인증 필수, 외부 미노출) |
 | Loki | 모니터링 | `127.0.0.1:3100`(조회) + `3100`(앱→push, private) | 로그 저장(retention 3d) |
 | Tempo | 모니터링 | `127.0.0.1:3200`(조회) + `4318`(앱→push, private) | 트레이스 저장(retention 3d) |
-| node-exporter | 앱 | `9100`(모니터링→scrape, private) | 앱 인스턴스 시스템 메트릭 |
-| cAdvisor | 앱 | `8082`(모니터링→scrape, private) | 앱 인스턴스 컨테이너 메트릭 |
-| Alloy | 앱 | `12345`(모니터링→scrape, private) | 앱 인스턴스 컨테이너 로그 수집 → Loki push |
-| redis-exporter | 앱 | `9121`(모니터링→scrape, private) | Redis 내부 지표(ops/sec·히트율·evicted keys 등) |
+| node-exporter | 클러스터 | (클러스터 내부 scrape) | 노드(CP·워커) 시스템 메트릭 — KPS DaemonSet, remote_write로 유입 |
+| kubelet cAdvisor | 클러스터 | (클러스터 내부 scrape) | 파드·컨테이너 메트릭 — kubelet 내장, remote_write로 유입 |
+| kube-state-metrics | 클러스터 | (클러스터 내부 scrape) | k8s 상태(파드 phase·replica·requests/limits) — remote_write로 유입 |
+| Alloy | (후속, #328) | - | 로그 수집 DaemonSet 전환 예정 — 전까지 Loki 신규 유입 없음 |
+| redis-exporter | (후속) | - | redis가 클러스터로 이주, exporter 미배선 — 763 대시보드 No data |
 
-- **원격 스크랩/push는 전부 프라이빗 IP + 보안그룹으로 제한**(외부 미노출). 양방향이라 보안그룹도 양방향으로 연다:
-  - 모니터링 → 앱: `9292`(backend actuator)·`9100`(node-exporter)·`8082`(cadvisor)·`12345`(alloy)·`9121`(redis-exporter)
-  - 앱 → 모니터링: `3100`(loki push)·`4318`(tempo OTLP push)
+- **원격 push는 전부 프라이빗 IP + 보안그룹으로 제한**(외부 미노출):
+  - 워커 노드(구 앱 EC2) → 모니터링: `4318`(tempo OTLP push — 파드 발신이 노드 IP로 SNAT되어 기존 앱 SG
+    참조 규칙에 걸린다)·`3100`(loki push, alloy DaemonSet 복구 후. CP에서 뜨는 파드도 push하려면 3100 소스에
+    `soma-sg-k3s` 추가 필요)
   - soma-k8s 노드 → 모니터링: `9090`(prometheus remote_write push, #328)
+  - (구) 모니터링 → 앱 `9292`·`9100`·`8082`·`12345`·`9121` 인바운드 규칙은 정적 스크랩 제거(#328)로 더 쓰지 않는다
 - private IP: 앱 인스턴스(`brbs-backend-dev`) `10.0.11.42`, 모니터링 인스턴스(`brbs-monitoring`) `10.0.11.48`,
   soma-k8s 노드 `10.0.41.203`(control-plane)·`10.0.41.18`(worker).
-  `deploy/monitoring/prometheus.yml`·`deploy/monitoring/alloy/config.alloy`에 반영됨. 인스턴스를 재생성해 IP가
-  바뀌면 두 파일을 PR로 갱신한다. `.env.dev`(앱 인스턴스용, 시크릿이라 리포 밖)의 `OTLP_TRACING_ENDPOINT`도
-  `http://10.0.11.48:4318/v1/traces`로 채워야 한다.
+  `deploy/monitoring/prometheus.yml`에 반영됨. 인스턴스를 재생성해 IP가 바뀌면 PR로 갱신한다. backend의
+  `OTLP_TRACING_ENDPOINT`(클러스터 Deployment env)는 `http://10.0.11.48:4318/v1/traces`를 가리켜야 한다.
 - **외부 노출 최소화**: Grafana(`3000`)·Tempo 조회(`3200`)는 `127.0.0.1` 바인딩 → 퍼블릭 접근 불가.
   Loki(`3100`)·Prometheus(`9090`)는 원격 push 수신 때문에 호스트 게시지만 보안그룹이 private 소스만 허용한다.
   로컬 접근은 **SSM 포트포워드**로:
