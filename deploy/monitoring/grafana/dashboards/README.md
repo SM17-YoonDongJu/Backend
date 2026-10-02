@@ -6,12 +6,12 @@
 ## 커밋된 대시보드
 | 파일 | 대시보드 | 용도 | 데이터 조건 |
 |------|----------|------|-------------|
-| `1860.json` | Node Exporter Full | node_exporter가 붙은 호스트의 시스템(CPU·메모리·디스크·네트워크) | node_exporter UP. 현재는 t3-app 하나 — brbs-etl은 #257, brbs-ai(g6, stopped)는 그 뒤 |
-| `14282.json` | Cadvisor exporter | 컨테이너별 리소스 | cAdvisor UP |
-| `763.json` | Redis Dashboard for Prometheus Redis Exporter | ops/sec·히트율·evicted keys·connected clients·메모리 | redis-exporter UP. 원본의 `namespace` 변수는 이 exporter 기본 출력에 없는 라벨이라 제거하고 `instance` 변수 쿼리를 직접 참조로 바꿔 받았다(원본 그대로 쓰면 전 패널 No data) |
+| `1860.json` | Node Exporter Full | node_exporter가 붙은 호스트의 시스템(CPU·메모리·디스크·네트워크) | soma-k8s 노드 2대(CP·워커)가 KPS node-exporter DaemonSet → remote_write로 유입(#328). brbs-etl·brbs-ai는 stopped — 재기동 + prometheus.yml 잡 주석 해제 후 |
+| `14282.json` | Cadvisor exporter | 컨테이너별 리소스 | ⚠️ 구 docker 호스트 전용(cadvisor exporter 라벨 체계) — t3 에이전트 소멸·g6 stopped라 현재 No data. 클러스터 컨테이너는 Kubernetes 대시보드(15757~15760)로 본다 |
+| `763.json` | Redis Dashboard for Prometheus Redis Exporter | ops/sec·히트율·evicted keys·connected clients·메모리 | ⚠️ redis가 클러스터로 이주, exporter 미배선이라 No data(후속). 원본의 `namespace` 변수는 이 exporter 기본 출력에 없는 라벨이라 제거하고 `instance` 변수 쿼리를 직접 참조로 바꿔 받았다(원본 그대로 쓰면 전 패널 No data) |
 | `12900.json` | SpringBoot APM Dashboard | HTTP·HikariCP·로그·메모리풀 | ⚠️ **`application` 라벨 필요** |
 | `4701.json` | JVM (Micrometer) | JVM 힙·GC·스레드·버퍼풀 | ⚠️ **`application` 라벨 필요** |
-| `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | t3 행 즉시. GPU 행은 **brbs-etl(`g4dn-etl`)** 기준이라 #257로 node_exporter를 붙여야 데이터가 찬다 — 처음엔 g6로 적혀 있었으나 실제 GPU 워크로드는 brbs-etl에서 돈다(#258) |
+| `cost-optimization.json` | 비용 최적화 (커스텀, #88) | 라이트사이징 p95·GPU 가동 효율·컨테이너 소비·용량 예측 | ⚠️ 구 t3 cadvisor·node 라벨 기준이라 이주(#328) 후 재검토 필요 — 컨테이너 행은 소멸, GPU 행은 **brbs-etl(`g4dn-etl`)** 기준(#257·#258, stopped) |
 | `gpu-dcgm.json` | GPU (DCGM) — g6 (커스텀) | GPU VRAM/util·온도·전력·SM/MEM 클럭 (ollama 언로드·큐잉·스로틀링 관측) | dcgm-exporter(g6 `:9400`) UP |
 | `api-latency-percentiles.json` | API 지연시간 (커스텀) | uri별 RPS·p50/p95/p99, 전체 요약, 가장 느린 API Top 10 | ⚠️ **`management.metrics.distribution.percentiles-histogram.http.server.requests=true` 필요**(히스토그램 버킷 없으면 `histogram_quantile`이 No data) + `application` 라벨 |
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |

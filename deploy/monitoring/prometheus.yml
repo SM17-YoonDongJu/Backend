@@ -1,7 +1,10 @@
 # Prometheus 스크랩 설정 — 모니터링 전용 인스턴스(brbs-monitoring) 상주 (#88, #214 인스턴스 분리)
 # 같은 docker network(brbs-net)의 서비스(grafana·loki·tempo)는 컨테이너 이름으로, 다른 호스트는 원격이라
 # private IP로 스크랩하고 instance 라벨로 별칭을 붙인다(타깃 주소 대신 호스트 정체가 알림 문구에 찍히도록).
-# 원격 호스트는 셋이다 — 앱 t3(10.0.11.42) / brbs-etl(10.0.11.131, g4dn.xlarge) / brbs-ai(10.0.11.93, g6.xlarge).
+# dev 앱 스택은 soma-k8s 클러스터로 이주했다(#328) — 앱·노드·컨테이너 메트릭은 여기서 원격 스크랩하지 않고,
+# 클러스터 안 kube-prometheus-stack이 수집해 이 Prometheus로 remote_write한다(cluster="soma-k8s" 라벨로 유입).
+# 남은 원격 스크랩 후보는 brbs-etl(10.0.11.131, g4dn.xlarge)·brbs-ai(10.0.11.93, g6.xlarge)인데 둘 다
+# 현재 stopped라 해당 잡은 주석 상태다(켜진 채로 두면 TargetDown critical이 상시 발화).
 # 이 파일은 grafana provisioning과 함께 deploy/monitoring/ 로 관리하며 서버에서 직접 편집하지 않는다.
 global:
   scrape_interval: 15s
@@ -29,46 +32,16 @@ scrape_configs:
         labels:
           instance: monitoring
 
-  # ── 앱(t3.brbs-backend-dev, 10.0.11.42) 시스템·컨테이너·앱 메트릭 — 원격 스크랩 ──
-  # node-exporter·cadvisor·alloy·redis-exporter는 그 호스트를 감시하는 에이전트라 이동 불가(docker-compose.dev.yml 참고).
-  # 보안그룹: 모니터링 인스턴스 → t3 인바운드로 9292·9100·8082·12345·9121 을 private(내부)만 허용.
-
-  # Spring Boot 앱 메트릭 (HTTP·JVM·HikariCP)
-  - job_name: brbs-backend
-    metrics_path: /actuator/prometheus
-    static_configs:
-      - targets: ["10.0.11.42:9292"]
-        labels:
-          instance: t3-app
-
-  # t3 시스템 메트릭 (CPU·메모리·디스크·네트워크)
-  - job_name: node-t3
-    static_configs:
-      - targets: ["10.0.11.42:9100"]
-        labels:
-          instance: t3-app
-
-  # t3 컨테이너 메트릭
-  - job_name: cadvisor-t3
-    static_configs:
-      - targets: ["10.0.11.42:8082"]
-        labels:
-          instance: t3-app
-
-  # Alloy(로그 수집 에이전트) 자체 상태 메트릭
-  - job_name: alloy
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["10.0.11.42:12345"]
-        labels:
-          instance: t3-app
-
-  # Redis 내부 지표 (ops/sec·히트율·evicted keys·connected clients 등)
-  - job_name: redis-exporter
-    static_configs:
-      - targets: ["10.0.11.42:9121"]
-        labels:
-          instance: t3-app
+  # ── (제거됨, #328) 구 앱 t3(10.0.11.42) 정적 타깃 5종 — brbs-backend·node-t3·cadvisor-t3·alloy·redis-exporter ──
+  # 그 호스트가 soma-k8s 워커로 조인되고 docker가 제거되면서 compose 에이전트들이 전부 소멸했다.
+  # 대체 경로(모두 remote_write로 유입, cluster="soma-k8s"):
+  #  - 앱 메트릭: 클러스터 Prometheus가 backend.default.svc:9292 를 같은 job 이름(brbs-backend)으로 스크랩
+  #    → 기존 대시보드(12900·4701·api-latency)·알림 룰(High5xx·HikariSaturated)이 job 이름 호환으로 그대로 동작
+  #  - 호스트 메트릭: node-exporter DaemonSet(job=node-exporter, 클러스터 양 노드) — 1860 대시보드
+  #  - 컨테이너 메트릭: kubelet 내장 cAdvisor(job=kubelet) — 라벨 체계가 구 cadvisor exporter와 달라
+  #    14282 대시보드는 대상 소멸, 클러스터 컨테이너는 Kubernetes 대시보드(15757~15760)로 본다
+  #  - redis: 클러스터로 이주했으나 메트릭 exporter 미배선(후속) — 763 대시보드는 그때까지 No data
+  #  - alloy(로그): DaemonSet 전환 후속(#328) — 전까지 Loki 신규 유입 없음
 
   # OCR 워커(brbs-report, AI 레포 소유). 현재 HTTP 서버가 없어 스크랩 대상이 아니다 —
   # 컨테이너 생존은 cadvisor-t3가, 소비 동작은 Loki 로그 알림(OcrWorkerNotConsuming)이 커버한다.
@@ -92,13 +65,15 @@ scrape_configs:
   # alerting/rules.yml의 인덱싱 섹션에 있다.
   # scrape_interval을 글로벌(15s)보다 늘려 잡은 이유: exporter가 스크랩마다 runlog(items.jsonl)를 다시 읽어
   # 누적치를 접는 구조라 잦은 스크랩이 그대로 파일 I/O가 된다. 7일 주기 데몬에 15초 해상도는 의미도 없다.
-  - job_name: insurance-chunker
-    scrape_interval: 30s
-    static_configs:
-      - targets: ["10.0.11.131:9101"]
-        labels:
-          instance: g4dn-etl
-          service: insurance-chunker
+  # ⚠️ brbs-etl 인스턴스가 stopped라 주석 처리(#328 시점) — 재기동하면 주석을 해제한다.
+  #    같은 이유로 rules.yml의 IndexNeverSucceeded 룰도 pause 상태다(둘을 같이 복원할 것).
+  # - job_name: insurance-chunker
+  #   scrape_interval: 30s
+  #   static_configs:
+  #     - targets: ["10.0.11.131:9101"]
+  #       labels:
+  #         instance: g4dn-etl
+  #         service: insurance-chunker
 
   # ── brbs-etl(10.0.11.131 / g4dn.xlarge) 호스트·컨테이너 메트릭·로그 에이전트 — #257 ──
   # 바로 위 청커 잡은 이 호스트에서 도는 '앱'의 지표이고, 여기는 그 '호스트 자체'의 지표다 — 별개 관측이다.
@@ -137,19 +112,21 @@ scrape_configs:
   # ⚠️ 이 SG(soma-sg-ai)는 brbs-etl과 공유한다 — 한쪽에서 포트를 바꾸면 다른 쪽도 같이 영향받는다. 분리는 #294.
   # (인스턴스 분리 전엔 t3 → g6이었으나, 스크랩 주체가 모니터링 인스턴스로 바뀌어 소스를 다시 잡았다.)
   # exporter가 실제로 응답하기 전에 배포하면 TargetDown(critical, 2m)이 곧바로 발화하므로 순서를 지킬 것.
-  - job_name: node-gpu
-    static_configs:
-      - targets: ["10.0.11.93:9100"]
-        labels:
-          instance: g6-gpu
-  - job_name: cadvisor-gpu
-    static_configs:
-      - targets: ["10.0.11.93:8080"]
-        labels:
-          instance: g6-gpu
+  # ⚠️ brbs-ai(g6) 인스턴스가 stopped라 3종 모두 주석 처리(#328 시점) — 재기동하면 주석을 해제한다.
+  #    같은 이유로 rules.yml의 OllamaDown 룰도 pause 상태다(둘을 같이 복원할 것).
+  # - job_name: node-gpu
+  #   static_configs:
+  #     - targets: ["10.0.11.93:9100"]
+  #       labels:
+  #         instance: g6-gpu
+  # - job_name: cadvisor-gpu
+  #   static_configs:
+  #     - targets: ["10.0.11.93:8080"]
+  #       labels:
+  #         instance: g6-gpu
   # GPU 칩 메트릭(VRAM·util·온도·전력·클럭) — DCGM_FI_DEV_*. VRAM/OOM·스로틀링 감시의 핵심.
-  - job_name: dcgm-gpu
-    static_configs:
-      - targets: ["10.0.11.93:9400"]
-        labels:
-          instance: g6-gpu
+  # - job_name: dcgm-gpu
+  #   static_configs:
+  #     - targets: ["10.0.11.93:9400"]
+  #       labels:
+  #         instance: g6-gpu
