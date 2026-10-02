@@ -21,7 +21,7 @@
 | `15758.json` | Kubernetes / Views / Namespaces | 네임스페이스별 리소스 | 〃 |
 | `15759.json` | Kubernetes / Views / Nodes | 클러스터 노드(=EC2)별 시스템 | 〃 |
 | `15760.json` | Kubernetes / Views / Pods | 파드·컨테이너별 리소스/재시작 | 〃 |
-| `15761.json` | Kubernetes / System / API Server | 컨트롤플레인(apiserver) 요청량·지연·에러 | 〃 |
+| `15761.json` | Kubernetes / System / API Server | 컨트롤플레인(apiserver) 요청량·지연·에러 | 〃. 원본(dotdc) 단위 버그를 고쳐서 받았다 — 지연 패널 2개 `ms`→`s`(쿼리 결과가 초), CPU 패널 `percent`→`percentunit`(코어 분율, 1.0=코어 1개 100%) |
 
 > ⚠️ Kubernetes 5종(dotdc 세트)은 soma-k8s의 kube-prometheus-stack이 중앙 Prometheus로 **remote_write**해야
 > 데이터가 찬다(#328 — node-exporter DaemonSet·kube-state-metrics·kubelet/cAdvisor 메트릭). 전부 `cluster` 변수
