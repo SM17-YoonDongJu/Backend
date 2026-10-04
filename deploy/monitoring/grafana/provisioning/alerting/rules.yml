@@ -1017,3 +1017,106 @@ groups:
                     type: last
                     params: []
                   type: query
+
+      # ── Cilium CNI·Hubble (soma-k8s, #328) — CNI를 Calico eBPF→Cilium으로 전환(2026-10-04)하며 추가.
+      # 에이전트 크래시루프는 K8sPodCrashLooping이 이미 잡으므로 여기는 스크랩 생존(up)과
+      # 데이터플레인 증상(드롭률)만 본다. 메트릭 경로: cilium ServiceMonitor(release=kps) → KPS → remote_write.
+
+      - uid: brbs-cilium-agent-down
+        title: "CiliumAgentDown - Cilium 에이전트 스크랩 실패"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cilium 에이전트 다운: {{ $labels.instance }}"
+          description: "해당 노드의 cilium-agent 메트릭 스크랩이 5분째 실패했다(up==0). 에이전트가 죽어도 커널에 로드된 BPF로 기존 연결은 계속 흐르지만, 새 파드 네트워킹·NetworkPolicy 갱신·서비스 변경 반영은 전부 멈춘다. CP에서 cilium status 와 kubectl -n kube-system get pods -l k8s-app=cilium 으로 확인. 워커 쪽만 다운이면 메트릭 포트 SG(9962-9965) 변경 여부도 의심."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 1-up: 다운이면 1, 정상이면 0 — up==0 필터식은 남는 값이 0이라 threshold(gt 0)에 안 걸린다.
+            model:
+              expr: 'sum by (instance) (1 - up{cluster="soma-k8s", job="cilium-agent"})'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-hubble-drops-high
+        title: "HubbleDropsHigh - 패킷 드롭 지속 발생"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "soma-k8s 패킷 드롭이 10분 넘게 지속"
+          description: "Hubble 집계 드롭률(hubble_drop_total)이 초당 1개를 10분 넘게 유지 — NetworkPolicy 오적용·대상 포트 불일치·서비스 셀렉터 미스(백엔드 부재)가 흔한 원인이다. CP에서 cilium hubble port-forward 후 hubble observe --verdict DROPPED --last 50 으로 어떤 플로우가 어떤 사유로 떨어지는지 바로 보인다. 정책 변경 직후라면 해당 네임스페이스 정책 누락부터 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 드롭이 한 번도 없으면 시계열 자체가 없어 NoData=OK로 침묵한다(정상).
+            model:
+              expr: 'sum(rate(hubble_drop_total{cluster="soma-k8s"}[5m]))'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
