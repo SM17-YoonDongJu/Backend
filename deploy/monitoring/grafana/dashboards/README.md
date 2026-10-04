@@ -23,8 +23,8 @@
 | `15760.json` | Kubernetes / Views / Pods | 파드·컨테이너별 리소스/재시작 | 〃 |
 | `15761.json` | Kubernetes / System / API Server | 컨트롤플레인(apiserver) 요청량·지연·에러 | 〃. 원본(dotdc) 단위 버그를 고쳐서 받았다 — 지연 패널 2개 `ms`→`s`(쿼리 결과가 초), CPU 패널 `percent`→`percentunit`(코어 분율, 1.0=코어 1개 100%) |
 | `cilium-agent.json` | Cilium Metrics | CNI 데이터플레인 — 에이전트 상태·BPF 맵·정책 적용·엔드포인트·API 지연 (Calico→Cilium 전환, 2026-10-04) | ⚠️ soma-k8s remote_write + **SG 9962-9965**(KPS가 CP에서 워커의 hostNetwork 메트릭 포트를 스크랩) — 둘 다 적용됨. 공식 대시보드를 Cilium 레포 v1.20.2 태그 동봉본으로 받았다(grafana.com 16611은 v1.12 시절이라 메트릭 어긋남) |
-| `hubble-metrics.json` | Hubble Metrics and Monitoring | 네트워크 플로우 — 처리율·드롭·TCP 플래그·DNS 질의/실패·포트 분포 | 〃. hubble.metrics 활성 목록(dns·drop·tcp·flow·port-distribution·icmp·httpV2)은 CP `/root/cilium-values.yaml`이 진실 — IP 라벨은 카디널리티 때문에 뺐으니(네임스페이스/워크로드 수준만) IP 단위 패널은 비는 게 정상 |
-| `hubble-network-overview.json` | Hubble / Network Overview (Namespace) | 네임스페이스 간 트래픽 조감 — 소스/목적지별 플로우·드롭 비중 | 〃. HTTP(L7) 패널은 L7 가시성 애노테이션을 단 파드에만 데이터가 찬다(현재 미적용 — httpV2 시리즈 0이 정상) |
+| `hubble-metrics.json` | Hubble Metrics and Monitoring | 네트워크 플로우 — 처리율·드롭·TCP 플래그·DNS 질의/실패·포트 분포 | 〃. hubble.metrics 활성 목록(dns·drop·tcp·flow·port-distribution·icmp·httpV2)은 CP `/root/cilium-values.yaml`이 진실 — IP 라벨은 카디널리티 때문에 뺐으니(네임스페이스/워크로드 수준만) IP 단위 패널은 비는 게 정상. HTTP(L7) 패널은 L7 가시성 애노테이션을 단 파드에만 데이터가 찬다(현재 미적용 — httpV2 시리즈 0이 정상) |
+| `hubble-network-overview.json` | Hubble / Network Overview (Namespace) | 네임스페이스 간 트래픽 조감 — 소스/목적지별 플로우·드롭 비중 | 〃 |
 
 > ⚠️ Kubernetes 5종(dotdc 세트)은 soma-k8s의 kube-prometheus-stack이 중앙 Prometheus로 **remote_write**해야
 > 데이터가 찬다(#328 — node-exporter DaemonSet·kube-state-metrics·kubelet/cAdvisor 메트릭). 전부 `cluster` 변수
