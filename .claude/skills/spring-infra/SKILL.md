@@ -90,7 +90,7 @@ spring:
 
 - **풀 크기 근거:** 무한정 늘리면 DB가 죽는다. `maximum-pool-size`는 DB `max_connections`와 인스턴스 수를 역산해서 정한다(기본 10은 단일 인스턴스 보수값). 하드닝 시 env로 환경별 오버라이드를 배선한다.
 - **`max-lifetime`은 DB/LB 유휴 종료 시간보다 짧게** — 그래야 죽은 커넥션을 쥐고 있다가 터지는 걸 막는다. 현재는 미설정(Hikari 기본 30분)이라 명시 설정을 권장한다.
-- **현재 배포 토폴로지: 단일 인스턴스.** dev·prod `docker-compose.*.yml` 모두 `backend` 서비스가 1개고 `replicas`/`deploy.replicas` 설정이 없다(k8s 아님). `@Scheduled` 스윕러(`BlockedReportNotificationSweeper` 등)가 행 잠금·`@Version` 없이도 "동시 실행 시 중복 처리" 위험을 감수하는 근거가 이것이다 — 다중 인스턴스로 스케일아웃하면 이 가정이 깨지므로, 그때는 스윕러 전반에 분산 락 또는 `@Version` 낙관적 잠금을 재검토해야 한다(PR #251 CodeRabbit 리뷰에서 지적됨).
+- **현재 배포 토폴로지: 인스턴스 1개, 단 dev는 배포 중 잠깐 2개.** prod는 `docker-compose.prod.yml`의 `backend` 컨테이너 1개다(재생성 방식이라 구·신이 겹치지 않는다). dev는 soma-k8s의 Deployment `replicas: 1`(차트는 K8s-manifests `charts/backend`)인데, 롤링 업데이트 기본값(maxSurge 1·maxUnavailable 0)이라 새 파드가 Ready가 될 때까지 구·신 파드가 함께 뜬다 — 스케줄러는 컨텍스트 리프레시 직후(readiness 이전)부터 돌기 때문에 매 배포마다 수십 초, 시드 러너를 켠 배포는 시딩 내내 겹친다. `@Scheduled` 스윕러(`BlockedReportNotificationSweeper` 등)가 행 잠금·`@Version` 없이 "동시 실행 시 중복 처리" 위험을 감수하는 근거가 단일 인스턴스였으므로, dev에서는 이 겹침 구간에 중복 알림이 날 수 있다. replica를 늘리거나 prod를 k8s로 옮기기 전에 스윕러 전반에 분산 락(ShedLock 등) 또는 `@Version` 낙관적 잠금을 재검토해야 한다(PR #251 CodeRabbit 리뷰에서 지적됨).
 
 ## 4. SQS producer 배선 + 로컬 브로커(LocalStack)
 
@@ -164,6 +164,8 @@ logging:
 
 ## 6. Docker restart / healthcheck (docker-compose app)
 
+> dev는 soma-k8s로 옮겨 이 절은 prod(compose)와 로컬에만 해당한다. dev의 프로브(readiness·liveness, 관리 포트 9292)는 K8s-manifests `charts/backend`에 있다.
+
 ```yaml
     restart: unless-stopped
     mem_limit: 1g            # JAVA_OPTS MaxRAMPercentage=75% 기준
@@ -194,7 +196,7 @@ logging:
 
 ### k6 부하테스트 데이터 시더 (devtools)
 
-`devtools/K6ScenarioSeedRunner`·`K6AdjusterSeedRunner`는 부하테스트용 리포트·제안·채팅방·사정사 데이터를 1회성으로 시딩하는 `ApplicationRunner`다. `app.dev-seed.k6-*` 프로퍼티로 게이트하는데, **어떤 `application*.yml`에도 선언하지 않고** compose `environment:`로만 주입한다(프로퍼티 오주입 한 번으로 운영 DB가 오염되지 않게 이중 차단). `K6ScenarioSeedRunner`는 `@Profile("!test & !prod")`로 사정사 시더(`@Profile("!test")`)보다 더 강하게 잠갔다 — 기본 설정에서 약 3.4만 행(리포트·제안·채팅방·메시지·유저)을 만들기 때문. 도메인 서비스를 호출하지 않고 직접 시딩하므로 OCR 트리거(SQS)·푸시·Redis 브로드캐스트가 발생하지 않는다. 사후 정리 SQL·환경변수 이름 규칙(`APP_` 접두어 필수)은 클래스 Javadoc에 있다.
+`devtools/K6ScenarioSeedRunner`·`K6AdjusterSeedRunner`는 부하테스트용 리포트·제안·채팅방·사정사 데이터를 1회성으로 시딩하는 `ApplicationRunner`다. `app.dev-seed.k6-*` 프로퍼티로 게이트하는데, **어떤 `application*.yml`에도 선언하지 않고** 배포 설정(dev는 K8s-manifests `envs/dev/backend.values.yaml`의 `config`)으로만 주입한다(프로퍼티 오주입 한 번으로 운영 DB가 오염되지 않게 이중 차단). 켜는 절차는 `deploy/README.md` "시드 러너·dev 로그인 백도어 켜기". `K6ScenarioSeedRunner`는 `@Profile("!test & !prod")`로 사정사 시더(`@Profile("!test")`)보다 더 강하게 잠갔다 — 기본 설정에서 약 20만 행(리포트·제안·채팅방·메시지·유저)을 만들기 때문. 도메인 서비스를 호출하지 않고 직접 시딩하므로 OCR 트리거(SQS)·푸시·Redis 브로드캐스트가 발생하지 않는다. 사후 정리 SQL·환경변수 이름 규칙(`APP_` 접두어 필수)은 클래스 Javadoc에 있다.
 
 `scripts/adjuster-loadtest.k6.js`는 시딩된 데이터를 소비하는 사정사(adjuster) role 시나리오다. dev 배포에도 `POST /auth/dev/login`으로 토큰을 받는데(`spring-security-impl`의 Dev 로그인 백도어 참고, `DEV_LOGIN_KEY` 필수 — dev는 시크릿 없이 열리지 않는다), dev의 `access_token` 쿠키가 `Secure`라 k6 기본 쿠키 jar가 http:// 재전송을 거부하므로 `Set-Cookie`에서 토큰을 직접 파싱해 매 요청 `Cookie` 헤더를 수동 구성한다.
 
