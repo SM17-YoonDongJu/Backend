@@ -15,7 +15,10 @@ permissions:
 
 env:
   ECR_REPOSITORY: soma/backend
-  EC2_INSTANCE_NAME: brbs-backend-dev
+  # dev 클러스터는 Argo CD가 K8s-manifests 레포를 보고 배포한다(#332).
+  MANIFESTS_REPOSITORY: K8s-manifests
+  MANIFESTS_VALUES_FILE: envs/dev/backend.values.yaml
+  DEV_API_BASE_URL: https://api-dev.brbosang.com
   # 모니터링 스택(prometheus·grafana·loki·tempo) 전용 인스턴스 — #214 t3 콜로케이트에서 분리.
   EC2_MONITORING_INSTANCE_NAME: brbs-monitoring
   EC2_USER: ubuntu
@@ -67,123 +70,99 @@ jobs:
             ${{ steps.meta.outputs.image_uri }}:${{ github.sha }}
             ${{ steps.meta.outputs.image_uri }}:${{ steps.meta.outputs.short_sha }}
             ${{ steps.meta.outputs.image_uri }}:dev
+          # /actuator/info의 app.commit — 아래 verify-deploy가 이 값으로 새 이미지가 떴는지 확인한다.
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-  
-  deploy-to-ec2:
-    name: Deploy to EC2 via SSM
+
+  # 클러스터에 직접 배포하지 않고 K8s-manifests의 dev 이미지 태그만 바꿔 커밋한다.
+  # 실제 반영(Sync·롤링 재시작)은 Argo CD가 레포를 보고 3분 안에 한다.
+  # 떠다니는 dev 태그는 매니페스트가 안 바뀌어서 Argo CD가 아무 일도 하지 않으므로 커밋 해시 태그를 쓴다.
+  update-manifests:
+    name: Update K8s Manifests (dev image tag)
     needs: build-and-push
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      # brbs-manifests-ci 앱 토큰. K8s-manifests 한 레포의 contents 쓰기로만 범위를 좁힌다.
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          app-id: ${{ vars.MANIFESTS_CI_APP_ID }}
+          private-key: ${{ secrets.MANIFESTS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.MANIFESTS_REPOSITORY }}
+          permission-contents: write
 
-      - name: Find dev EC2 instance
-        id: find-instance
-        run: |
-          INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=$EC2_INSTANCE_NAME" \
-                      "Name=instance-state-name,Values=running" \
-            --query 'Reservations[0].Instances[0].InstanceId' \
-            --output text)
-          
-          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" == "None" ]; then
-            echo "::error::Running instance with tag Name=$EC2_INSTANCE_NAME not found"
-            exit 1
-          fi
-          
-          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
-          echo "Found: $INSTANCE_ID"
-      
-      - name: Deploy via SSM
+      - name: Checkout K8s-manifests
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.MANIFESTS_REPOSITORY }}
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+          path: manifests
+
+      - name: Commit dev image tag
+        working-directory: manifests
         env:
-          INSTANCE_ID: ${{ steps.find-instance.outputs.instance_id }}
-          REGISTRY: ${{ secrets.AWS_ECR_REGISTRY }}
-          REGION: ${{ secrets.AWS_REGION }}
           SHORT_SHA: ${{ needs.build-and-push.outputs.short_sha }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # 리포의 배포 compose를 base64로 인코딩해 SSM 커맨드로 EC2에 그대로 기록(드리프트 차단)
-          # 관측성 스택 중 prometheus·grafana·loki·tempo는 #214로 별도 모니터링 인스턴스로 분리됐다.
-          # alloy는 이 호스트의 docker.sock을 읽어야 해서 남아 있고, ./monitoring/alloy/config.alloy를
-          # 계속 바인드 마운트하므로 그 서브디렉터리만 동기화한다(전체 deploy/monitoring/은 더 이상 불필요).
-          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.dev.yml)
-          tar -czf /tmp/alloy-config.tar.gz -C deploy/monitoring alloy
-          ALLOY_CONFIG_B64=$(base64 -w0 /tmp/alloy-config.tar.gz)
+          set -euo pipefail
+          # 0809509처럼 숫자로만 된 해시는 따옴표가 없으면 YAML이 숫자로 읽어 이미지 주소가 깨진다.
+          yq -i '.image.tag = strenv(SHORT_SHA) | .image.tag style="double"' "$MANIFESTS_VALUES_FILE"
+          if git diff --quiet; then
+            echo "이미 $SHORT_SHA 태그라 커밋하지 않습니다."
+            exit 0
+          fi
 
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy soma/backend $SHORT_SHA" \
-            --parameters "{
-              \"commands\": [
-                \"set -e\",
-                \"cd $EC2_HOME/backend\",
-                \"echo '===== compose 동기화(리포 기준) ====='\",
-                \"echo $COMPOSE_B64 | base64 -d > docker-compose.yml\",
-                \"echo '===== alloy 설정 동기화(리포 기준, #214) ====='\",
-                \"echo $ALLOY_CONFIG_B64 | base64 -d > /tmp/alloy-config.tar.gz\",
-                \"mkdir -p monitoring\",
-                \"rm -rf monitoring/alloy\",
-                \"tar -xzf /tmp/alloy-config.tar.gz -C monitoring\",
-                \"rm -f /tmp/alloy-config.tar.gz\",
-                \"echo '===== alloy 재생성 (bind 마운트 stale 방지) ====='\",
-                \"docker compose --env-file .env.dev up -d --force-recreate alloy || true\",
-                \"echo '===== ECR 로그인 ====='\",
-                \"aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REGISTRY\",
-                \"echo '===== 이미지 pull ====='\",
-                \"docker compose --env-file .env.dev pull backend\",
-                \"echo '===== 컨테이너 재시작 ====='\",
-                \"docker compose --env-file .env.dev up -d --no-deps backend\",
-                \"echo '===== 이미지 정리 ====='\",
-                \"docker image prune -f\",
-                \"echo '===== 배포 완료 ====='\"
-              ],
-              \"executionTimeout\": [\"600\"]
-            }" \
-            --output text \
-            --query 'Command.CommandId')
-          
-          echo "Command ID: $COMMAND_ID"
-          
-          for i in $(seq 1 60); do
-            STATUS=$(aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query 'Status' \
-              --output text 2>/dev/null || echo "Pending")
-            
-            echo "[$i/60] Status: $STATUS"
-            
-            case "$STATUS" in
-              Success)
-                echo "Deploy 성공"
-                aws ssm get-command-invocation \
-                  --command-id "$COMMAND_ID" \
-                  --instance-id "$INSTANCE_ID" \
-                  --query 'StandardOutputContent' \
-                  --output text
-                break
-                ;;
-              Failed|Cancelled|TimedOut)
-                echo "::error::Deploy 실패: $STATUS"
-                aws ssm get-command-invocation \
-                  --command-id "$COMMAND_ID" \
-                  --instance-id "$INSTANCE_ID" \
-                  --query 'StandardErrorContent' \
-                  --output text
-                exit 1
-                ;;
-            esac
-            
-            sleep 5
+          BOT_ID=$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${BOT_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git commit -am "chore(dev): backend 이미지를 ${SHORT_SHA}로 갱신" \
+            -m "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}" \
+            -m "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          # 다른 커밋이 먼저 들어가 push가 거절되면 최신 main 위로 다시 올려서 재시도한다.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push 실패(${attempt}/3) — 최신 main 위로 다시 올립니다."
+            git pull --rebase origin main
           done
+          echo "::error::K8s-manifests main에 push하지 못했습니다."
+          exit 1
+
+  # CI는 클러스터 권한이 없으므로 밖에서 확인한다. api-dev /actuator/info가 이번 커밋을 응답하면
+  # 새 이미지가 실제로 떠서 트래픽을 받는 것이고, /v3/api-docs 200까지 봐서 앱 기동도 확인한다
+  # (배포 성공과 앱 기동은 별개라는 교훈). Argo CD 확인 주기 3분 + 기동·readiness를 감안해 최대 15분 기다린다.
+  verify-deploy:
+    name: Verify Dev Rollout
+    needs: update-manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Wait for api-dev to serve this commit
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          for i in $(seq 1 60); do
+            COMMIT=$(curl -fsS -m 10 "$DEV_API_BASE_URL/actuator/info" | jq -r '.app.commit // "none"' || echo "unreachable")
+            echo "[$i/60] api-dev app.commit: $COMMIT"
+            if [ "$COMMIT" = "$EXPECTED_COMMIT" ]; then
+              curl -fsS -m 10 -o /dev/null "$DEV_API_BASE_URL/v3/api-docs"
+              echo "api-dev가 이번 커밋으로 응답하고 /v3/api-docs도 200입니다."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::15분 안에 api-dev가 이번 커밋으로 바뀌지 않았습니다. Argo CD에서 backend-dev 상태를 확인하세요."
+          exit 1
 
   # deploy-monitoring을 돌릴지 미리 판별 — 모니터링 관련 파일이 안 바뀌었으면 스킵한다.
   # (매 push마다 4개 컨테이너를 force-recreate하면 스크랩·push가 잠깐 끊겨 타깃다운 알림이 튄다)
@@ -314,7 +293,7 @@ jobs:
 
   notify:
     name: Notify Discord
-    needs: [build-and-push, deploy-to-ec2, detect-monitoring-changes, deploy-monitoring]
+    needs: [build-and-push, update-manifests, verify-deploy, detect-monitoring-changes, deploy-monitoring]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -325,9 +304,11 @@ jobs:
         uses: ./.github/actions/discord-notify
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_DEPLOYMENT }}
+          # 완료 = api-dev가 이번 커밋으로 실제 응답까지 확인됨(verify-deploy).
           # deploy-monitoring은 모니터링 파일 미변경 시 skipped가 정상이라 success와 함께 통과로 친다.
-          status: ${{ (needs.build-and-push.result == 'success' && needs.deploy-to-ec2.result == 'success' && (needs.deploy-monitoring.result == 'success' || needs.deploy-monitoring.result == 'skipped')) && 'success' || 'failure' }}
-          title: 'Backend Dev 배포 ${{ (needs.build-and-push.result == ''success'' && needs.deploy-to-ec2.result == ''success'' && (needs.deploy-monitoring.result == ''success'' || needs.deploy-monitoring.result == ''skipped'')) && ''완료'' || ''실패'' }}'
+          status: ${{ (needs.build-and-push.result == 'success' && needs.update-manifests.result == 'success' && needs.verify-deploy.result == 'success' && (needs.deploy-monitoring.result == 'success' || needs.deploy-monitoring.result == 'skipped')) && 'success' || 'failure' }}
+          title: 'Backend Dev 배포 ${{ (needs.build-and-push.result == ''success'' && needs.update-manifests.result == ''success'' && needs.verify-deploy.result == ''success'' && (needs.deploy-monitoring.result == ''success'' || needs.deploy-monitoring.result == ''skipped'')) && ''완료'' || ''실패'' }}'
+          failed_step: ${{ needs.build-and-push.result != 'success' && '이미지 빌드' || needs.update-manifests.result != 'success' && 'K8s-manifests 태그 커밋' || needs.verify-deploy.result != 'success' && 'api-dev 반영 확인' || (needs.deploy-monitoring.result != 'success' && needs.deploy-monitoring.result != 'skipped') && '모니터링 배포' || '' }}
           service: backend
           environment: dev
           image_tag: ${{ needs.build-and-push.outputs.short_sha }}
