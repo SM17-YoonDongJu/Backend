@@ -257,6 +257,7 @@ info:
     name: ${spring.application.name}
     description: 손해사정 매칭·검수 리포트 백엔드 API
     environment: ${SPRING_PROFILES_ACTIVE:local}
+    commit: ${GIT_COMMIT:unknown}   # Dockerfile이 빌드 커밋으로 채운다. CI 배포 검증이 이 값을 본다
 
 # JDBC 쿼리 관측(datasource-micrometer, #324) — DataSource를 프록시해 쿼리 실행을 Micrometer Observation으로
 # 기록한다. 트레이싱이 켜진 환경(dev)에선 HTTP 스팬 아래에 쿼리 스팬이 달려 느린 요청을 쿼리 단위로
