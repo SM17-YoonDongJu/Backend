@@ -1,56 +1,78 @@
 # Dev 배포 가이드
 
-dev EC2 배포의 단일 진실원. compose는 이 디렉터리를 PR로 수정하며, **서버에서 직접 편집하지 않는다**
-(배포 시 CD가 `deploy/docker-compose.dev.yml`(앱 인스턴스)·`deploy/docker-compose.monitoring.yml`(모니터링
-인스턴스)을 각각 EC2로 덮어씀).
+dev는 두 갈래로 배포된다.
+
+- **앱**(backend·report·chatbot·redis)은 soma-k8s 클러스터(kubeadm)에서 **Argo CD**가 배포한다. 매니페스트와
+  앱 설정(ConfigMap 값·ExternalSecret)은 이 레포가 아니라 `SM17-YoonDongJu/K8s-manifests`(private)에 있다.
+- **관측성 스택**(prometheus·grafana·loki·tempo)은 별도 모니터링 EC2(`brbs-monitoring`, #214)에서 docker compose로
+  돈다. compose와 설정은 이 디렉터리가 단일 진실원이고, **서버에서 직접 편집하지 않는다**(CD가 덮어씀).
 
 ## 구성
 
-dev는 **EC2 두 대**로 나뉜다 — 앱 인스턴스(`brbs-backend-dev`)와 모니터링 인스턴스(`brbs-monitoring`, #214).
-
-| 구성요소 | 형태 | 인스턴스 | 비고 |
-|----------|------|----------|------|
-| `backend` | 컨테이너(ECR 이미지) | 앱 | CD가 `--no-deps`로 앱만 재기동 |
-| `report` / `chatbot` | 컨테이너(ECR 이미지, AI 레포) | 앱 | AI 레포가 두 이미지로 배포. `repository_dispatch`(deploy-report/deploy-chatbot)로 자동 CD |
-| PostgreSQL | **외부 RDS** | - | `.env.dev`의 `DB_HOST`로 연결 |
-| Redis | **컨테이너** | 앱 | `restart: unless-stopped`로 상주 (이후 ElastiCache 재검토) |
-| SQS (OCR 트리거) | **관리형 AWS** | - | 컨테이너 없음. 인스턴스 IAM Role로 접속(정적 키 미주입) |
-| node-exporter / cAdvisor / Alloy | 컨테이너 | 앱 | 그 호스트 자체를 감시하는 에이전트라 이동 불가. 모니터링 인스턴스가 원격 스크랩/push 대상 |
-| Prometheus / Grafana / Loki / Tempo | 컨테이너 | 모니터링 | `docker-compose.monitoring.yml`. 상세는 하단 "관측성 스택" 참고 |
+| 구성요소 | 형태 | 위치 | 비고 |
+|----------|------|------|------|
+| `backend` | Deployment(ECR 이미지) | soma-k8s | 차트 `charts/backend`, dev 값 `envs/dev/backend.values.yaml`(K8s-manifests) |
+| `report` / `chatbot` | Deployment(ECR 이미지, AI 레포) | soma-k8s | 이미지 태그는 `envs/dev/report.values.yaml`·`chatbot.values.yaml` |
+| Redis | StatefulSet(bitnami 차트) | soma-k8s | PVC가 노드 로컬(local-path)이라 다른 노드로 옮기면 데이터가 비워진다 |
+| PostgreSQL | **외부 RDS** | - | values `config`의 `DB_HOST`로 연결 |
+| SQS (OCR 트리거) | **관리형 AWS** | - | 워커 노드 IAM Role로 접속(정적 키 미주입) |
+| 외부 진입 | ALB → Traefik(NodePort 30080) → Ingress | - | `api-dev.brbosang.com`. 관리 포트 9292는 `/actuator/health`·`/actuator/info`만 외부에 연다 |
+| Prometheus / Grafana / Loki / Tempo | 컨테이너 | 모니터링 EC2 | `docker-compose.monitoring.yml`. 상세는 하단 "관측성 스택" 참고 |
 
 ## 배포 흐름 (자동, `develop` push 시)
-`.github/workflows/deploy-dev.yml`은 인스턴스별로 독립된 job 두 개를 돈다:
-1. **`deploy-to-ec2`(앱 인스턴스)**: 이미지 빌드 → ECR push → SSM으로 **리포 compose를 `~/backend/docker-compose.yml`로 동기화** → `docker compose --env-file .env.dev up -d --no-deps backend` (alloy 설정도 변경분만 동기화 후 재생성)
-2. **`deploy-monitoring`(모니터링 인스턴스)**: `deploy/docker-compose.monitoring.yml`·`deploy/monitoring/**` 변경분이 있는
+
+`.github/workflows/deploy-dev.yml`이 아래 순서로 돈다. CI는 클러스터 자격증명을 갖지 않고, 클러스터에 쓰는 건
+Argo CD뿐이다.
+
+1. **`build-and-push`**: 이미지 빌드(커밋 해시를 `GIT_COMMIT` build-arg로 굽는다) → ECR에 전체 SHA·짧은 SHA·`dev` 태그로 push
+2. **`update-manifests`**: `brbs-manifests-ci` GitHub App 토큰으로 K8s-manifests `envs/dev/backend.values.yaml`의
+   `image.tag`를 짧은 SHA로 바꿔 main에 커밋
+3. **Argo CD**: 레포 변경을 감지(최대 3분)해 Sync → 롤링 업데이트(새 파드가 readiness를 통과한 뒤 구 파드 종료)
+4. **`verify-deploy`**: `https://api-dev.brbosang.com/actuator/info`의 `app.commit`이 이번 커밋과 같아지고
+   `/v3/api-docs`가 200인지 최대 15분 기다려 확인
+5. **`deploy-monitoring`(모니터링 인스턴스)**: `deploy/docker-compose.monitoring.yml`·`deploy/monitoring/**` 변경분이 있는
    push에서만 돈다(`detect-monitoring-changes`가 경로 필터로 판별 — 관련 없는 변경마다 4개 컨테이너를 재생성해 스크랩·push가
    끊기는 걸 방지). `workflow_dispatch`(수동 실행)는 변경 여부 상관없이 강제로 돈다. ECR 의존 없이 독립 실행 — SSM으로
    `docker-compose.monitoring.yml`·`deploy/monitoring/`를 `~/monitoring/`에 동기화 → prometheus·grafana·loki·tempo `--force-recreate`
+6. **`notify`**: 결과를 Discord로 보낸다. 3~4까지 통과해야 "완료"로 나간다
 
-> `--no-deps`라 앱 배포는 backend만 bounce한다. 인프라(redis)는 아래 "최초 기동"으로 상주시켜야 한다. OCR 트리거는 관리형 SQS(컨테이너 없음).
+> `dev` 태그는 "가장 최근 dev 빌드" 표시용이고 매니페스트에는 쓰지 않는다. 이름이 그대로인 태그는 매니페스트가
+> 바뀌지 않아 Argo CD가 반영하지 않고, 노드에 캐시된 옛 이미지가 그대로 쓰인다(`IfNotPresent`).
 
-## 최초 기동 (앱 인스턴스, 새 EC2 / 인프라 부재 시 1회)
+## 설정 바꾸기
+
+- **일반 값**: K8s-manifests `envs/dev/backend.values.yaml`의 `config`를 PR로 고친다. 머지되면 Argo CD가 ConfigMap을
+  갱신하고, 파드 템플릿의 `checksum/config` 어노테이션이 바뀌어 backend가 자동으로 재시작된다.
+- **시크릿**: Secrets Manager `app/backend-dev`의 값을 고친다. ESO가 1시간 주기로 k8s Secret(`backend-dev-secrets`)에
+  반영하는데, Secret이 바뀌어도 파드는 자동으로 재시작되지 않는다(Reloader 미도입). 바로 반영하려면 아래처럼 즉시
+  동기화한 뒤 Argo CD UI에서 backend Deployment의 Restart 액션을 실행한다. 새 키를 추가할 때는 K8s-manifests
+  `envs/dev/manifests/externalsecret-backend-dev-secrets.yaml`의 `data`에도 키를 넣어야 한다.
+
 ```bash
-cd ~/backend
-# 1) 리포의 배포 compose와 .env.dev(시크릿) 배치
-#    - docker-compose.yml : deploy/docker-compose.dev.yml 내용 (CD가 이후 자동 동기화)
-#    - .env.dev           : deploy/.env.dev.example 기준으로 실제 값 채움 (커밋 금지)
-
-# 2) 전체 인프라 + 앱 기동
-docker compose --env-file .env.dev up -d
-
-# 3) 상태 확인
-docker ps --format '{{.Names}}\t{{.Status}}'          # 전부 (healthy)
-# actuator는 관리 포트 9292(호스트 게시). 비즈니스 API는 8080.
-curl -s localhost:9292/actuator/health | grep -o '"status":"[A-Z]*"' | head -1   # UP
+# control-plane에서 — ESO 즉시 동기화
+sudo kubectl --kubeconfig /etc/kubernetes/admin.conf annotate externalsecret backend-dev-secrets \
+  force-sync=$(date +%s) --overwrite
 ```
 
-## 헬스 확인
+## 롤백
+
+K8s-manifests에서 해당 봇 커밋(`chore(dev): backend 이미지를 …로 갱신`)을 revert하는 PR을 머지한다. Argo CD UI의
+History에도 Rollback이 있지만 auto-sync가 켜진 앱에서는 막혀 있고, 쓰더라도 Git과 클러스터가 어긋나므로 Git으로
+되돌리는 게 원칙이다. 되돌아갔는지는 `/actuator/info`의 `app.commit`으로 확인한다.
+
+## 상태 확인
 ```bash
-docker ps --format '{{.Names}}\t{{.Status}}'
-# actuator = 관리 포트 9292(8080은 비즈니스 API 전용, actuator 미제공)
-curl -s localhost:9292/actuator/health          # 컴포넌트별(db/redis 등)
-curl -s -o /dev/null -w '%{http_code}\n' localhost:9292/actuator/health/readiness
+# 외부에서 — 지금 떠 있는 이미지의 커밋과 헬스
+curl -s https://api-dev.brbosang.com/actuator/info | jq -r .app.commit
+curl -s https://api-dev.brbosang.com/actuator/health
+
+# 클러스터 안 — control-plane(k8s-server)에 SSM으로 접속해서
+sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get pods -l app=backend
+sudo kubectl --kubeconfig /etc/kubernetes/admin.conf logs deploy/backend --tail=100
 ```
+
+Argo CD UI는 SSM 포트포워딩(`AWS-StartPortForwardingSessionToRemoteHost`, 대상 control-plane, host는 `argocd-server`
+서비스 ClusterIP, 포트 443)으로 연다.
 
 ## 관측성 스택 (Prometheus + Grafana + Loki + Tempo, #88 / 인스턴스 분리 #214)
 
@@ -84,10 +106,10 @@ DaemonSet·kubelet cAdvisor·kube-state-metrics)이 맡아 이 인스턴스의 P
     `soma-sg-k3s` 추가 필요)
   - soma-k8s 노드 → 모니터링: `9090`(prometheus remote_write push, #328)
   - (구) 모니터링 → 앱 `9292`·`9100`·`8082`·`12345`·`9121` 인바운드 규칙은 정적 스크랩 제거(#328)로 더 쓰지 않는다
-- private IP: 앱 인스턴스(`brbs-backend-dev`) `10.0.11.42`, 모니터링 인스턴스(`brbs-monitoring`) `10.0.11.48`,
-  soma-k8s 노드 `10.0.41.203`(control-plane)·`10.0.41.18`(worker).
-  `deploy/monitoring/prometheus.yml`에 반영됨. 인스턴스를 재생성해 IP가 바뀌면 PR로 갱신한다. backend의
-  `OTLP_TRACING_ENDPOINT`(클러스터 Deployment env)는 `http://10.0.11.48:4318/v1/traces`를 가리켜야 한다.
+- private IP: 모니터링 인스턴스(`brbs-monitoring`) `10.0.11.48`, soma-k8s 노드 `10.0.41.203`(control-plane)·
+  `10.0.11.42`(워커, 구 앱 인스턴스 `brbs-backend-dev`)·`10.0.11.131`(GPU 워커, `brbs-etl`).
+  인스턴스를 재생성해 IP가 바뀌면 PR로 갱신한다. backend의 `OTLP_TRACING_ENDPOINT`(K8s-manifests values `config`)는
+  `http://10.0.11.48:4318/v1/traces`를 가리켜야 한다.
 - **외부 노출 최소화**: Grafana(`3000`)·Tempo 조회(`3200`)는 `127.0.0.1` 바인딩 → 퍼블릭 접근 불가.
   Loki(`3100`)·Prometheus(`9090`)는 원격 push 수신 때문에 호스트 게시지만 보안그룹이 private 소스만 허용한다.
   로컬 접근은 **SSM 포트포워드**로:
@@ -96,7 +118,8 @@ DaemonSet·kubelet cAdvisor·kube-state-metrics)이 맡아 이 인스턴스의 P
     --document-name AWS-StartPortForwardingSession \
     --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'   # → http://localhost:3000 (Grafana)
   ```
-- 앱 메트릭(`10.0.11.42:9292/actuator/prometheus`)은 #131 배포로 관리 포트가 열려 있어 **스택 기동 시 바로 UP**.
+- backend 앱 메트릭(`/actuator/prometheus`)을 구 앱 인스턴스에서 정적으로 긁던 타깃(`10.0.11.42:9292`)은 #328로
+  제거됐다. 클러스터 안 backend 메트릭 수집 경로는 #328을 따른다.
 - **GPU 인스턴스는 둘이고 서로 다른 작업이다.** `brbs-etl`(`10.0.11.131`, g4dn.xlarge)에서 Ollama와 약관 인덱싱이 돌고,
   `brbs-ai`(`10.0.11.93`, g6.xlarge)는 현재 stopped다. 원래 "GPU(g6)"로 뭉뚱그려 부르던 게 후자다.
   - brbs-etl 호스트 관측(node_exporter·cAdvisor·Alloy)은 #257 — 배포 후 `monitoring/prometheus.yml`의 `node-etl`·`cadvisor-etl`
@@ -118,7 +141,7 @@ DaemonSet·kubelet cAdvisor·kube-state-metrics)이 맡아 이 인스턴스의 P
 ### 최초 기동 (모니터링 인스턴스, 새 EC2 1회)
 ```bash
 mkdir -p ~/monitoring && cd ~/monitoring
-# 1) 리포의 배포 compose와 .env.dev(시크릿, 앱 인스턴스와 같은 파일 재사용 가능) 배치
+# 1) 리포의 배포 compose와 .env.dev(시크릿) 배치
 #    - docker-compose.yml : deploy/docker-compose.monitoring.yml 내용 (CD가 이후 자동 동기화)
 #    - monitoring/         : deploy/monitoring/ 내용 (CD가 이후 자동 동기화)
 #    - .env.dev            : deploy/.env.dev.example 기준으로 실제 값 채움 (커밋 금지)
@@ -126,14 +149,15 @@ mkdir -p ~/monitoring && cd ~/monitoring
 # 2) .env.dev 에 GRAFANA_ADMIN_PASSWORD·ALERT_WEBHOOK_URL_* 채운 뒤 전체 기동
 docker compose --env-file .env.dev up -d
 
-# 3) 타깃 상태(UP/DOWN) 확인 — 앱 인스턴스 원격 타깃(brbs-backend·node-t3·cadvisor-t3·alloy)은
-#    보안그룹(모니터링→앱 9292·9100·8082·12345 허용)까지 열려 있어야 UP으로 뜬다.
+# 3) 타깃 상태(UP/DOWN) 확인 — 로컬 타깃(prometheus·loki·tempo)과 GPU 호스트 타깃.
+#    soma-k8s 메트릭은 스크랩이 아니라 remote_write로 들어오므로 cluster="soma-k8s" 라벨 쿼리로 확인한다.
 curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'
 ```
 
 > **CD 동기화**: `deploy-dev.yml`의 `deploy-monitoring` job이 `docker-compose.monitoring.yml`과 함께
-> **`deploy/monitoring/` 디렉터리도** tar.gz+SSM으로 모니터링 인스턴스에 동기화한다(드리프트 차단 — 서버에서
-> 수동 편집 금지). 배포 시 prometheus·grafana·loki·tempo를 전부 `--force-recreate`한다(bind 마운트 stale 방지).
+> **`deploy/monitoring/` 디렉터리도** 모니터링 인스턴스에 동기화한다. 인스턴스가 해당 커밋의 레포 tarball을 GitHub에서
+> 직접 받아 푸는 방식이다(드리프트 차단 — 서버에서 수동 편집 금지). 배포 시 prometheus·grafana·loki·tempo를 전부
+> `--force-recreate`한다(bind 마운트 stale 방지).
 > **grafana provisioning(datasource·alerting) 변경도 이 재생성으로 함께 반영**된다.
 
 ## k6 부하테스트 — DB 버퍼 풀 축소
@@ -197,7 +221,32 @@ aws rds modify-db-instance \
 aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
 ```
 
+### 시드 러너·dev 로그인 백도어 켜기
+
+평소엔 전부 꺼 두고 로드테스트 창에만 켠다. 키는 이미 K8s-manifests `envs/dev/backend.values.yaml`의 `config`에
+기본값(false)으로 들어 있어서 값만 바꾸는 PR을 머지하면 된다. ConfigMap이 바뀌면 backend가 자동으로 재시작되고
+(위 "설정 바꾸기"), 시드 러너는 부팅 때 1회 돈다. 이미 만든 데이터는 (유저, 풀) 단위로 건너뛰므로 다시 재시작돼도
+증분은 0이다. 창이 끝나면 같은 방식으로 false로 되돌린다.
+
+- **키 이름에 `APP_` 접두어가 꼭 필요하다.** 시드 게이트는 `application*.yml`에 선언하지 않고 코드의 `@Value`
+  기본값으로만 있어서, Spring이 프로퍼티명(`app.dev-seed.k6-scenarios-enabled`)에서 env 키
+  (`APP_DEV_SEED_K6_SCENARIOS_ENABLED`)를 직접 유도한다. 접두어가 빠지면 바인딩이 안 되고 러너가 조용히 아무것도 안 한다.
+- **순서**: 사정사 계정(`APP_DEV_SEED_K6_ADJUSTERS_ENABLED`)을 먼저 1회 켜고, 그다음 시나리오 데이터
+  (`APP_DEV_SEED_K6_SCENARIOS_ENABLED`)를 켠다.
+- 풀 크기 키(`APP_DEV_SEED_K6_USER_COUNT`와 `..._PER_USER` 4종)의 기본값과 근거는 `K6ScenarioSeedRunner` Javadoc에
+  있다. k6 VU와 계정은 1:1 매핑이 전제라, VU가 `USER_COUNT`를 넘을 때만 이 값도 같이 올린다.
+- **시딩은 수 분~수십 분 걸린다.** 러너는 `ApplicationReadyEvent` 전에 돌기 때문에 그동안 새 파드는 readiness가
+  UP이 아니라 트래픽을 받지 않고, 구 파드가 계속 응답한다. liveness는 UP이라 재시작되지는 않지만 10분을 넘기면
+  Deployment가 `ProgressDeadlineExceeded`로 표시되고 Argo CD에서 Degraded로 보인다(시딩이 끝나면 돌아온다).
+  그래도 `APP_DEV_SEED_K6_USER_COUNT=3`으로 먼저 리허설해 1유저당 소요를 재 둘 것 — 시딩 중 CPU가 limit(1코어)에
+  붙으면 liveness 응답(타임아웃 기본 1초)이 늦어져 재시작될 수 있다.
+- **dev 로그인 백도어**: `DEV_LOGIN_ENABLED`는 같은 `config`에 있고, `X-Dev-Login-Key`와 비교할 `DEV_LOGIN_SECRET`은
+  Secrets Manager `app/backend-dev`에 있다. 시크릿이 비어 있으면 헤더 검증이 꺼져 닉네임만으로 누구든 로그인되므로,
+  enabled=true로 여는 동안엔 반드시 채워 둔다.
+
 ## 주의
-- 자격증명: S3는 **EC2 IAM Role** 자동 사용(정적 키 불필요).
-- backend healthcheck는 alpine 이미지 기준 **`wget` + `/actuator/health/readiness`** (curl 미설치).
-- `.env.dev`는 시크릿이므로 리포에 커밋하지 않는다. 키 목록은 `deploy/.env.dev.example` 참고.
+- 자격증명: S3·SQS·Secrets Manager 모두 워커 노드 IAM Role을 쓴다(정적 키 불필요).
+- backend 프로브는 readiness `/actuator/health/readiness`, liveness `/actuator/health/liveness`(관리 포트 9292, 초기
+  지연 90초)다. 정의는 K8s-manifests `charts/backend`에 있다.
+- `.env.dev`는 이제 모니터링 인스턴스에서만 쓴다. 시크릿이라 커밋하지 않고, 키 목록은 `deploy/.env.dev.example` 참고.
+- prod는 아직 `deploy-prod.yml`의 SSM + `docker-compose.prod.yml` 방식이다.
