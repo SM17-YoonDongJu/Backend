@@ -1,7 +1,8 @@
 app:
   cookie:
     # 기본 false(백엔드가 평문 http일 때). cross-site(SameSite=None) HTTPS 배포 시
-    # COOKIE_SECURE=true·COOKIE_SAME_SITE=None을 .env.dev로 주입한다(same-site는 application.yml에서 env 주입).
+    # COOKIE_SECURE=true·COOKIE_SAME_SITE=None을 dev 배포 설정(K8s-manifests values config)으로 주입한다
+    # (same-site는 application.yml에서 env 주입).
     secure: ${COOKIE_SECURE:false}
   docs:
     public: true    # dev 전용: Scalar 문서(/docs·/scalar.html·/v3/api-docs)를 인증 없이 개방
@@ -12,8 +13,9 @@ app:
     # Vercel 프론트가 인가요청에 쓴 redirect_uri(자기 오리진)를 토큰 교환에 그대로 허용
     allowed-redirect-origins: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:http://localhost:8080,http://localhost:3000,https://frontend-web-psi-two.vercel.app}
   dev-login:
-    # 부하테스트(k6) 전용 백도어. 평소엔 반드시 false — 로드테스트 창에만 .env.dev로 true를 주고
-    # 창이 끝나면 false로 되돌린 뒤 backend를 재기동한다. prod는 DevLoginGuard가 기동 자체를 막는다.
+    # 부하테스트(k6) 전용 백도어. 평소엔 반드시 false — 로드테스트 창에만 dev 배포 설정(K8s-manifests values
+    # config)으로 true를 주고 창이 끝나면 false로 되돌린다(값이 바뀌면 backend가 자동 재시작된다).
+    # prod는 DevLoginGuard가 기동 자체를 막는다.
     enabled: ${DEV_LOGIN_ENABLED:false}
     # 공유 시크릿. 값이 있을 때만 X-Dev-Login-Key 헤더 검증이 켜진다(빈 값=검증 스킵).
     # dev는 외부에서 닿는 서버라 enabled=true로 여는 동안엔 반드시 채운다.

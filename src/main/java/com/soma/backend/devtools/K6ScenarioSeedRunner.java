@@ -44,8 +44,9 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * <h2>게이트 프로퍼티</h2>
  * <b>어떤 {@code application*.yml}에도 선언하지 않는다</b>(선례 {@code app.dev-seed.enabled}·
  * {@code app.dev-seed.k6-adjusters-enabled}와 동일). 아래 6개는 생성자 {@code @Value} 기본값으로만 존재하고,
- * 필요할 때 compose {@code environment:}로 주입해 켠다({@code deploy/docker-compose.dev.yml}에 키를 명시
- * 열거하지 않으면 컨테이너에 전달되지 않아 러너가 조용히 아무것도 하지 않는다).
+ * 필요할 때 dev 배포 설정(K8s-manifests {@code envs/dev/backend.values.yaml}의 {@code config})에서 값을 바꿔 켠다
+ * (env 키는 {@code APP_} 접두어 필수 — 빠지면 바인딩되지 않아 러너가 조용히 아무것도 하지 않는다. 절차는
+ * {@code deploy/README.md} "시드 러너·dev 로그인 백도어 켜기").
  *
  * <pre>
  * app.dev-seed.k6-scenarios-enabled            false  마스터 게이트
@@ -97,13 +98,13 @@ import com.soma.backend.domain.user.repository.UserRepository;
  *       fail-fast로 아무것도 만들지 않는다.</li>
  *   <li>{@code APP_DEV_SEED_K6_USER_COUNT=3}으로 소규모 리허설을 돌려 로그의 총 경과시간으로 1유저당
  *       소요 시간을 잰다.</li>
- *   <li>{@code (1유저 소요) × 유저수 + 90s < 180s}인지 확인한다. 시딩 중에는
- *       {@code /actuator/health/readiness}가 UP이 아니고({@code ApplicationRunner}는
- *       {@code ApplicationReadyEvent} 이전에 돈다) dev compose 헬스체크가 {@code start_period 90s} +
- *       {@code 30s × 3}이라 180초를 넘기면 컨테이너가 unhealthy로 마킹된다. <b>기본값 600유저(약 20만 행)는
- *       거의 확실히 180초를 넘긴다</b> — 풀별 수량을 줄이지 않는 한, 시딩 창에 한해 dev compose의
- *       {@code start_period}를 리허설로 잰 총 소요시간 이상으로(예: 20~30분) 임시로 올려야 한다. 시딩이
- *       끝나면 반드시 90s로 되돌린다(영구히 높여 두면 실제 배포 실패를 감지하는 데도 같은 유예가 걸린다).</li>
+ *   <li>{@code (1유저 소요) × 유저수}로 본 시딩 시간을 가늠한다. 시딩 중에는
+ *       {@code /actuator/health/readiness}가 UP이 아니다({@code ApplicationRunner}는
+ *       {@code ApplicationReadyEvent} 이전에 돈다). dev(k8s)에서는 그동안 새 파드가 트래픽을 받지 않고 구 파드가
+ *       계속 응답하며, liveness는 UP이라 재시작되지 않는다. 다만 10분을 넘기면 Deployment가
+ *       {@code ProgressDeadlineExceeded}로 표시되고(Argo CD Degraded, 시딩이 끝나면 복구), CPU가 limit에 붙으면
+ *       liveness 응답(타임아웃 1초)이 늦어져 재시작될 수 있다. <b>기본값 600유저(약 20만 행)는 10분을 넘길
+ *       가능성이 높으니</b> 리허설 결과를 보고 진행한다.</li>
  *   <li>본 시딩 실행 → 요약 로그 확인 → 게이트를 {@code false}로 되돌리고 재기동한다.</li>
  * </ol>
  *

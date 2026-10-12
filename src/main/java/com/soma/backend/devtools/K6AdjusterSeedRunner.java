@@ -31,7 +31,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
  *
  * <p>게이트 프로퍼티 {@code app.dev-seed.k6-adjusters-enabled}는 <b>어떤 application*.yml에도 선언하지
  * 않는다</b>(선례 {@code app.dev-seed.enabled}와 동일). 기본값 {@code false}로 꺼져 있고, 필요할 때만
- * {@code SPRING_APPLICATION_JSON}이나 compose {@code environment:}로 1회 주입해 켠다.
+ * {@code SPRING_APPLICATION_JSON}이나 dev 배포 설정(K8s-manifests values {@code config})으로 1회 주입해 켠다.
  *
  * <p>시딩 데이터는 전부 합성값이라 개인정보가 아니다. 전화번호는 {@code phoneNumber}/{@code phoneNumberHmac}
  * 둘 다 {@code null}로 둔다 — {@code users.phone_number_hmac}이 UNIQUE라 더미 값을 넣으면 두 번째 계정부터
