@@ -66,6 +66,8 @@ jobs:
         with:
           context: .
           push: true
+          # dev 태그는 "가장 최근 dev 빌드" 표시용으로만 남긴다. k8s 매니페스트는 커밋 해시 태그만 쓴다
+          # (이름이 그대로인 태그는 매니페스트가 안 바뀌어 Argo CD가 반영하지 않는다).
           tags: |
             ${{ steps.meta.outputs.image_uri }}:${{ github.sha }}
             ${{ steps.meta.outputs.image_uri }}:${{ steps.meta.outputs.short_sha }}
@@ -90,7 +92,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.MANIFESTS_CI_APP_ID }}
+          client-id: ${{ vars.MANIFESTS_CI_CLIENT_ID }}
           private-key: ${{ secrets.MANIFESTS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ env.MANIFESTS_REPOSITORY }}
