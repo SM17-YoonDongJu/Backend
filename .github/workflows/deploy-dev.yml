@@ -181,6 +181,9 @@ jobs:
         uses: dorny/paths-filter@v3
         id: filter
         with:
+          # 비워 두면 기본 브랜치(main)와의 merge-base부터 비교해 develop에 쌓인 변경이 매번 잡힌다.
+          # push된 브랜치를 주면 push 직전 커밋(before)과 비교해 이번 push로 들어온 변경만 본다.
+          base: ${{ github.ref_name }}
           filters: |
             monitoring:
               - 'deploy/docker-compose.monitoring.yml'
