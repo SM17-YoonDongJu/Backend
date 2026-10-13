@@ -199,7 +199,7 @@ management:
     distribution:
       # http.server.requests에 Prometheus 히스토그램 버킷(_bucket)을 노출한다. 기본은 count/sum/max뿐이라
       # Grafana histogram_quantile로 p50/p95/p99를 계산할 원재료가 없었다 — k6 부하테스트 전 API별
-      # percentile 확인을 위해 추가(deploy/monitoring/grafana/dashboards/api-latency-percentiles.json 참고).
+      # percentile 확인을 위해 추가(deploy/monitoring/config/grafana/dashboards/api-latency-percentiles.json 참고).
       percentiles-histogram:
         http.server.requests: true
         # 채팅 Redis relay 종단 지연(발행→STOMP 전달) — 히스토그램 없으면 chat_relay_latency_seconds에

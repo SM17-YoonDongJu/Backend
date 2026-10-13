@@ -71,7 +71,7 @@ Import UI와 달리 이를 **해석하지 않는다** → 그대로 넣으면 "d
 받은 뒤 반드시 프로비저닝 데이터소스 uid(`prometheus`)로 치환해 커밋한다:
 
 ```bash
-cd deploy/monitoring/grafana/dashboards
+cd deploy/monitoring/config/grafana/dashboards
 id=<대시보드ID>
 curl -fsSL "https://grafana.com/api/dashboards/${id}/revisions/latest/download" -o "${id}.json"
 python - <<'EOF'

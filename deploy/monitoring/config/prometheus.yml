@@ -5,7 +5,7 @@
 # 클러스터 안 kube-prometheus-stack이 수집해 이 Prometheus로 remote_write한다(cluster="soma-k8s" 라벨로 유입).
 # 남은 원격 스크랩 후보는 brbs-etl(10.0.11.131, g4dn.xlarge)·brbs-ai(10.0.11.93, g6.xlarge)인데 둘 다
 # 현재 stopped라 해당 잡은 주석 상태다(켜진 채로 두면 TargetDown critical이 상시 발화).
-# 이 파일은 grafana provisioning과 함께 deploy/monitoring/ 로 관리하며 서버에서 직접 편집하지 않는다.
+# 이 파일은 grafana provisioning과 함께 deploy/monitoring/config/ 로 관리하며 서버에서 직접 편집하지 않는다.
 global:
   scrape_interval: 15s
   scrape_timeout: 10s
