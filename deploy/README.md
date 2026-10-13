@@ -161,8 +161,9 @@ mkdir -p ~/monitoring && cd ~/monitoring
 #                            인스턴스 롤에 이 시크릿 읽기 권한이 있어야 한다(inline policy monitoring-secrets-read).
 
 # 2) 첫 기동은 GitHub Actions에서 deploy-dev.yml을 workflow_dispatch로 실행하면 된다(.env.dev 생성 + 전체 기동).
-#    손으로 하려면 레포의 deploy/monitoring/sync-env.sh를 ~/monitoring에서 실행해 .env.dev를 만든 뒤 기동한다.
-bash sync-env.sh
+#    손으로 하려면 배포가 서버에 남기지 않는 sync-env.sh를 레포에서 받아 ~/monitoring에서 실행한 뒤 기동한다.
+curl -fsSL -o /tmp/sync-env.sh https://raw.githubusercontent.com/SM17-YoonDongJu/Backend/develop/deploy/monitoring/sync-env.sh
+bash /tmp/sync-env.sh && rm -f /tmp/sync-env.sh
 docker compose --env-file .env.dev up -d
 
 # 3) 타깃 상태(UP/DOWN) 확인 — 로컬 타깃(prometheus·loki·tempo)과 GPU 호스트 타깃.

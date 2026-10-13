@@ -17,12 +17,17 @@ umask 077
 tmp=$(mktemp .env.dev.XXXXXX)
 trap 'rm -f "$tmp"' EXIT
 
+# compose의 .env는 따옴표 없는 값 안의 $NAME을 다른 변수로 치환하고 " #" 뒤를 주석으로 잘라낸다. 작은따옴표로 감싸면
+# 값이 그대로 쓰인다. 작은따옴표 안에는 작은따옴표·줄바꿈을 안전하게 넣을 방법이 없어 그런 값은 거부한다.
 docker run --rm --network host "$IMAGE" secretsmanager get-secret-value \
   --region "$REGION" --secret-id "$SECRET_ID" --query SecretString --output text \
-  | jq -er 'to_entries[] | "\(.key)=\(.value)"' > "$tmp"
+  | jq -er --arg q "'" 'to_entries[]
+      | if (.value | contains($q) or contains("\n"))
+        then error("\(.key) 값에 작은따옴표나 줄바꿈이 있어 .env에 그대로 쓸 수 없습니다")
+        else "\(.key)=\($q)\(.value)\($q)" end' > "$tmp"
 
 for key in $REQUIRED_KEYS; do
-  if ! grep -q "^${key}=." "$tmp"; then
+  if ! grep -Eq "^${key}='.+'$" "$tmp"; then
     echo "${SECRET_ID}에 ${key} 값이 없습니다" >&2
     exit 1
   fi
