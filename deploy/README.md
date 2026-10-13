@@ -154,12 +154,15 @@ DaemonSet·kubelet cAdvisor·kube-state-metrics)이 맡아 이 인스턴스의 P
 ### 최초 기동 (모니터링 인스턴스, 새 EC2 1회)
 ```bash
 mkdir -p ~/monitoring && cd ~/monitoring
-# 1) 리포의 배포 compose와 .env.dev(시크릿) 배치
+# 1) 리포의 배포 compose와 설정 배치
 #    - docker-compose.yml : deploy/monitoring/docker-compose.yml 내용 (CD가 이후 자동 동기화)
 #    - config/             : deploy/monitoring/config/ 내용 (CD가 이후 자동 동기화)
-#    - .env.dev            : deploy/monitoring/.env.example 기준으로 실제 값 채움 (커밋 금지)
+#    - .env.dev            : 손으로 만들지 않는다. 배포가 Secrets Manager infra/monitoring-dev에서 받아 쓴다(#348).
+#                            인스턴스 롤에 이 시크릿 읽기 권한이 있어야 한다(inline policy monitoring-secrets-read).
 
-# 2) .env.dev 에 GRAFANA_ADMIN_PASSWORD·ALERT_WEBHOOK_URL_* 채운 뒤 전체 기동
+# 2) 첫 기동은 GitHub Actions에서 deploy-dev.yml을 workflow_dispatch로 실행하면 된다(.env.dev 생성 + 전체 기동).
+#    손으로 하려면 레포의 deploy/monitoring/sync-env.sh를 ~/monitoring에서 실행해 .env.dev를 만든 뒤 기동한다.
+bash sync-env.sh
 docker compose --env-file .env.dev up -d
 
 # 3) 타깃 상태(UP/DOWN) 확인 — 로컬 타깃(prometheus·loki·tempo)과 GPU 호스트 타깃.
@@ -172,6 +175,10 @@ curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'
 > 직접 받아 푸는 방식이다(드리프트 차단 — 서버에서 수동 편집 금지). 배포 시 prometheus·grafana·loki·tempo를 전부
 > `--force-recreate`한다(bind 마운트 stale 방지).
 > **grafana provisioning(datasource·alerting) 변경도 이 재생성으로 함께 반영**된다.
+> 배포 맨 앞에서 `sync-env.sh`가 Secrets Manager `infra/monitoring-dev` 값으로 `.env.dev`를 새로 쓴다(권한 600). 알림
+> 웹훅을 바꾸려면 그 시크릿 값을 고치고 deploy-dev.yml을 workflow_dispatch로 한 번 돌리면 된다. 값을 못 받으면 기존
+> `.env.dev`와 설정을 건드리지 않고 배포가 실패로 끝난다. Grafana 관리자 비밀번호는 Grafana가 처음 뜰 때만 읽고 이후엔
+> 자체 DB 값을 쓰므로, 시크릿 값만 바꿔서는 실제 비밀번호가 바뀌지 않는다(Grafana에서 따로 바꿔야 한다).
 
 ## k6 부하테스트 — DB 버퍼 풀 축소
 
@@ -261,5 +268,6 @@ aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
 - 자격증명: S3·SQS·Secrets Manager 모두 워커 노드 IAM Role을 쓴다(정적 키 불필요).
 - backend 프로브는 readiness `/actuator/health/readiness`, liveness `/actuator/health/liveness`(관리 포트 9292, 초기
   지연 90초)다. 정의는 K8s-manifests `charts/backend`에 있다.
-- `.env.dev`는 이제 모니터링 인스턴스에서만 쓴다. 시크릿이라 커밋하지 않고, 키 목록은 `deploy/monitoring/.env.example` 참고.
+- `.env.dev`는 이제 모니터링 인스턴스에서만 쓴다. 원본은 Secrets Manager `infra/monitoring-dev`이고 배포 때마다 다시
+  쓰이므로 서버에서 직접 고치지 않는다. 키 목록은 `deploy/monitoring/.env.example` 참고.
 - prod는 아직 `deploy-prod.yml`의 SSM + `prod/docker-compose.yml` 방식이다.
