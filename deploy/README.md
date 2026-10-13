@@ -7,6 +7,19 @@ dev는 두 갈래로 배포된다.
 - **관측성 스택**(prometheus·grafana·loki·tempo)은 별도 모니터링 EC2(`brbs-monitoring`, #214)에서 docker compose로
   돈다. compose와 설정은 이 디렉터리가 단일 진실원이고, **서버에서 직접 편집하지 않는다**(CD가 덮어씀).
 
+## 디렉터리
+
+| 경로 | 내용 | 배포 주체 |
+|------|------|-----------|
+| `monitoring/` | 중앙 관측성 스택 — compose와 컨테이너에 마운트되는 설정(`config/`) | `deploy-dev.yml`의 `deploy-monitoring` job (SSM) |
+| `docker-compose.prod.yml`·`.env.prod.example` | prod 앱 스택(EC2) | `deploy-prod.yml` (SSM) |
+
+**클러스터에 들어가는 것은 이 레포에 두지 않는다.** 차트·매니페스트·values·Argo CD Application 정의는 전부
+K8s-manifests에 있고 Argo CD는 그 레포만 본다. 여기에 `k8s/` 같은 디렉터리를 만들면 운영 방식이 레포 단위로
+갈리고 drift를 비교할 기준이 사라진다 — #338에서 한 번 그랬고 경위는 #339에 적혀 있다.
+
+로컬 개발용 자산은 배포물이 아니므로 `docker/`에 둔다. LocalStack 큐 초기화 스크립트가 그 경우다.
+
 ## 구성
 
 | 구성요소 | 형태 | 위치 | 비고 |
@@ -17,7 +30,7 @@ dev는 두 갈래로 배포된다.
 | PostgreSQL | **외부 RDS** | - | values `config`의 `DB_HOST`로 연결 |
 | SQS (OCR 트리거) | **관리형 AWS** | - | 워커 노드 IAM Role로 접속(정적 키 미주입) |
 | 외부 진입 | ALB → Traefik(NodePort 30080) → Ingress | - | `api-dev.brbosang.com`. 관리 포트 9292는 `/actuator/health`·`/actuator/info`만 외부에 연다 |
-| Prometheus / Grafana / Loki / Tempo | 컨테이너 | 모니터링 EC2 | `docker-compose.monitoring.yml`. 상세는 하단 "관측성 스택" 참고 |
+| Prometheus / Grafana / Loki / Tempo | 컨테이너 | 모니터링 EC2 | `monitoring/docker-compose.yml`. 상세는 하단 "관측성 스택" 참고 |
 
 ## 배포 흐름 (자동, `develop` push 시)
 
@@ -30,10 +43,10 @@ Argo CD뿐이다.
 3. **Argo CD**: 레포 변경을 감지(최대 3분)해 Sync → 롤링 업데이트(새 파드가 readiness를 통과한 뒤 구 파드 종료)
 4. **`verify-deploy`**: `https://api-dev.brbosang.com/actuator/info`의 `app.commit`이 이번 커밋과 같아지고
    `/v3/api-docs`가 200인지 최대 15분 기다려 확인
-5. **`deploy-monitoring`(모니터링 인스턴스)**: `deploy/docker-compose.monitoring.yml`·`deploy/monitoring/**` 변경분이 있는
+5. **`deploy-monitoring`(모니터링 인스턴스)**: `deploy/monitoring/**` 변경분이 있는
    push에서만 돈다(`detect-monitoring-changes`가 경로 필터로 판별 — 관련 없는 변경마다 4개 컨테이너를 재생성해 스크랩·push가
    끊기는 걸 방지). `workflow_dispatch`(수동 실행)는 변경 여부 상관없이 강제로 돈다. ECR 의존 없이 독립 실행 — SSM으로
-   `docker-compose.monitoring.yml`·`deploy/monitoring/`를 `~/monitoring/`에 동기화 → prometheus·grafana·loki·tempo `--force-recreate`
+   `deploy/monitoring/`의 compose와 `config/`를 `~/monitoring/`에 동기화 → prometheus·grafana·loki·tempo `--force-recreate`
 6. **`notify`**: 결과를 Discord로 보낸다. 3~4까지 통과해야 "완료"로 나간다
 
 > `dev` 태그는 "가장 최근 dev 빌드" 표시용이고 매니페스트에는 쓰지 않는다. 이름이 그대로인 태그는 매니페스트가
@@ -76,8 +89,8 @@ Argo CD UI는 SSM 포트포워딩(`AWS-StartPortForwardingSessionToRemoteHost`, 
 
 ## 관측성 스택 (Prometheus + Grafana + Loki + Tempo, #88 / 인스턴스 분리 #214)
 
-**별도 모니터링 인스턴스(`brbs-monitoring`)** 에서 `docker-compose.monitoring.yml`로 기동한다. 설정은
-`deploy/monitoring/`(prometheus·grafana provisioning·loki·tempo 설정)으로 관리. 전부 `restart: unless-stopped`로 상주.
+**별도 모니터링 인스턴스(`brbs-monitoring`)** 에서 `monitoring/docker-compose.yml`로 기동한다. 설정은
+`deploy/monitoring/config/`(prometheus·grafana provisioning·loki·tempo 설정)으로 관리. 전부 `restart: unless-stopped`로 상주.
 
 **dev 앱 스택은 soma-k8s 클러스터로 이주했다(#328).** 구 앱 인스턴스의 compose 에이전트(node-exporter·cAdvisor·
 Alloy·redis-exporter)는 docker 제거와 함께 소멸했고, 수집은 클러스터 안 kube-prometheus-stack(node-exporter
@@ -142,9 +155,9 @@ DaemonSet·kubelet cAdvisor·kube-state-metrics)이 맡아 이 인스턴스의 P
 ```bash
 mkdir -p ~/monitoring && cd ~/monitoring
 # 1) 리포의 배포 compose와 .env.dev(시크릿) 배치
-#    - docker-compose.yml : deploy/docker-compose.monitoring.yml 내용 (CD가 이후 자동 동기화)
-#    - monitoring/         : deploy/monitoring/ 내용 (CD가 이후 자동 동기화)
-#    - .env.dev            : deploy/.env.dev.example 기준으로 실제 값 채움 (커밋 금지)
+#    - docker-compose.yml : deploy/monitoring/docker-compose.yml 내용 (CD가 이후 자동 동기화)
+#    - config/             : deploy/monitoring/config/ 내용 (CD가 이후 자동 동기화)
+#    - .env.dev            : deploy/monitoring/.env.example 기준으로 실제 값 채움 (커밋 금지)
 
 # 2) .env.dev 에 GRAFANA_ADMIN_PASSWORD·ALERT_WEBHOOK_URL_* 채운 뒤 전체 기동
 docker compose --env-file .env.dev up -d
@@ -154,8 +167,8 @@ docker compose --env-file .env.dev up -d
 curl -s localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'
 ```
 
-> **CD 동기화**: `deploy-dev.yml`의 `deploy-monitoring` job이 `docker-compose.monitoring.yml`과 함께
-> **`deploy/monitoring/` 디렉터리도** 모니터링 인스턴스에 동기화한다. 인스턴스가 해당 커밋의 레포 tarball을 GitHub에서
+> **CD 동기화**: `deploy-dev.yml`의 `deploy-monitoring` job이 `deploy/monitoring/`의 compose와 함께
+> **`config/` 디렉터리도** 모니터링 인스턴스에 동기화한다. 인스턴스가 해당 커밋의 레포 tarball을 GitHub에서
 > 직접 받아 푸는 방식이다(드리프트 차단 — 서버에서 수동 편집 금지). 배포 시 prometheus·grafana·loki·tempo를 전부
 > `--force-recreate`한다(bind 마운트 stale 방지).
 > **grafana provisioning(datasource·alerting) 변경도 이 재생성으로 함께 반영**된다.
@@ -248,5 +261,5 @@ aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
 - 자격증명: S3·SQS·Secrets Manager 모두 워커 노드 IAM Role을 쓴다(정적 키 불필요).
 - backend 프로브는 readiness `/actuator/health/readiness`, liveness `/actuator/health/liveness`(관리 포트 9292, 초기
   지연 90초)다. 정의는 K8s-manifests `charts/backend`에 있다.
-- `.env.dev`는 이제 모니터링 인스턴스에서만 쓴다. 시크릿이라 커밋하지 않고, 키 목록은 `deploy/.env.dev.example` 참고.
+- `.env.dev`는 이제 모니터링 인스턴스에서만 쓴다. 시크릿이라 커밋하지 않고, 키 목록은 `deploy/monitoring/.env.example` 참고.
 - prod는 아직 `deploy-prod.yml`의 SSM + `docker-compose.prod.yml` 방식이다.

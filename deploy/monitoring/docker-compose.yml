@@ -1,13 +1,13 @@
 # 모니터링 전용 EC2(brbs-monitoring) 배포용 compose (단일 진실원, #214).
-# 서버에서 직접 편집하지 않는다 — compose·deploy/monitoring/ 설정은 이 리포를 PR로 수정하고
+# 서버에서 직접 편집하지 않는다 — 이 compose와 config/ 설정은 리포를 PR로 고치고
 # deploy-dev.yml의 deploy-monitoring job이 SSM으로 동기화한다.
 #
-# prometheus·grafana·loki·tempo는 "저장·조회 백엔드"라 호스트 비종속 — 이 인스턴스로 이전했다.
-# 반대로 node-exporter·cadvisor·alloy는 앱 인스턴스(brbs-backend-dev) 자체를 감시/수집하는 에이전트라
-# 그쪽에 남아 있고(docker-compose.dev.yml), 이 인스턴스의 prometheus가 원격으로 스크랩한다
-# (deploy/monitoring/prometheus.yml의 "원격(앱 인스턴스)" 섹션 — private IP는 PR로 채워 넣는다).
+# prometheus·grafana·loki·tempo는 "저장·조회 백엔드"라 호스트에 매이지 않아 이 인스턴스에 모아 둔다.
+# 수집은 클러스터가 맡는다 — soma-k8s의 kube-prometheus-stack이 이 인스턴스 prometheus로
+# remote_write하고(#328), 그 수집기 설정은 이 리포가 아니라 K8s-manifests platform/ 아래에 있다.
+# config/prometheus.yml의 "원격" 섹션에 남은 호스트 타깃(GPU 노드)은 private IP를 PR로 채운다.
 #
-# 사용: docker compose -f docker-compose.monitoring.yml --env-file .env.dev up -d
+# 사용: 이 디렉터리를 서버 ~/monitoring/ 에 풀고 docker compose --env-file .env.dev up -d
 name: brbs-monitoring
 
 services:
@@ -34,7 +34,7 @@ services:
       # exemplar 저장 — 메트릭 → 트레이스 점프(metric-to-trace)용.
       - "--enable-feature=exemplar-storage"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     mem_limit: 512m
     mem_reservation: 256m
@@ -72,8 +72,8 @@ services:
       ALERT_WEBHOOK_URL_WARNING: ${ALERT_WEBHOOK_URL_WARNING:?set ALERT_WEBHOOK_URL_WARNING}
       TZ: Asia/Seoul
     volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     mem_limit: 384m
     mem_reservation: 128m
@@ -105,7 +105,7 @@ services:
     command:
       - "-config.file=/etc/loki/loki-config.yml"
     volumes:
-      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./config/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
     mem_limit: 256m
     mem_reservation: 128m
@@ -137,7 +137,7 @@ services:
     command:
       - "-config.file=/etc/tempo/tempo-config.yml"
     volumes:
-      - ./monitoring/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - ./config/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
       - tempo-data:/var/tempo
     # 메모리 한계 상향 이력: 256m→512m(anon-rss가 문턱 초과, cgroup OOM)→1g. 512m에서도 시작 시
     # metrics_generator(span-metrics)+WAL 재생이 겹쳐 cgroup OOM으로 반복 크래시했다(OOMKilled=true,

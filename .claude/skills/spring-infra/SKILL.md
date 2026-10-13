@@ -20,7 +20,7 @@ infra-developer 에이전트가 참조하는 운영 준비(production readiness)
 | 환경 문서 | `.env.example` |
 | 정책 문서 | `docs/logging-pii-policy.md` *(생성 예정 — 아직 부재)* |
 | 검증 | `scripts/smoke-test.sh`, `scripts/smoke-test.k6.js`, `scripts/adjuster-loadtest.k6.js` |
-| 관측성 스택(LGTM) | `deploy/monitoring/{prometheus.yml,loki/,tempo/,alloy/,grafana/}` |
+| 관측성 스택(LGTM) | `deploy/monitoring/docker-compose.yml` + `deploy/monitoring/config/{prometheus.yml,loki/,tempo/,grafana/}` |
 | k6 부하테스트 데이터 시더 | `src/main/java/.../devtools/K6ScenarioSeedRunner.java`, `K6AdjusterSeedRunner.java` |
 
 ## 1. Actuator 헬스체크 / 프로브
@@ -124,7 +124,7 @@ SqsClient.builder()
     .build();
 ```
 
-로컬 브로커는 **LocalStack(SQS)**를 compose에 올리고, ready 훅(`deploy/localstack/init-sqs.sh`)이 `ocr-job-queue`를 생성한다. 운영/스테이징은 **관리형 AWS SQS**(컨테이너 없음)로 IAM Role로 접속한다 — `AWS_SQS_ENDPOINT`를 비우면 실제 SQS로 붙는다.
+로컬 브로커는 **LocalStack(SQS)**를 compose에 올리고, ready 훅(`docker/localstack/init-sqs.sh`)이 `ocr-job-queue`를 생성한다. 운영/스테이징은 **관리형 AWS SQS**(컨테이너 없음)로 IAM Role로 접속한다 — `AWS_SQS_ENDPOINT`를 비우면 실제 SQS로 붙는다.
 
 ```yaml
   localstack:
@@ -134,7 +134,7 @@ SqsClient.builder()
     environment:
       SERVICES: sqs
     volumes:
-      - ./deploy/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
+      - ./docker/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
     healthcheck:
       test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name ocr-job-queue >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -187,9 +187,9 @@ logging:
 
 `scripts/smoke-test.sh`(curl)는 health/liveness/readiness 상태코드 + 본문 `UP`을 확인한다. `scripts/smoke-test.k6.js`(k6)는 최소 부하로 실패율·p95 threshold를 검증한다. 엔드포인트가 늘면 스크립트에 추가한다. 스모크=배포 후 헬스 확인, 기능 검증은 통합 테스트(spring-qa) 몫 — 경계를 지킨다.
 
-## 8. 관측성 스택 (Loki·Grafana·Tempo·Alloy) + k6 부하테스트
+## 8. 관측성 스택 (Loki·Grafana·Tempo·Prometheus) + k6 부하테스트
 
-`deploy/monitoring/`에 로그(Loki)·대시보드(Grafana)·트레이스(Tempo)·수집 에이전트(Alloy)와 Prometheus 스크레이프 설정(`prometheus.yml`)이 있다. Grafana 대시보드는 `grafana/dashboards/*.json`(API 지연시간 percentile·5xx 에러율, WebSocket 채팅 핸드셰이크/relay 지연, RDS(CloudWatch), redis_exporter, 비용 최적화 등)으로 프로비저닝되고 알림 정책은 `grafana/provisioning/alerting/`에 있다.
+`deploy/monitoring/`에 모니터링 EC2용 compose와 마운트되는 설정(`config/`)이 있다 — 로그(Loki)·대시보드(Grafana)·트레이스(Tempo) 설정과 Prometheus 스크레이프 설정(`config/prometheus.yml`)이다. 클러스터 쪽 수집기(alloy DaemonSet·kube-prometheus-stack) 설정은 이 리포가 아니라 K8s-manifests `platform/` 아래에 있다. Grafana 대시보드는 `config/grafana/dashboards/*.json`(API 지연시간 percentile·5xx 에러율, WebSocket 채팅 핸드셰이크/relay 지연, RDS(CloudWatch), redis_exporter, 비용 최적화 등)으로 프로비저닝되고 알림 정책은 `config/grafana/provisioning/alerting/`에 있다.
 
 - **k6 부하테스트 결과는 Grafana가 아니라 Datadog으로 수집한다** — 한때 k6 결과도 Grafana 대시보드로 연동했으나 제거했다(현재는 앱/인프라 관측은 Grafana, 부하테스트 결과는 Datadog으로 역할이 분리돼 있다).
 - **CI 이미지 빌드**는 buildx + GitHub Actions 레이어 캐시를 쓴다(빌드 시간 단축 목적, 런타임 동작과는 무관).

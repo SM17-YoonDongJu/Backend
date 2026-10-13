@@ -36,7 +36,7 @@ services:
       SERVICES: sqs
       DEBUG: "0"
     volumes:
-      - ./deploy/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
+      - ./docker/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
     healthcheck:
       test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name ocr-job-queue >/dev/null 2>&1 || exit 1"]
       interval: 10s

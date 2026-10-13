@@ -1,6 +1,6 @@
 # Loki 설정 (single-binary) — 로그 저장·검색. t3 콜로케이트, 외부 미노출(compose에서 127.0.0.1 바인딩).
 # 저장은 로컬 파일시스템(Prometheus 3d TSDB와 동일 철학) + 3일 보존. 스케일업 시 object_store를 s3로 교체.
-# 이 파일은 grafana provisioning처럼 deploy/monitoring/ 로 관리하며 서버에서 직접 편집하지 않는다.
+# 이 파일은 grafana provisioning처럼 deploy/monitoring/config/ 로 관리하며 서버에서 직접 편집하지 않는다.
 auth_enabled: false
 
 server:
