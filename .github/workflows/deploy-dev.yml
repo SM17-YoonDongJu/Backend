@@ -230,6 +230,8 @@ jobs:
           # 새 설정을 config.new 로 먼저 복사한 뒤 교체하는 건 복사가 실패했을 때 서버에 설정이 없는 상태로
           # 남지 않게 하기 위함이다(set -e 라 복사 실패 시 뒤의 docker compose 가 돌지 않는다).
           # rm 대상에 구 레이아웃의 monitoring/ 을 같이 둔 건 재배치(#345) 이전 서버에 남은 디렉터리를 한 번 걷어내기 위함이다.
+          # 비밀값(.env.dev)은 서버에서 손으로 관리하지 않고 매 배포 맨 앞에서 Secrets Manager 값으로 새로 쓴다(#348).
+          # 설정 교체보다 앞에 두는 건, 비밀값을 못 받아 멈출 때 설정 디렉터리가 바뀐 채로 남지 않게 하기 위함이다.
           # 볼륨 바인드 마운트 대상이라 EC2 디스크에 실파일이 있어야 한다.
           # 예전엔 tar.gz를 base64로 SSM 커맨드에 실어 보냈는데, SSM 커맨드 한도(100KB) 보호용 90KB 가드에
           # 대시보드가 늘면서 실제로 걸렸다(#328 시점 실측 93KB — k8s 대시보드 5종을 더하면 130KB). 지금은
@@ -247,6 +249,8 @@ jobs:
                 \"curl -fsSL --retry 3 -o /tmp/repo-sync.tar.gz https://codeload.github.com/$GITHUB_REPOSITORY/tar.gz/$GITHUB_SHA\",
                 \"rm -rf /tmp/repo-sync && mkdir -p /tmp/repo-sync\",
                 \"tar -xzf /tmp/repo-sync.tar.gz -C /tmp/repo-sync --strip-components=1\",
+                \"echo '===== 비밀값 동기화(Secrets Manager infra/monitoring-dev → .env.dev, #348) ====='\",
+                \"bash /tmp/repo-sync/deploy/monitoring/sync-env.sh\",
                 \"echo '===== compose·config 동기화(리포 기준, #214) ====='\",
                 \"cp /tmp/repo-sync/deploy/monitoring/docker-compose.yml docker-compose.yml\",
                 \"rm -rf config.new && cp -R /tmp/repo-sync/deploy/monitoring/config config.new\",
