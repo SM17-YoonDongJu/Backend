@@ -1,5 +1,5 @@
 # prod EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
-# 사용: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+# 사용: 이 디렉터리를 서버 ~/backend/ 에 두고 docker compose --env-file .env.prod up -d
 # CD(main push)는 backend만 bounce: ... up -d --no-deps backend
 # 인프라(redis)는 최초 1회 full up 후 restart 정책으로 상주한다. OCR 트리거 브로커는 AWS SQS(관리형, 컨테이너 없음).
 # dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시.

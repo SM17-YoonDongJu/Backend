@@ -127,7 +127,7 @@ jobs:
           SHORT_SHA: ${{ needs.build-and-push.outputs.short_sha }}
         run: |
           # 리포의 배포 compose를 base64로 인코딩해 SSM 커맨드로 EC2에 그대로 기록(드리프트 차단)
-          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.prod.yml)
+          COMPOSE_B64=$(base64 -w0 deploy/prod/docker-compose.yml)
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \

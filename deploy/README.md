@@ -12,7 +12,7 @@ dev는 두 갈래로 배포된다.
 | 경로 | 내용 | 배포 주체 |
 |------|------|-----------|
 | `monitoring/` | 중앙 관측성 스택 — compose와 컨테이너에 마운트되는 설정(`config/`) | `deploy-dev.yml`의 `deploy-monitoring` job (SSM) |
-| `docker-compose.prod.yml`·`.env.prod.example` | prod 앱 스택(EC2) | `deploy-prod.yml` (SSM) |
+| `prod/` | prod 앱 스택(EC2) — compose와 env 키 목록 | `deploy-prod.yml` (SSM) |
 
 **클러스터에 들어가는 것은 이 레포에 두지 않는다.** 차트·매니페스트·values·Argo CD Application 정의는 전부
 K8s-manifests에 있고 Argo CD는 그 레포만 본다. 여기에 `k8s/` 같은 디렉터리를 만들면 운영 방식이 레포 단위로
@@ -97,7 +97,7 @@ Alloy·redis-exporter)는 docker 제거와 함께 소멸했고, 수집은 클러
 DaemonSet·kubelet cAdvisor·kube-state-metrics)이 맡아 이 인스턴스의 Prometheus로 remote_write한다
 (`cluster="soma-k8s"` 라벨로 유입). 로그는 alloy DaemonSet 전환 전까지 Loki 신규 유입이 없다(후속).
 
-> ⚠️ **이 관측성 스택은 현재 dev 전용이다.** prod(`docker-compose.prod.yml`)에는 수집 에이전트가 전혀 없고
+> ⚠️ **이 관측성 스택은 현재 dev 전용이다.** prod(`prod/docker-compose.yml`)에는 수집 에이전트가 전혀 없고
 > remote_write를 보내는 클러스터도 dev(soma-k8s)뿐이다. prod 부하테스트·장애 조사 시 이 Grafana에서 prod 쪽
 > 데이터는 보이지 않는다 — prod 수집을 따로 배선해야 커버된다(별도 이슈로 분리할 것).
 
@@ -262,4 +262,4 @@ aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
 - backend 프로브는 readiness `/actuator/health/readiness`, liveness `/actuator/health/liveness`(관리 포트 9292, 초기
   지연 90초)다. 정의는 K8s-manifests `charts/backend`에 있다.
 - `.env.dev`는 이제 모니터링 인스턴스에서만 쓴다. 시크릿이라 커밋하지 않고, 키 목록은 `deploy/monitoring/.env.example` 참고.
-- prod는 아직 `deploy-prod.yml`의 SSM + `docker-compose.prod.yml` 방식이다.
+- prod는 아직 `deploy-prod.yml`의 SSM + `prod/docker-compose.yml` 방식이다.
