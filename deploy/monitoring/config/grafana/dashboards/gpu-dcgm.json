@@ -81,7 +81,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg by (instance) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$instance\"})",
+          "expr": "avg by (instance) (max by (instance, gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$instance\"}))",
           "legendFormat": "{{instance}}"
         }
       ]
@@ -268,7 +268,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (instance) (DCGM_FI_DEV_POWER_USAGE{instance=~\"$instance\"})",
+          "expr": "sum by (instance) (max by (instance, gpu) (DCGM_FI_DEV_POWER_USAGE{instance=~\"$instance\"}))",
           "legendFormat": "{{instance}}"
         }
       ]
@@ -325,7 +325,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_GPU_UTIL{instance=~\"$instance\"}",
+          "expr": "max by (instance, gpu) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$instance\"})",
           "legendFormat": "{{instance}} gpu{{gpu}}"
         }
       ]
@@ -368,7 +368,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_FB_USED{instance=~\"$instance\"} * 1048576",
+          "expr": "max by (instance, gpu) (DCGM_FI_DEV_FB_USED{instance=~\"$instance\"}) * 1048576",
           "legendFormat": "{{instance}} gpu{{gpu}} 사용"
         },
         {
@@ -377,7 +377,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(DCGM_FI_DEV_FB_USED{instance=~\"$instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$instance\"}) * 1048576",
+          "expr": "max by (instance, gpu) (DCGM_FI_DEV_FB_USED{instance=~\"$instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$instance\"}) * 1048576",
           "legendFormat": "{{instance}} gpu{{gpu}} 총량"
         }
       ]
@@ -420,7 +420,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_GPU_TEMP{instance=~\"$instance\"}",
+          "expr": "max by (instance, gpu) (DCGM_FI_DEV_GPU_TEMP{instance=~\"$instance\"})",
           "legendFormat": "{{instance}} gpu{{gpu}}"
         }
       ]
@@ -463,7 +463,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_POWER_USAGE{instance=~\"$instance\"}",
+          "expr": "max by (instance, gpu) (DCGM_FI_DEV_POWER_USAGE{instance=~\"$instance\"})",
           "legendFormat": "{{instance}} gpu{{gpu}}"
         }
       ]
@@ -506,7 +506,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_SM_CLOCK{instance=~\"$instance\"}",
+          "expr": "max by (instance, gpu) (DCGM_FI_DEV_SM_CLOCK{instance=~\"$instance\"})",
           "legendFormat": "{{instance}} gpu{{gpu}} SM"
         },
         {
@@ -515,7 +515,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_MEM_CLOCK{instance=~\"$instance\"}",
+          "expr": "max by (instance, gpu) (DCGM_FI_DEV_MEM_CLOCK{instance=~\"$instance\"})",
           "legendFormat": "{{instance}} gpu{{gpu}} MEM"
         }
       ]
@@ -567,6 +567,6 @@
   "timezone": "browser",
   "title": "GPU (DCGM)",
   "uid": "brbs-gpu-dcgm",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
