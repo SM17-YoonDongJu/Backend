@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "g6(brbs-ai) GPU 관측 — dcgm-exporter 기반 VRAM/util/온도/전력/클럭. ollama 실패 시나리오(VRAM 언로드·큐잉·스로틀링)를 GPU 지표로 본다. 컨테이너 생존/로그는 cAdvisor(14282)·Loki, 시스템은 Node Exporter Full(1860) 참조.",
+  "description": "GPU 노드 관측 — dcgm-exporter 기반 VRAM/util/온도/전력/클럭. 노드(instance) 변수로 호스트를 고른다: g4dn=brbs-etl(클러스터 dcgm-exporter→KPS remote_write), g6=brbs-ai(중앙 정적 잡 dcgm-gpu, stopped 동안 주석). ollama·vLLM 실패 시나리오(VRAM 언로드·큐잉·스로틀링)를 GPU 지표로 본다. 컨테이너 생존/로그는 cAdvisor(14282)·Loki, 시스템은 Node Exporter Full(1860) 참조.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -18,7 +18,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "GPU 개요 (dcgm-exporter · g6=brbs-ai)",
+      "title": "GPU 개요 (dcgm-exporter · 노드별)",
       "type": "row"
     },
     {
@@ -81,8 +81,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg(DCGM_FI_DEV_GPU_UTIL)",
-          "legendFormat": "util"
+          "expr": "avg by (instance) (DCGM_FI_DEV_GPU_UTIL{instance=~\"$instance\"})",
+          "legendFormat": "{{instance}}"
         }
       ]
     },
@@ -146,8 +146,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE)) * 100",
-          "legendFormat": "vram"
+          "expr": "max by (instance) (DCGM_FI_DEV_FB_USED{instance=~\"$instance\"} / (DCGM_FI_DEV_FB_USED{instance=~\"$instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$instance\"})) * 100",
+          "legendFormat": "{{instance}}"
         }
       ]
     },
@@ -211,8 +211,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(DCGM_FI_DEV_GPU_TEMP)",
-          "legendFormat": "temp"
+          "expr": "max by (instance) (DCGM_FI_DEV_GPU_TEMP{instance=~\"$instance\"})",
+          "legendFormat": "{{instance}}"
         }
       ]
     },
@@ -268,8 +268,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(DCGM_FI_DEV_POWER_USAGE)",
-          "legendFormat": "power"
+          "expr": "sum by (instance) (DCGM_FI_DEV_POWER_USAGE{instance=~\"$instance\"})",
+          "legendFormat": "{{instance}}"
         }
       ]
     },
@@ -325,8 +325,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_GPU_UTIL",
-          "legendFormat": "gpu{{gpu}}"
+          "expr": "DCGM_FI_DEV_GPU_UTIL{instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} gpu{{gpu}}"
         }
       ]
     },
@@ -368,8 +368,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_FB_USED * 1048576",
-          "legendFormat": "gpu{{gpu}} 사용"
+          "expr": "DCGM_FI_DEV_FB_USED{instance=~\"$instance\"} * 1048576",
+          "legendFormat": "{{instance}} gpu{{gpu}} 사용"
         },
         {
           "refId": "B",
@@ -377,8 +377,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) * 1048576",
-          "legendFormat": "gpu{{gpu}} 총량"
+          "expr": "(DCGM_FI_DEV_FB_USED{instance=~\"$instance\"} + DCGM_FI_DEV_FB_FREE{instance=~\"$instance\"}) * 1048576",
+          "legendFormat": "{{instance}} gpu{{gpu}} 총량"
         }
       ]
     },
@@ -420,8 +420,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_GPU_TEMP",
-          "legendFormat": "gpu{{gpu}}"
+          "expr": "DCGM_FI_DEV_GPU_TEMP{instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} gpu{{gpu}}"
         }
       ]
     },
@@ -463,8 +463,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_POWER_USAGE",
-          "legendFormat": "gpu{{gpu}}"
+          "expr": "DCGM_FI_DEV_POWER_USAGE{instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} gpu{{gpu}}"
         }
       ]
     },
@@ -506,8 +506,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_SM_CLOCK",
-          "legendFormat": "gpu{{gpu}} SM"
+          "expr": "DCGM_FI_DEV_SM_CLOCK{instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} gpu{{gpu}} SM"
         },
         {
           "refId": "B",
@@ -515,8 +515,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "DCGM_FI_DEV_MEM_CLOCK",
-          "legendFormat": "gpu{{gpu}} MEM"
+          "expr": "DCGM_FI_DEV_MEM_CLOCK{instance=~\"$instance\"}",
+          "legendFormat": "{{instance}} gpu{{gpu}} MEM"
         }
       ]
     }
@@ -529,7 +529,35 @@
     "dcgm"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(DCGM_FI_DEV_GPU_UTIL, instance)",
+        "includeAll": true,
+        "label": "노드",
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(DCGM_FI_DEV_GPU_UTIL, instance)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-6h",
@@ -537,8 +565,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "GPU (DCGM) — g6",
+  "title": "GPU (DCGM)",
   "uid": "brbs-gpu-dcgm",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
