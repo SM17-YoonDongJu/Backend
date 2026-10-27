@@ -1,5 +1,7 @@
 # 바른보상 Backend
 
+[![CI](https://github.com/SM17-YoonDongJu/Backend/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/SM17-YoonDongJu/Backend/actions/workflows/ci.yml)
+
 보험금 지급 결과에 의문이 있는 사용자에게 AI 분석 리포트를 제공하고, 독립 손해사정사의 검수와 상담으로 연결하는 서비스의 Spring Boot API 서버다.
 
 설계 배경, 장애 기록, 기술 결정의 근거는 [위키](https://github.com/SM17-YoonDongJu/Backend/wiki)에 있다. 이 문서는 코드를 처음 여는 사람이 구조를 잡고 로컬에서 띄울 수 있도록 하는 데 집중한다.
@@ -50,6 +52,12 @@
 | `./gradlew checkstyleMain` | 코드 스타일 검사 |
 | `docker compose --profile app up -d` | 앱까지 컨테이너로 실행 |
 
+테스트는 `test` 프로파일로 `localhost:5432`의 `test_db`(계정 `test`/`test`)와 `localhost:6379`의 Redis에 붙는다. CI는 둘을 서비스 컨테이너로 띄우고, 로컬에서는 `docker compose`로 띄운 PostgreSQL에 한 번만 만들어 두면 된다.
+
+`docker compose exec postgres psql -U soma -d soma_db -c "CREATE ROLE test LOGIN SUPERUSER PASSWORD 'test'" -c "CREATE DATABASE test_db OWNER test"`
+
+(`.env`에서 `DB_USER`·`DB_NAME`을 바꿨다면 `-U`·`-d` 값도 맞춘다.)
+
 QA용 API 테스트는 Gradle과 별개인 `qa-e2e/`(Playwright) 프로젝트에 있다.
 
 ## 프로젝트 구조
@@ -81,6 +89,20 @@ QA용 API 테스트는 Gradle과 별개인 `qa-e2e/`(Playwright) 프로젝트에
 **DB 마이그레이션.** 스키마는 Flyway(`src/main/resources/db/migration/V{n}__설명.sql`)로만 바꾸고 JPA는 `validate`다. 새 테이블과 인덱스는 반드시 `core.` 스키마를 붙여 만든다. 붙이지 않으면 배포 후 앱이 테이블을 찾지 못해 기동에 실패한다. 번호는 develop뿐 아니라 열려 있는 다른 PR과도 겹치지 않는지 확인한다.
 
 **브랜치와 커밋.** `feature/*` → `develop` → `main`의 Git Flow를 쓴다. 브랜치는 `<type>/<이슈번호>-<요약>`, 커밋은 `<type>(<scope>): 한국어 설명` 형식이다. 버전 태그는 `main`에 머지될 때 semantic-release가 커밋 타입을 보고 붙인다.
+
+## 주요 기술 기록
+
+개발하면서 겪은 문제와 결정은 위키에 사례 기록으로 남긴다. 그중 몇 가지:
+
+| 기록 | 내용 |
+|---|---|
+| [사건번호 발급 락 경합으로 처리량 붕괴](https://github.com/SM17-YoonDongJu/Backend/wiki/사건번호-발급-락-경합으로-처리량-붕괴) | 혼합 부하에서 실패율 23~37%였던 리포트 접수를 DB 시퀀스로 바꿔 단일 API 100 RPS에서 실패 0%, p95 114ms |
+| [OCR 트리거 브로커를 Kafka에서 MSK를 거쳐 SQS로 전환](https://github.com/SM17-YoonDongJu/Backend/wiki/OCR-트리거-브로커를-Kafka에서-MSK를-거쳐-SQS로-전환) | 하루 사이에 브로커를 두 번 바꾼 이유와, 큐 이름 폴백이 행을 영구히 망가뜨린 사고 |
+| [OpenAPI 프로퍼티명이 camelCase로 문서화돼 실제 응답과 어긋남](https://github.com/SM17-YoonDongJu/Backend/wiki/OpenAPI-프로퍼티명이-camelCase로-문서화돼-실제-응답과-어긋남) | Spring Boot 4의 Jackson 3 설정을 springdoc이 보지 못해 602개 중 599개 프로퍼티가 실제 응답과 달랐던 문제 |
+| [스키마 미지정 마이그레이션이 배포를 깨뜨려 core 스키마로 통일](https://github.com/SM17-YoonDongJu/Backend/wiki/스키마-미지정-마이그레이션이-배포를-깨뜨려-core-스키마로-통일) | 마이그레이션이 조용히 성공한 뒤 앱이 기동하지 못한 배포 사고와 스키마 배치 정리 |
+| [Refresh 토큰 동시 재발급 경쟁을 Lua 원자 CAS로 해결](https://github.com/SM17-YoonDongJu/Backend/wiki/Refresh-토큰-동시-재발급-경쟁을-Lua-원자-CAS로-해결) | 동시 재발급 두 건이 모두 성공하던 경쟁 조건을 Redis Lua 한 번의 호출로 제거 |
+
+전체 목록은 [위키 Home](https://github.com/SM17-YoonDongJu/Backend/wiki)에 있다.
 
 ## 배포 환경
 
