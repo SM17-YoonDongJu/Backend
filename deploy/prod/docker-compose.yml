@@ -7,7 +7,7 @@ name: brbs
 
 services:
   backend:
-    image: ${ECR_REGISTRY}/soma/backend:${BACKEND_TAG:-prod}
+    image: ${ECR_REGISTRY}/brbs/backend:${BACKEND_TAG:-prod}
     container_name: brbs-backend
     restart: unless-stopped
     ports:

@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  ECR_REPOSITORY: soma/backend
+  ECR_REPOSITORY: brbs/backend
   EC2_INSTANCE_NAME: brbs-backend-prod
   EC2_USER: ubuntu
   EC2_HOME: /home/ubuntu
@@ -132,7 +132,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy soma/backend $SHORT_SHA (prod)" \
+            --comment "Deploy brbs/backend $SHORT_SHA (prod)" \
             --parameters "{
               \"commands\": [
                 \"set -e\",

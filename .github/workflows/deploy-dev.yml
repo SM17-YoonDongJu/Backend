@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  ECR_REPOSITORY: soma/backend
+  ECR_REPOSITORY: brbs/backend
   # dev 클러스터는 Argo CD가 K8s-manifests 레포를 보고 배포한다(#332).
   MANIFESTS_REPOSITORY: K8s-manifests
   MANIFESTS_VALUES_FILE: envs/dev/backend.values.yaml
