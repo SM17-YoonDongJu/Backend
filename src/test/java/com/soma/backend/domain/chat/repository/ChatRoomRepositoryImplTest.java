@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,9 +22,12 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 
 import com.soma.backend.domain.chat.ChatRoomFixture;
+import com.soma.backend.domain.chat.dto.ChatRoomListResponse;
+import com.soma.backend.domain.chat.dto.ChatRoomSummaryResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatRoom;
 import com.soma.backend.domain.chat.entity.ChatRoomStatus;
+import com.soma.backend.domain.chat.service.ChatRoomQueryService;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
@@ -36,6 +41,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 /**
  * ChatRoom 목록 QueryDSL(설계서 §4 ①) 실제 test_db 통합 테스트. 상관 서브쿼리(unread_count)·LEFT JOIN
  * (review_status)·정렬(last_message_at DESC NULLS LAST)·내 방 필터가 실제 SQL로 정확히 실행되는지 검증한다.
+ * 목록 keyset 페이지네이션(정렬 last_message_at DESC NULLS LAST, id DESC)의 페이지·null 구간·동일 시각 경계도 검증한다.
  * {@code @Transactional}로 테스트 종료 시 롤백된다.
  */
 @SpringBootTest
@@ -53,6 +59,8 @@ class ChatRoomRepositoryImplTest {
   private ReportReviewRepository reportReviewRepository;
   @Autowired
   private UserRepository userRepository;
+  @Autowired
+  private ChatRoomQueryService chatRoomQueryService;
   @PersistenceContext
   private EntityManager entityManager;
 
@@ -91,7 +99,7 @@ class ChatRoomRepositoryImplTest {
     ChatRoom myRoom = persistRoom(customer, adjuster, null, null);
     persistRoom(otherCustomer, otherAdjuster, null, null);
 
-    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId());
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId(), null, 100);
 
     assertThat(rows).extracting(ChatRoomListRow::chatRoomId).containsExactly(myRoom.getId());
   }
@@ -118,7 +126,7 @@ class ChatRoomRepositoryImplTest {
     entityManager.flush();
     entityManager.clear();
 
-    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId());
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId(), null, 100);
 
     assertThat(rows).extracting(ChatRoomListRow::chatRoomId)
         .containsExactly(newerActivity.getId(), olderActivity.getId(), noActivity.getId());
@@ -137,7 +145,7 @@ class ChatRoomRepositoryImplTest {
         User.create("검색사정사", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
     ChatRoom searchRoom = persistRoom(customer, searchAdjuster, null, null);
 
-    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId());
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId(), null, 100);
 
     ChatRoomListRow pipelineRow =
         rows.stream().filter(row -> row.chatRoomId().equals(pipelineRoom.getId())).findFirst().orElseThrow();
@@ -174,7 +182,7 @@ class ChatRoomRepositoryImplTest {
     entityManager.flush();
     entityManager.clear();
 
-    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId());
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId(), null, 100);
     ChatRoomListRow row = rows.stream().filter(candidate -> candidate.chatRoomId().equals(room.getId()))
         .findFirst().orElseThrow();
 
@@ -191,7 +199,7 @@ class ChatRoomRepositoryImplTest {
     entityManager.flush();
     entityManager.clear();
 
-    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId());
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId(), null, 100);
     ChatRoomListRow row = rows.stream().filter(candidate -> candidate.chatRoomId().equals(room.getId()))
         .findFirst().orElseThrow();
 
@@ -211,10 +219,221 @@ class ChatRoomRepositoryImplTest {
     entityManager.flush();
     entityManager.clear();
 
-    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(adjuster.getId());
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(adjuster.getId(), null, 100);
     ChatRoomListRow row = rows.stream().filter(candidate -> candidate.chatRoomId().equals(room.getId()))
         .findFirst().orElseThrow();
 
     assertThat(row.unreadCount()).isEqualTo(1L);
+  }
+
+  private ChatRoom persistRoomWithLastMessageAt(User owner, LocalDateTime lastMessageAt) {
+    ChatRoom room = persistRoom(owner, adjuster, null, null);
+    ReflectionTestUtils.setField(room, "lastMessageAt", lastMessageAt);
+    return chatRoomRepository.save(room);
+  }
+
+  private void flushAndClear() {
+    entityManager.flush();
+    entityManager.clear();
+  }
+
+  private static ChatRoomCursor cursorOf(ChatRoomListRow row) {
+    return new ChatRoomCursor(row.lastMessageAt(), row.chatRoomId());
+  }
+
+  private static List<UUID> idsOf(List<ChatRoomListRow> rows) {
+    return rows.stream().map(ChatRoomListRow::chatRoomId).toList();
+  }
+
+  @Test
+  @DisplayName("페이지 경계: 방 5개를 limit 3으로 넘기면 3행 → 마지막 행 커서로 남은 2행, 합치면 전체 정렬과 같다")
+  void findMyRoomRows_pagination_splitsWithoutDuplicateOrGap() {
+    for (int day = 1; day <= 5; day++) {
+      persistRoomWithLastMessageAt(customer, LocalDateTime.of(2026, 3, day, 12, 0));
+    }
+    flushAndClear();
+    List<UUID> all = idsOf(chatRoomRepository.findMyRoomRows(customer.getId(), null, 100));
+
+    List<ChatRoomListRow> first = chatRoomRepository.findMyRoomRows(customer.getId(), null, 3);
+    List<ChatRoomListRow> second =
+        chatRoomRepository.findMyRoomRows(customer.getId(), cursorOf(first.get(first.size() - 1)), 3);
+
+    assertThat(first).hasSize(3);
+    assertThat(second).hasSize(2);
+    List<UUID> merged = new ArrayList<>(idsOf(first));
+    merged.addAll(idsOf(second));
+    assertThat(merged).hasSize(5).doesNotHaveDuplicates().containsExactlyElementsOf(all);
+    assertThat(first.get(0).lastMessageAt()).isEqualTo(LocalDateTime.of(2026, 3, 5, 12, 0));
+    assertThat(second.get(1).lastMessageAt()).isEqualTo(LocalDateTime.of(2026, 3, 1, 12, 0));
+  }
+
+  @Test
+  @DisplayName("null 경계: 값 있는 방 2개 → 다음 페이지는 null 구간부터 → N_ 커서로 남은 null 방이 id DESC로 이어진다")
+  void findMyRoomRows_pagination_crossesIntoNullSegment() {
+    ChatRoom newer = persistRoomWithLastMessageAt(customer, LocalDateTime.of(2026, 5, 2, 9, 0));
+    ChatRoom older = persistRoomWithLastMessageAt(customer, LocalDateTime.of(2026, 5, 1, 9, 0));
+    for (int index = 0; index < 3; index++) {
+      persistRoom(customer, adjuster, null, null);
+    }
+    flushAndClear();
+    List<ChatRoomListRow> all = chatRoomRepository.findMyRoomRows(customer.getId(), null, 100);
+    List<UUID> nullSegment = idsOf(all.subList(2, 5));
+
+    List<ChatRoomListRow> page1 = chatRoomRepository.findMyRoomRows(customer.getId(), null, 2);
+    assertThat(idsOf(page1)).containsExactly(newer.getId(), older.getId());
+    assertThat(cursorOf(page1.get(1)).lastMessageAt()).isNotNull();
+
+    List<ChatRoomListRow> page2 = chatRoomRepository.findMyRoomRows(customer.getId(), cursorOf(page1.get(1)), 2);
+    assertThat(page2).extracting(ChatRoomListRow::lastMessageAt).containsOnlyNulls();
+    assertThat(idsOf(page2)).containsExactlyElementsOf(nullSegment.subList(0, 2));
+
+    ChatRoomCursor nullCursor = cursorOf(page2.get(1));
+    assertThat(nullCursor.lastMessageAt()).isNull();
+    List<ChatRoomListRow> page3 = chatRoomRepository.findMyRoomRows(customer.getId(), nullCursor, 2);
+    assertThat(idsOf(page3)).containsExactly(nullSegment.get(2));
+  }
+
+  @Test
+  @DisplayName("동일 last_message_at tie: 같은 시각 방 3개를 limit 1로 넘기면 id DESC로 하나씩, 중복 없이 나온다")
+  void findMyRoomRows_pagination_tieBreaksById() {
+    LocalDateTime sameTime = LocalDateTime.of(2026, 7, 7, 7, 7, 7);
+    for (int index = 0; index < 3; index++) {
+      persistRoomWithLastMessageAt(customer, sameTime);
+    }
+    flushAndClear();
+    List<UUID> all = idsOf(chatRoomRepository.findMyRoomRows(customer.getId(), null, 100));
+
+    List<UUID> walked = new ArrayList<>();
+    ChatRoomCursor cursor = null;
+    for (int step = 0; step < 4; step++) {
+      List<ChatRoomListRow> page = chatRoomRepository.findMyRoomRows(customer.getId(), cursor, 1);
+      if (page.isEmpty()) {
+        break;
+      }
+      walked.addAll(idsOf(page));
+      cursor = cursorOf(page.get(0));
+    }
+
+    assertThat(walked).hasSize(3).doesNotHaveDuplicates().containsExactlyElementsOf(all);
+  }
+
+  @Test
+  @DisplayName("참여자 필터 유지: 커서를 넘겨도 다른 사용자의 방은 나오지 않는다")
+  void findMyRoomRows_pagination_keepsParticipantFilter() {
+    User otherCustomer = userRepository.save(
+        User.create("타인", LocalDate.of(1990, 1, 1), "F", null, null, Role.USER, null));
+    ChatRoom mine = persistRoomWithLastMessageAt(customer, LocalDateTime.of(2026, 2, 1, 0, 0));
+    ChatRoom othersOlder = persistRoomWithLastMessageAt(otherCustomer, LocalDateTime.of(2026, 1, 1, 0, 0));
+    persistRoom(otherCustomer, adjuster, null, null);
+    flushAndClear();
+
+    // 다른 사용자 방 위치로 만든 커서여도 결과는 내 방으로 한정된다.
+    ChatRoomCursor foreignCursor = new ChatRoomCursor(LocalDateTime.of(2026, 3, 1, 0, 0), othersOlder.getId());
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId(), foreignCursor, 100);
+
+    assertThat(idsOf(rows)).containsExactly(mine.getId());
+  }
+
+  /**
+   * PostgreSQL uuid 정렬은 16바이트 부호 없는 사전순이고, 이는 소문자 hex 문자열 사전순과 같다. Java
+   * {@link UUID#compareTo}(부호 있는 long 비교)와는 다르므로 기대값을 쿼리 결과와 독립적으로 만들 때 이 비교를 쓴다.
+   */
+  private static List<UUID> sortedByIdDesc(List<UUID> ids) {
+    return ids.stream().sorted(Comparator.comparing(UUID::toString).reversed()).toList();
+  }
+
+  @Test
+  @DisplayName("tie 순서 독립 검증: 같은 시각 방들은 PostgreSQL uuid 순서(id DESC)로 나온다 — 쿼리 결과가 아닌 기대값과 비교")
+  void findMyRoomRows_tieOrder_matchesIndependentIdDesc() {
+    LocalDateTime sameTime = LocalDateTime.of(2026, 7, 7, 7, 7, 7, 500_000_000);
+    List<UUID> ids = new ArrayList<>();
+    for (int index = 0; index < 8; index++) {
+      ids.add(persistRoomWithLastMessageAt(customer, sameTime).getId());
+    }
+    flushAndClear();
+
+    List<UUID> walked = new ArrayList<>();
+    ChatRoomCursor cursor = null;
+    for (int step = 0; step < 4; step++) {
+      List<ChatRoomListRow> page = chatRoomRepository.findMyRoomRows(customer.getId(), cursor, 3);
+      if (page.isEmpty()) {
+        break;
+      }
+      walked.addAll(idsOf(page));
+      cursor = cursorOf(page.get(page.size() - 1));
+    }
+
+    assertThat(walked).containsExactlyElementsOf(sortedByIdDesc(ids));
+  }
+
+  @Test
+  @DisplayName("마이크로초 경계: 1µs 차이 방과 같은 µs tie가 섞여도 size 1 순회가 중복·누락 없이 정확한 순서로 끝난다")
+  void findMyRoomRows_microsecondBoundaries_walkExactly() {
+    LocalDateTime base = LocalDateTime.of(2026, 8, 1, 10, 20, 30, 123_456_000);
+    ChatRoom later = persistRoomWithLastMessageAt(customer, base.plusNanos(1_000));
+    List<UUID> tie = new ArrayList<>();
+    tie.add(persistRoomWithLastMessageAt(customer, base).getId());
+    tie.add(persistRoomWithLastMessageAt(customer, base).getId());
+    ChatRoom earlier = persistRoomWithLastMessageAt(customer, base.minusNanos(1_000));
+    ChatRoom noMessage = persistRoom(customer, adjuster, null, null);
+    flushAndClear();
+
+    List<UUID> expected = new ArrayList<>();
+    expected.add(later.getId());
+    expected.addAll(sortedByIdDesc(tie));
+    expected.add(earlier.getId());
+    expected.add(noMessage.getId());
+
+    List<UUID> walked = new ArrayList<>();
+    ChatRoomCursor cursor = null;
+    for (int step = 0; step < 10; step++) {
+      List<ChatRoomListRow> page = chatRoomRepository.findMyRoomRows(customer.getId(), cursor, 1);
+      if (page.isEmpty()) {
+        break;
+      }
+      walked.addAll(idsOf(page));
+      cursor = cursorOf(page.get(0));
+    }
+
+    assertThat(walked).containsExactlyElementsOf(expected);
+  }
+
+  @Test
+  @DisplayName("서비스 커서 왕복(실DB): 서브 µs 나노가 섞인 값도 DB 반올림값으로 인코딩돼 next_cursor 순회가 정확하다")
+  void listMyRooms_endToEndCursorWalk_withSubMicroInput() {
+    // 저장 시 PostgreSQL timestamp(µs)로 반올림된다(.123456789 → .123457). 커서는 DB에서 읽은 값으로 만들어지므로
+    // 다음 요청의 eq 비교가 저장값과 정확히 일치해야 한다.
+    LocalDateTime subMicro = LocalDateTime.of(2026, 9, 1, 0, 0, 0, 123_456_789);
+    List<UUID> tie = new ArrayList<>();
+    tie.add(persistRoomWithLastMessageAt(customer, subMicro).getId());
+    tie.add(persistRoomWithLastMessageAt(customer, subMicro).getId());
+    tie.add(persistRoomWithLastMessageAt(customer, subMicro).getId());
+    ChatRoom older = persistRoomWithLastMessageAt(customer, subMicro.minusSeconds(1));
+    List<UUID> nullRooms = new ArrayList<>();
+    nullRooms.add(persistRoom(customer, adjuster, null, null).getId());
+    nullRooms.add(persistRoom(customer, adjuster, null, null).getId());
+    flushAndClear();
+
+    List<UUID> expected = new ArrayList<>(sortedByIdDesc(tie));
+    expected.add(older.getId());
+    expected.addAll(sortedByIdDesc(nullRooms));
+
+    List<UUID> walked = new ArrayList<>();
+    List<Boolean> hasNextFlags = new ArrayList<>();
+    String cursor = null;
+    for (int step = 0; step < 10; step++) {
+      ChatRoomListResponse response = chatRoomQueryService.listMyRooms(customer.getId(), cursor, 1);
+      response.rooms().stream().map(ChatRoomSummaryResponse::chatRoomId).forEach(walked::add);
+      hasNextFlags.add(response.hasNext());
+      if (!response.hasNext()) {
+        assertThat(response.nextCursor()).isNull();
+        break;
+      }
+      cursor = response.nextCursor();
+    }
+
+    assertThat(walked).containsExactlyElementsOf(expected);
+    // 6개를 size 1로: 앞 5번은 has_next=true, 마지막 1번만 false(빈 다음 페이지 요청이 생기지 않는다)
+    assertThat(hasNextFlags).containsExactly(true, true, true, true, true, false);
   }
 }

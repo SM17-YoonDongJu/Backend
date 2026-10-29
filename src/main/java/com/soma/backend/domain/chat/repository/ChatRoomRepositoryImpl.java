@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
+
 import com.querydsl.core.types.Expression;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -30,9 +32,12 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
   }
 
   @Override
-  public List<ChatRoomListRow> findMyRoomRows(UUID me) {
+  public List<ChatRoomListRow> findMyRoomRows(UUID me, @Nullable ChatRoomCursor cursor, int limit) {
+    QChatRoom room = QChatRoom.chatRoom;
     return baseRoomQuery(me)
-        .orderBy(QChatRoom.chatRoom.lastMessageAt.desc().nullsLast())
+        .where(after(room, cursor))
+        .orderBy(room.lastMessageAt.desc().nullsLast(), room.id.desc())
+        .limit(limit)
         .fetch();
   }
 
@@ -40,6 +45,23 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
   public Optional<ChatRoomListRow> findMyRoomRow(UUID me, UUID chatRoomId) {
     return Optional.ofNullable(
         baseRoomQuery(me).where(QChatRoom.chatRoom.id.eq(chatRoomId)).fetchOne());
+  }
+
+  /**
+   * keyset 조건 — 정렬 {@code last_message_at DESC NULLS LAST, id DESC}에서 커서 다음 행만 남긴다. 커서가 null이면
+   * 조건 없음(QueryDSL은 where(null)을 무시). SQL 3치 논리상 {@code last_message_at < t}는 null 행에서 UNKNOWN이라
+   * null 구간은 {@code isNull()} 분기로만 들어온다. id 비교·정렬은 둘 다 DB(uuid 순서)에서 일어나므로 일관된다.
+   */
+  private @Nullable BooleanExpression after(QChatRoom room, @Nullable ChatRoomCursor cursor) {
+    if (cursor == null) {
+      return null;
+    }
+    if (cursor.lastMessageAt() == null) {
+      return room.lastMessageAt.isNull().and(room.id.lt(cursor.id()));
+    }
+    return room.lastMessageAt.lt(cursor.lastMessageAt())
+        .or(room.lastMessageAt.eq(cursor.lastMessageAt()).and(room.id.lt(cursor.id())))
+        .or(room.lastMessageAt.isNull());
   }
 
   /**
