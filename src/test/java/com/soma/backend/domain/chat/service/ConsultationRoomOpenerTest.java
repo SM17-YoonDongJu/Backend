@@ -37,11 +37,11 @@ import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
  * 때만 따라붙는 부수효과(SYSTEM 안내 메시지 저장 · 커밋 후 브로드캐스트)를 검증한다.
  *
  * <p>방 INSERT 자체는 {@link ChatRoomWriter}(REQUIRES_NEW)에 격리돼 있으므로 여기서는 mock으로
- * 세운다 — 실제 UNIQUE 충돌·격리 동작은 {@code ChatRoomCommandServiceConcurrencyIntegrationTest}가 본다.
+ * 세운다 — 실제 UNIQUE 충돌·격리 동작은 {@code ConsultationRoomOpenerConcurrencyIntegrationTest}가 본다.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ChatRoomCommandService 상담 방 개설")
-class ChatRoomCommandServiceTest {
+@DisplayName("ConsultationRoomOpener 상담 방 개설")
+class ConsultationRoomOpenerTest {
 
   @Mock
   private ChatRoomRepository chatRoomRepository;
@@ -52,7 +52,7 @@ class ChatRoomCommandServiceTest {
   @Mock
   private ChatEventPublisher chatEventPublisher;
   @InjectMocks
-  private ChatRoomCommandService service;
+  private ConsultationRoomOpener service;
 
   private final UUID userId = UUID.randomUUID();
   private final UUID adjusterId = UUID.randomUUID();

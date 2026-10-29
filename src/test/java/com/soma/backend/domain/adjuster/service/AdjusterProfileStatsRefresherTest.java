@@ -23,6 +23,8 @@ import org.springframework.beans.BeanUtils;
 
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
+import com.soma.backend.domain.chat.entity.event.ConsultationAcceptedEvent;
+import com.soma.backend.domain.report.entity.event.AdjusterReviewCreatedEvent;
 import com.soma.backend.domain.report.repository.AdjusterRatingAggregate;
 import com.soma.backend.domain.report.repository.AdjusterReviewRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
@@ -32,8 +34,8 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
  * no-op(예외 금지)을 고정한다.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("AdjusterProfileStatsCommandService 단위 테스트")
-class AdjusterProfileStatsCommandServiceTest {
+@DisplayName("AdjusterProfileStatsRefresher 단위 테스트")
+class AdjusterProfileStatsRefresherTest {
 
   @Mock
   private AdjusterProfileRepository adjusterProfileRepository;
@@ -42,7 +44,7 @@ class AdjusterProfileStatsCommandServiceTest {
   @Mock
   private ReportReviewRepository reportReviewRepository;
   @InjectMocks
-  private AdjusterProfileStatsCommandService service;
+  private AdjusterProfileStatsRefresher service;
 
   private final UUID adjusterId = UUID.randomUUID();
 
@@ -137,5 +139,31 @@ class AdjusterProfileStatsCommandServiceTest {
 
     assertThat(profile.getCompletedConsultCount()).isEqualTo(1);
     verify(adjusterProfileRepository, never()).save(any(AdjusterProfile.class));
+  }
+
+  @Test
+  @DisplayName("평가 등록 이벤트를 받으면 대상 사정사의 평점을 재집계한다")
+  void onAdjusterReviewCreated_refreshesRating() {
+    AdjusterProfile profile = profile();
+    given(adjusterProfileRepository.findByUserIdForUpdate(adjusterId)).willReturn(Optional.of(profile));
+    given(adjusterReviewRepository.aggregateRating(adjusterId))
+        .willReturn(new AdjusterRatingAggregate(4.0, 1L));
+
+    service.onAdjusterReviewCreated(new AdjusterReviewCreatedEvent(adjusterId, UUID.randomUUID()));
+
+    assertThat(profile.getRatingMean()).isEqualByComparingTo("4.00");
+    assertThat(profile.getReviewCount()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("상담 수락 이벤트를 받으면 담당 사정사의 상담 완료 수를 재집계한다")
+  void onConsultationAccepted_refreshesCompletedConsultCount() {
+    AdjusterProfile profile = profile();
+    given(adjusterProfileRepository.findByUserIdForUpdate(adjusterId)).willReturn(Optional.of(profile));
+    given(reportReviewRepository.countAcceptedByAdjusterId(adjusterId)).willReturn(2L);
+
+    service.onConsultationAccepted(new ConsultationAcceptedEvent(adjusterId, UUID.randomUUID()));
+
+    assertThat(profile.getCompletedConsultCount()).isEqualTo(2);
   }
 }

@@ -54,9 +54,9 @@ class ReportNotificationListenerTest {
   @InjectMocks
   private ReportNotificationListener listener;
   @Mock
-  private NotificationDispatchService notificationDispatchService;
+  private NotificationRecorder notificationRecorder;
   @Mock
-  private PushNotificationService pushNotificationService;
+  private PushNotifier pushNotifier;
   @Mock
   private TerminalFailureJournalReader terminalFailureJournalReader;
   @Mock
@@ -71,7 +71,7 @@ class ReportNotificationListenerTest {
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
     UUID adjusterId = UUID.randomUUID();
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.RECEIVED_PROPOSAL), anyString(), anyString())).willReturn(true);
 
     // When
@@ -79,7 +79,7 @@ class ReportNotificationListenerTest {
 
     // Then
     ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq(EXPECTED_TITLE), eq(EXPECTED_BODY), dataCaptor.capture());
     assertThat(dataCaptor.getValue())
         .containsEntry("type", "RECEIVED_PROPOSAL")
@@ -91,13 +91,13 @@ class ReportNotificationListenerTest {
   void onProposalReceivedSkipsPushWhenNotAllowed() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(false);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(false);
 
     // When
     listener.onProposalReceived(new ReviewProposalReceivedEvent(userId, UUID.randomUUID(), UUID.randomUUID()));
 
     // Then
-    verify(pushNotificationService, never()).sendToUser(any(), any(), any(), any());
+    verify(pushNotifier, never()).sendToUser(any(), any(), any(), any());
   }
 
   @Test
@@ -105,9 +105,9 @@ class ReportNotificationListenerTest {
   void onProposalReceivedSwallowsPushException() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
     willThrow(new RuntimeException("FCM down"))
-        .given(pushNotificationService).sendToUser(any(), any(), any(), any());
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
 
     // When & Then
     assertThatCode(() -> listener.onProposalReceived(
@@ -121,7 +121,7 @@ class ReportNotificationListenerTest {
     // Given
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.ANALYSIS_FAILED), anyString(), anyString())).willReturn(true);
 
     // When
@@ -130,7 +130,7 @@ class ReportNotificationListenerTest {
 
     // Then
     ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq("문서 분석에 실패했어요"), eq("파일을 읽을 수 없어요. 다시 업로드해주세요."), dataCaptor.capture());
     assertThat(dataCaptor.getValue())
         .containsEntry("type", "ANALYSIS_FAILED")
@@ -142,7 +142,7 @@ class ReportNotificationListenerTest {
   void onAnalysisFailedUsesNeutralCopyForMaskingResidual() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
 
     // When
     listener.onAnalysisFailed(
@@ -151,7 +151,7 @@ class ReportNotificationListenerTest {
     // Then
     ArgumentCaptor<String> title = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
-    verify(pushNotificationService).sendToUser(eq(userId), title.capture(), body.capture(), any());
+    verify(pushNotifier).sendToUser(eq(userId), title.capture(), body.capture(), any());
     assertThat(title.getValue()).isEqualTo("문서를 검토 중입니다");
     assertThat(body.getValue()).isEqualTo("업로드하신 문서를 추가로 확인하고 있어요. 확인되면 알려드릴게요.");
     assertThat(body.getValue()).doesNotContain("다시 업로드");
@@ -162,14 +162,14 @@ class ReportNotificationListenerTest {
   void onAnalysisFailedUsesHoldCopyForOtherReasons() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
 
     // When
     listener.onAnalysisFailed(new AnalysisFailedEvent(userId, UUID.randomUUID(), AnalysisFailureReason.OCR_ERROR));
 
     // Then
     ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
-    verify(pushNotificationService).sendToUser(eq(userId), eq("문서 분석에 실패했어요"), body.capture(), any());
+    verify(pushNotifier).sendToUser(eq(userId), eq("문서 분석에 실패했어요"), body.capture(), any());
     assertThat(body.getValue()).isEqualTo("처리에 실패했어요. 확인 중이니 조금만 기다려주세요.");
     // 보상금액·법률 자문 성격 표현은 알림 문안에도 들어가면 안 된다.
     assertThat(body.getValue()).doesNotContain("보상", "보험금", "법적", "청구");
@@ -178,9 +178,9 @@ class ReportNotificationListenerTest {
   @Test
   @DisplayName("ANALYSIS_FAILED — FCM이 실패해도 예외가 전파되지 않는다(스윕 커밋에 영향 없음)")
   void onAnalysisFailedSwallowsPushException() {
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
     willThrow(new RuntimeException("FCM down"))
-        .given(pushNotificationService).sendToUser(any(), any(), any(), any());
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
 
     assertThatCode(() -> listener.onAnalysisFailed(new AnalysisFailedEvent(
         UUID.randomUUID(), UUID.randomUUID(), AnalysisFailureReason.UNKNOWN)))
@@ -192,14 +192,14 @@ class ReportNotificationListenerTest {
   void onProposalReceivedSwallowsRecordException() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString()))
+    given(notificationRecorder.record(any(), any(), anyString(), anyString()))
         .willThrow(new RuntimeException("DB down"));
 
     // When & Then
     assertThatCode(() -> listener.onProposalReceived(
         new ReviewProposalReceivedEvent(userId, UUID.randomUUID(), UUID.randomUUID())))
         .doesNotThrowAnyException();
-    verify(pushNotificationService, never()).sendToUser(any(), any(), any(), any());
+    verify(pushNotifier, never()).sendToUser(any(), any(), any(), any());
   }
 
   @Test
@@ -208,7 +208,7 @@ class ReportNotificationListenerTest {
     // Given
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.REPORT_BLOCKED), anyString(), anyString())).willReturn(true);
 
     // When
@@ -216,7 +216,7 @@ class ReportNotificationListenerTest {
 
     // Then
     ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq("처리할 수 없는 요청이에요"),
         eq(ReportAnalysis.blocked().failureMessage()), dataCaptor.capture());
     assertThat(dataCaptor.getValue())
@@ -227,9 +227,9 @@ class ReportNotificationListenerTest {
   @Test
   @DisplayName("REPORT_BLOCKED — FCM이 실패해도 예외가 전파되지 않는다(스윕 커밋에 영향 없음)")
   void onReportBlockedSwallowsPushException() {
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
     willThrow(new RuntimeException("FCM down"))
-        .given(pushNotificationService).sendToUser(any(), any(), any(), any());
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
 
     assertThatCode(() -> listener.onReportBlocked(new ReportBlockedEvent(UUID.randomUUID(), UUID.randomUUID())))
         .doesNotThrowAnyException();
@@ -241,7 +241,7 @@ class ReportNotificationListenerTest {
     // Given
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
 
     // When
@@ -249,7 +249,7 @@ class ReportNotificationListenerTest {
 
     // Then
     ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq("문서를 다시 올려주세요"),
         eq(ReportAnalysis.needsReupload().failureMessage()), dataCaptor.capture());
     assertThat(dataCaptor.getValue())
@@ -271,7 +271,7 @@ class ReportNotificationListenerTest {
         "pdf", "policy");
     ReflectionTestUtils.setField(attachment, "id", attachmentId);
     given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
 
     // When
@@ -279,7 +279,7 @@ class ReportNotificationListenerTest {
 
     // Then
     ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq("문서를 다시 올려주세요"),
         eq("업로드하신 [보험증권.pdf] 문서를 알아보기 어려워요. 다시 촬영해서 올려주세요."), dataCaptor.capture());
     assertThat(dataCaptor.getValue())
@@ -295,13 +295,13 @@ class ReportNotificationListenerTest {
     UUID reportId = UUID.randomUUID();
     given(terminalFailureJournalReader.findTerminalFailures(List.of(reportId)))
         .willThrow(new InvalidDataAccessResourceUsageException("GRANT 미적용"));
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
 
     assertThatCode(() -> listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId)))
         .doesNotThrowAnyException();
 
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
   }
 
@@ -318,14 +318,14 @@ class ReportNotificationListenerTest {
         "pdf", "diagnosis");
     ReflectionTestUtils.setField(attachment, "id", attachmentId);
     given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
 
     // When
     listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
 
     // Then
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq("문서를 다시 올려주세요"),
         eq("업로드하신 [진단서.pdf] 문서를 알아보기 어려워요. 다시 촬영해서 올려주세요."), any());
   }
@@ -340,31 +340,31 @@ class ReportNotificationListenerTest {
             OcrJobFailureViewFixture.terminal(reportId, UUID.randomUUID(), "unreadable_file", null))));
     given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(
         Map.of(reportId, List.of(OcrResultViewFixture.needsReupload(reportId, UUID.randomUUID(), "diagnosis"))));
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
 
     listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
 
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
   }
 
   @Test
   @DisplayName("NEEDS_REUPLOAD — 토글이 꺼져 record()가 false면 푸시하지 않는다")
   void onReportNeedsReuploadSkipsPushWhenNotAllowed() {
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(false);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(false);
 
     listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(UUID.randomUUID(), UUID.randomUUID()));
 
-    verify(pushNotificationService, never()).sendToUser(any(), any(), any(), any());
+    verify(pushNotifier, never()).sendToUser(any(), any(), any(), any());
   }
 
   @Test
   @DisplayName("NEEDS_REUPLOAD — FCM이 실패해도 예외가 전파되지 않는다(스윕 커밋에 영향 없음)")
   void onReportNeedsReuploadSwallowsPushException() {
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
     willThrow(new RuntimeException("FCM down"))
-        .given(pushNotificationService).sendToUser(any(), any(), any(), any());
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
 
     assertThatCode(() ->
         listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(UUID.randomUUID(), UUID.randomUUID())))

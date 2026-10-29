@@ -24,18 +24,18 @@ import com.soma.backend.domain.notification.repository.NotificationRepository;
 import com.soma.backend.domain.notification.repository.NotificationSettingRepository;
 
 /**
- * NotificationDispatchService.record() 단위 테스트.
+ * NotificationRecorder.record() 단위 테스트.
  * 인앱 알림은 토글과 무관하게 항상 저장하고, 반환값(푸시 허용 여부)만 토글이 게이팅한다.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("NotificationDispatchService 단위 테스트")
-class NotificationDispatchServiceTest {
+@DisplayName("NotificationRecorder 단위 테스트")
+class NotificationRecorderTest {
 
   private static final String TITLE = "새로운 제안이 도착했어요";
   private static final String BODY = "손해사정사가 새로운 검수 제안을 보냈어요. 제안을 비교해보세요.";
 
   @InjectMocks
-  private NotificationDispatchService notificationDispatchService;
+  private NotificationRecorder notificationRecorder;
   @Mock
   private NotificationRepository notificationRepository;
   @Mock
@@ -51,7 +51,7 @@ class NotificationDispatchServiceTest {
 
     // When
     boolean pushAllowed =
-        notificationDispatchService.record(userId, NotificationType.RECEIVED_PROPOSAL, TITLE, BODY);
+        notificationRecorder.record(userId, NotificationType.RECEIVED_PROPOSAL, TITLE, BODY);
 
     // Then
     assertThat(pushAllowed).isTrue();
@@ -76,7 +76,7 @@ class NotificationDispatchServiceTest {
 
     // When
     boolean pushAllowed =
-        notificationDispatchService.record(userId, NotificationType.RECEIVED_PROPOSAL, TITLE, BODY);
+        notificationRecorder.record(userId, NotificationType.RECEIVED_PROPOSAL, TITLE, BODY);
 
     // Then
     assertThat(pushAllowed).isFalse();
@@ -94,7 +94,7 @@ class NotificationDispatchServiceTest {
 
     // When
     boolean pushAllowed =
-        notificationDispatchService.record(userId, NotificationType.RECEIVED_PROPOSAL, TITLE, BODY);
+        notificationRecorder.record(userId, NotificationType.RECEIVED_PROPOSAL, TITLE, BODY);
 
     // Then — createDefault의 received_proposal 기본 ON
     assertThat(pushAllowed).isTrue();

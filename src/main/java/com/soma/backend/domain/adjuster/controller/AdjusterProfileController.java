@@ -43,9 +43,9 @@ public class AdjusterProfileController {
   public ApiResponse<AdjusterProfileResponse> updateProfile(
       @AuthenticationPrincipal CustomUserDetails principal,
       @Valid @RequestBody UpdateAdjusterProfileRequest request) {
-    AdjusterProfileResponse result =
-        adjusterProfileCommandService.updateProfile(principal.getUserId(), request);
-    return ApiResponse.ok(result);
+    // 수정(Command)이 커밋된 뒤 조회(Query)로 최신 값을 다시 읽어 응답한다 — 서비스끼리 서로 부르지 않는다
+    adjusterProfileCommandService.updateProfile(principal.getUserId(), request);
+    return ApiResponse.ok(adjusterProfileQueryService.getProfile(principal.getUserId()));
   }
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")

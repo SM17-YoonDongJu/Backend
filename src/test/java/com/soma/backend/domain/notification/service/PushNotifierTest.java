@@ -26,15 +26,15 @@ import com.soma.backend.domain.notification.repository.DeviceTokenRepository;
 import com.soma.backend.infra.fcm.FcmPushSender;
 
 /**
- * PushNotificationService(발송 오케스트레이터) 단위 테스트. 죽은 토큰 정리 책임이 infra(FcmPushSender)가 아니라
+ * PushNotifier(발송 오케스트레이터) 단위 테스트. 죽은 토큰 정리 책임이 infra(FcmPushSender)가 아니라
  * 소유 도메인(DeadDeviceTokenCleaner)에 있고, 발송 I/O가 트랜잭션 밖에서 이뤄짐을 검증한다(strict layering).
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("PushNotificationService 단위 테스트 (발송 오케스트레이터)")
-class PushNotificationServiceTest {
+@DisplayName("PushNotifier 단위 테스트 (발송 오케스트레이터)")
+class PushNotifierTest {
 
   @InjectMocks
-  private PushNotificationService pushNotificationService;
+  private PushNotifier pushNotifier;
 
   @Mock
   private DeviceTokenRepository deviceTokenRepository;
@@ -57,7 +57,7 @@ class PushNotificationServiceTest {
     given(fcmPushSender.send(anyList(), eq("제목"), eq("본문"), eq(data))).willReturn(List.of("token-2"));
 
     // When
-    pushNotificationService.sendToUser(userId, "제목", "본문", data);
+    pushNotifier.sendToUser(userId, "제목", "본문", data);
 
     // Then
     ArgumentCaptor<List<String>> tokensCaptor = ArgumentCaptor.forClass(List.class);
@@ -76,7 +76,7 @@ class PushNotificationServiceTest {
     given(fcmPushSender.send(anyList(), any(), any(), any())).willReturn(List.of());
 
     // When
-    pushNotificationService.sendToUser(userId, "제목", "본문", Map.of());
+    pushNotifier.sendToUser(userId, "제목", "본문", Map.of());
 
     // Then
     then(deadDeviceTokenCleaner).should(never()).delete(any(), any());
@@ -90,7 +90,7 @@ class PushNotificationServiceTest {
     given(deviceTokenRepository.findByUserId(userId)).willReturn(List.of());
 
     // When
-    pushNotificationService.sendToUser(userId, "제목", "본문", Map.of());
+    pushNotifier.sendToUser(userId, "제목", "본문", Map.of());
 
     // Then
     then(fcmPushSender).shouldHaveNoInteractions();

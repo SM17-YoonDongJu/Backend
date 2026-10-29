@@ -43,7 +43,7 @@ import com.soma.backend.domain.report.repository.UserClaimRepository;
  *
  * <p><b>한 트랜잭션에 여러 Aggregate를 담는 근거.</b> D 풀 1건은 UserClaim·Report·ReportReview·ChatRoom·
  * ChatMessage 5개 Aggregate를 한 커밋으로 만든다. 운영 코드가 이미 정확히 같은 조합을 한 트랜잭션으로
- * 처리하고({@code ReportCommandService.startCounseling} → {@code ChatRoomCommandService}), "한 트랜잭션 =
+ * 처리하고({@code ReportCommandService.startCounseling} → {@code ConsultationRoomOpener}), "한 트랜잭션 =
  * 한 Aggregate" 원칙의 목적은 동시성 하의 불변식 보호인데 부트타임 픽스처 로딩에는 경쟁이 없다.
  * Aggregate별로 쪼개면 중간 실패 시 "방은 있는데 리포트는 채택 대기"처럼 k6가 풀을 오분류하는 상태가 남는다.
  *

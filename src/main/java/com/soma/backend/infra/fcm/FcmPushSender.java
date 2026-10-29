@@ -21,7 +21,7 @@ import lombok.extern.slf4j.Slf4j;
  * FCM/APNs 순수 발송 어댑터(infra leaf). 토큰 목록을 받아 개별 발송하고, 죽은 토큰만 반환한다.
  *
  * <p>도메인(DeviceTokenRepository)을 알지 못한다 — 토큰 로드·죽은 토큰 삭제는 소유 도메인의
- * PushNotificationService가 담당한다. FirebaseApp 빈이 없으면(stub) 빈 리스트를 반환하고 로그만 남기며
+ * PushNotifier가 담당한다. FirebaseApp 빈이 없으면(stub) 빈 리스트를 반환하고 로그만 남기며
  * 부수효과가 전혀 없다. 한 토큰 실패가 나머지 발송을 막지 않도록 per-token try/catch로 격리하고,
  * 일시 오류(UNAVAILABLE·INTERNAL·QUOTA_EXCEEDED 등)는 죽은 토큰으로 취급하지 않는다.
  *

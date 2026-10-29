@@ -15,14 +15,16 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
-import com.soma.backend.domain.adjuster.service.AdjusterProfileStatsCommandService;
 import com.soma.backend.domain.report.dto.CreateAdjusterReviewRequest;
 import com.soma.backend.domain.report.dto.CreateAdjusterReviewResponse;
+import com.soma.backend.domain.report.entity.event.AdjusterReviewCreatedEvent;
 import com.soma.backend.domain.report.repository.AdjusterReviewRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -37,7 +39,7 @@ class AdjusterReviewCommandServiceTest {
   @Mock
   private ReportReviewRepository reportReviewRepository;
   @Mock
-  private AdjusterProfileStatsCommandService adjusterProfileStatsCommandService;
+  private ApplicationEventPublisher eventPublisher;
   @InjectMocks
   private AdjusterReviewCommandService service;
 
@@ -65,7 +67,7 @@ class AdjusterReviewCommandServiceTest {
 
   /** 저장 순서가 뒤바뀌면 재집계가 방금 등록한 평가를 놓친다(모수 1건 누락). */
   @Test
-  @DisplayName("등록에 성공하면 평가를 flush한 뒤 대상 사정사의 평점 집계를 1회 갱신한다")
+  @DisplayName("등록에 성공하면 평가를 flush한 뒤 평점 집계 갱신 이벤트를 1회 발행한다")
   void createReview_refreshesAdjusterRatingAfterFlush() {
     given(adjusterReviewRepository.existsByUserIdAndAdjusterId(userId, adjusterId)).willReturn(false);
     given(reportReviewRepository.findAcceptedReportIdsForReviewer(adjusterId, userId))
@@ -74,9 +76,12 @@ class AdjusterReviewCommandServiceTest {
 
     service.createReview(userId, adjusterId, request());
 
-    InOrder order = inOrder(adjusterReviewRepository, adjusterProfileStatsCommandService);
+    InOrder order = inOrder(adjusterReviewRepository, eventPublisher);
     order.verify(adjusterReviewRepository).saveAndFlush(any());
-    order.verify(adjusterProfileStatsCommandService).refreshRating(adjusterId);
+    order.verify(eventPublisher).publishEvent(any(AdjusterReviewCreatedEvent.class));
+    ArgumentCaptor<AdjusterReviewCreatedEvent> event = ArgumentCaptor.forClass(AdjusterReviewCreatedEvent.class);
+    verify(eventPublisher).publishEvent(event.capture());
+    assertThat(event.getValue().adjusterId()).isEqualTo(adjusterId);
   }
 
   @Test
@@ -88,7 +93,7 @@ class AdjusterReviewCommandServiceTest {
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_RESOURCE));
     verify(adjusterReviewRepository, never()).saveAndFlush(any());
-    verifyNoInteractions(adjusterProfileStatsCommandService);
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -101,6 +106,6 @@ class AdjusterReviewCommandServiceTest {
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     verify(adjusterReviewRepository, never()).saveAndFlush(any());
-    verifyNoInteractions(adjusterProfileStatsCommandService);
+    verifyNoInteractions(eventPublisher);
   }
 }

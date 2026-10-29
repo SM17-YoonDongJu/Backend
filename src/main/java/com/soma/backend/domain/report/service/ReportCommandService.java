@@ -17,7 +17,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
 import com.soma.backend.domain.chat.dto.ConsultationRoomResult;
-import com.soma.backend.domain.chat.service.ChatRoomCommandService;
+import com.soma.backend.domain.chat.service.ConsultationRoomOpener;
 import com.soma.backend.domain.report.dto.CreateReportRequest;
 import com.soma.backend.domain.report.dto.CreateReportResponse;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
@@ -52,7 +52,7 @@ public class ReportCommandService {
   private final ReportReviewRepository reportReviewRepository;
   private final OcrJobOutboxPort ocrJobOutboxPort;
   private final CaseNoGenerator caseNoGenerator;
-  private final ChatRoomCommandService chatRoomCommandService;
+  private final ConsultationRoomOpener consultationRoomOpener;
   private final ApplicationEventPublisher eventPublisher;
   private final MeterRegistry meterRegistry;
 
@@ -70,7 +70,7 @@ public class ReportCommandService {
       ReportReviewRepository reportReviewRepository,
       OcrJobOutboxPort ocrJobOutboxPort,
       CaseNoGenerator caseNoGenerator,
-      ChatRoomCommandService chatRoomCommandService,
+      ConsultationRoomOpener consultationRoomOpener,
       ApplicationEventPublisher eventPublisher,
       MeterRegistry meterRegistry) {
     this.userClaimRepository = userClaimRepository;
@@ -79,7 +79,7 @@ public class ReportCommandService {
     this.reportReviewRepository = reportReviewRepository;
     this.ocrJobOutboxPort = ocrJobOutboxPort;
     this.caseNoGenerator = caseNoGenerator;
-    this.chatRoomCommandService = chatRoomCommandService;
+    this.consultationRoomOpener = consultationRoomOpener;
     this.eventPublisher = eventPublisher;
     this.meterRegistry = meterRegistry;
     this.caseNoTimer = Timer.builder("report.create.caseno")
@@ -207,7 +207,7 @@ public class ReportCommandService {
     review.startCounseling();
     report.applyReviewTransition(ReportStatus.COUNSELING);
 
-    ConsultationRoomResult room = chatRoomCommandService.openConsultationRoom(
+    ConsultationRoomResult room = consultationRoomOpener.openConsultationRoom(
         report.getUserId(), review.getAdjusterId(), report.getId(), review.getId());
 
     if (room.created()) {

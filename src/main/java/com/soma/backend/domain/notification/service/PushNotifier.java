@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,9 +21,9 @@ import com.soma.backend.infra.fcm.FcmPushSender;
  * 죽은 토큰 정리(삭제)만 짧은 트랜잭션({@link DeadDeviceTokenCleaner})으로 분리한다. 실제 호출부(producer:
  * 검수 완료·매칭 결과 등 이벤트)는 다음 단계 범위이며, AFTER_COMMIT 리스너에서 호출하도록 설계한다.
  */
-@Service
+@Component
 @RequiredArgsConstructor
-public class PushNotificationService {
+public class PushNotifier {
 
   private final DeviceTokenRepository deviceTokenRepository;
   private final FcmPushSender fcmPushSender;

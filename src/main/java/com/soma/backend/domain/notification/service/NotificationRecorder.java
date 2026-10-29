@@ -2,7 +2,7 @@ package com.soma.backend.domain.notification.service;
 
 import java.util.UUID;
 
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,9 +22,9 @@ import com.soma.backend.domain.notification.repository.NotificationSettingReposi
  * {@code NotificationSettingService.getMySettings}(Response DTO 반환)는 엔티티 토글이 직접 필요해 재사용하지 않고,
  * 설정이 없으면 {@link NotificationSetting#createDefault(UUID)}로 만들어 저장한 뒤 {@code allows(type)}를 읽는다.
  */
-@Service
+@Component
 @RequiredArgsConstructor
-public class NotificationDispatchService {
+public class NotificationRecorder {
 
   private final NotificationRepository notificationRepository;
   private final NotificationSettingRepository notificationSettingRepository;

@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -23,8 +23,8 @@ import com.soma.backend.infra.redis.ChatEventPublisher;
 import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
 
 /**
- * 상담 채팅방 개설 커맨드 — 고객이 제안의 "상담 수락"을 누르는 시점. ChatRoom Aggregate는 chat 도메인이
- * 소유하므로 그 홈도 여기다 — report 도메인은 이 서비스에 위임할 뿐 ChatRoom 엔티티·리포지토리를 직접
+ * 상담 채팅방 개설기 — 고객이 제안의 "상담 수락"을 누르는 시점. ChatRoom Aggregate는 chat 도메인이
+ * 소유하므로 그 홈도 여기다 — report 도메인은 이 컴포넌트에 위임할 뿐 ChatRoom 엔티티·리포지토리를 직접
  * 만지지 않는다.
  *
  * <p>이 클래스는 report 패키지를 전혀 import하지 않는다(식별자를 UUID 파라미터로만 받는다). 반대 방향
@@ -39,9 +39,9 @@ import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
  * (ReportCommandService#startCounseling) 남은 방은 제안당 1개로 고정돼 재요청 시 그대로 재사용된다.
  */
 @Slf4j
-@Service
+@Component
 @RequiredArgsConstructor
-public class ChatRoomCommandService {
+public class ConsultationRoomOpener {
 
   private static final String CONSULT_OPENED_SYSTEM_MESSAGE =
       "상담 채팅방이 열렸습니다. 손해사정사와 상담을 시작해보세요.";

@@ -34,7 +34,7 @@ import com.soma.backend.domain.report.service.TerminalFailureJournalReader;
  * (AFTER_COMMIT) 발화하므로 부수효과는 best-effort(at-most-once)이며, 여기서 실패해도 이미 커밋된
  * 원 도메인 결과에는 영향이 없다.
  *
- * <p>인앱 저장(REQUIRES_NEW)은 {@link NotificationDispatchService}에 위임한다 — AFTER_COMMIT엔 활성 트랜잭션이
+ * <p>인앱 저장(REQUIRES_NEW)은 {@link NotificationRecorder}에 위임한다 — AFTER_COMMIT엔 활성 트랜잭션이
  * 없어 새 트랜잭션이 필요하고, self-invocation 프록시 함정을 피하려면 별도 빈이어야 한다.
  */
 @Slf4j
@@ -42,8 +42,8 @@ import com.soma.backend.domain.report.service.TerminalFailureJournalReader;
 @RequiredArgsConstructor
 public class ReportNotificationListener {
 
-  private final NotificationDispatchService notificationDispatchService;
-  private final PushNotificationService pushNotificationService;
+  private final NotificationRecorder notificationRecorder;
+  private final PushNotifier pushNotifier;
   private final TerminalFailureJournalReader terminalFailureJournalReader;
   private final NeedsReuploadDocumentReader needsReuploadDocumentReader;
   private final ReportAttachmentRepository reportAttachmentRepository;
@@ -162,9 +162,9 @@ public class ReportNotificationListener {
 
   private void dispatch(UUID userId, NotificationType type, String title, String body, Map<String, String> data) {
     try {
-      boolean pushAllowed = notificationDispatchService.record(userId, type, title, body);
+      boolean pushAllowed = notificationRecorder.record(userId, type, title, body);
       if (pushAllowed) {
-        pushNotificationService.sendToUser(userId, title, body, data);
+        pushNotifier.sendToUser(userId, title, body, data);
       }
     } catch (RuntimeException ex) {
       log.warn("알림 발송 실패(격리) — userId={}, type={}", userId, type, ex);
