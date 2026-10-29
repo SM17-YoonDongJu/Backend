@@ -58,7 +58,7 @@ com.soma.backend
 - `repository` → `entity`. Spring Data JPA 인터페이스, Aggregate 단위 저장/조회. **조회는 native query 금지 — 동적 조회는 QueryDSL, 그 외는 Spring Data 파생 쿼리·JPQL. 불가피한 경우만 사유 주석을 단 문서화된 예외.**
 - `entity` → 아무것도 의존 안 함 (실용적 예외: JPA 애노테이션). Spring Web/Service/Controller 참조 금지.
 - **의존 방향은 항상 안쪽(entity)으로.** 바깥이 안을 알고, 안은 바깥을 모른다.
-- **강제:** `architecture/LayerArchitectureTest`(ArchUnit)가 빌드에서 검사한다. service → 다른 `*Service` 의존 금지(자사 패키지 이름 기준이라 `@Component`인 `S3UploadService`도 포함)는 `FreezingArchRule`로 도입 시점 위반만 `src/test/resources/archunit_store`에 박제해 두고 새 위반만 실패시킨다. 위반을 고치면 저장소에서 해당 줄이 자동으로 빠지니 그 변경도 같이 커밋할 것. 저장소를 손으로 고쳐 위반을 추가하지 않는다. entity·repository·controller 규칙은 위반이 없어 freeze 없이 바로 강제한다.
+- **강제:** `architecture/LayerArchitectureTest`(ArchUnit)가 빌드에서 검사한다. service → 다른 `*Service` 의존 금지(자사 패키지 이름 기준이라 `@Component`인 `S3UploadService`도 포함, 검사 대상도 domain service 패키지와 `infra`·`global`의 `*Service`)는 `FreezingArchRule`로 도입 시점 위반만 `src/test/resources/archunit_store`에 박제해 두고 새 위반만 실패시킨다. 위반을 고치면 저장소에서 해당 줄이 자동으로 빠지니 그 변경도 같이 커밋할 것. 저장소를 손으로 고쳐 위반을 추가하지 않는다. entity·repository(둘 다 `infra` 의존 금지 포함)·controller(repository와 `EntityManager`·`JPAQueryFactory`·`JdbcTemplate`·`DataSource` 직접 사용 금지) 규칙은 위반이 없어 freeze 없이 바로 강제한다.
 
 **전술적 패턴 (`entity` 안에서 지킨다):** Aggregate(불변식 경계, 외부는 Root 메서드 통해서만 상태 변경, Aggregate 간 참조는 객체가 아니라 ID로) · Value Object(식별자 없는 불변 값은 `record`로 캡슐화) · 리치 도메인 모델(로직을 `service`가 아니라 엔티티 메서드에, setter 남발 금지) · 트랜잭션(한 트랜잭션 = 한 Aggregate 수정 원칙, 다중 Aggregate는 도메인 이벤트로 결합도 완화) · 유비쿼터스 언어(네이밍은 `.claude/references/domain-glossary.md` 준수).
 

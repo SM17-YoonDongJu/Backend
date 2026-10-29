@@ -1,3 +1,3 @@
 #
-#Thu Oct 29 10:59:17 KST 2026
-no\ classes\ that\ reside\ in\ a\ package\ '..domain..service..'\ should\ depend\ on\ other\ *Service\ classes,\ because\ service\uB294\ \uB2E4\uB978\ service\uB97C\ \uD638\uCD9C\uD558\uC9C0\ \uC54A\uB294\uB2E4\ (CLAUDE.md\ \uB808\uC774\uC5B4\ \uC758\uC874\ \uADDC\uCE59)=fa013893-49e1-4d07-9c3e-0c69fc61a5d6
+#Thu Oct 29 11:13:29 KST 2026
+no\ classes\ that\ reside\ in\ a\ package\ '..domain..service..'\ or\ have\ simple\ name\ ending\ with\ 'Service'\ should\ depend\ on\ other\ *Service\ classes,\ because\ service\uB294\ \uB2E4\uB978\ service\uB97C\ \uD638\uCD9C\uD558\uC9C0\ \uC54A\uB294\uB2E4\ (CLAUDE.md\ \uB808\uC774\uC5B4\ \uC758\uC874\ \uADDC\uCE59)=f2fdfa2e-a90b-43f9-b1b4-03b750aa1888

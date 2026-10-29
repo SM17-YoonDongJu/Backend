@@ -2,6 +2,12 @@ package com.soma.backend.architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
+import javax.sql.DataSource;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+
+import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -12,6 +18,8 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.tngtech.archunit.library.freeze.FreezingArchRule;
+
+import jakarta.persistence.EntityManager;
 
 /**
  * CLAUDE.md의 레이어 의존 규칙을 빌드에서 강제한다. 스프링 컨텍스트 없이 바이트코드만 읽으므로 빠르다.
@@ -35,11 +43,14 @@ class LayerArchitectureTest {
    *
    * <p>{@code @Service}가 아니라 이름으로 판정한다. {@code S3UploadService}처럼 {@code @Component}인데
    * Service라는 이름을 단 인프라 클래스도 같은 혼동을 만들기 때문이다(이름을 바꾸면 규칙에서 빠진다).
+   * 같은 이유로 검사 대상(origin)도 domain service 패키지뿐 아니라 {@code infra}·{@code global}의
+   * {@code *Service}까지 포함한다.
    */
   @ArchTest
   static final ArchRule serviceShouldNotDependOnOtherService = FreezingArchRule.freeze(
       noClasses()
           .that().resideInAPackage("..domain..service..")
+          .or().haveSimpleNameEndingWith("Service")
           .should(dependOnOtherServices())
           .because("service는 다른 service를 호출하지 않는다 (CLAUDE.md 레이어 의존 규칙)"));
 
@@ -47,14 +58,15 @@ class LayerArchitectureTest {
   static final ArchRule entityShouldNotDependOnOuterLayers = noClasses()
       .that().resideInAPackage("..domain..entity..")
       .should().dependOnClassesThat().resideInAnyPackage(
-          "..domain..controller..", "..domain..service..", "..domain..repository..", "..domain..dto..")
+          "..domain..controller..", "..domain..service..", "..domain..repository..", "..domain..dto..",
+          "..infra..")
       .because("entity는 아무것도 의존하지 않는다 — 의존 방향은 항상 안쪽(entity)으로");
 
   @ArchTest
   static final ArchRule repositoryShouldNotDependOnUpperLayers = noClasses()
       .that().resideInAPackage("..domain..repository..")
       .should().dependOnClassesThat().resideInAnyPackage(
-          "..domain..controller..", "..domain..service..", "..domain..dto..")
+          "..domain..controller..", "..domain..service..", "..domain..dto..", "..infra..")
       .because("repository는 entity만 의존한다");
 
   @ArchTest
@@ -62,6 +74,14 @@ class LayerArchitectureTest {
       .that().resideInAPackage("..domain..controller..")
       .should().dependOnClassesThat().resideInAPackage("..domain..repository..")
       .because("controller는 service를 거쳐서만 데이터에 접근한다");
+
+  @ArchTest
+  static final ArchRule controllerShouldNotAccessPersistenceApiDirectly = noClasses()
+      .that().resideInAPackage("..domain..controller..")
+      .should().dependOnClassesThat().belongToAnyOf(
+          EntityManager.class, JPAQueryFactory.class, JdbcTemplate.class, NamedParameterJdbcTemplate.class,
+          DataSource.class)
+      .because("controller는 service를 거쳐서만 데이터에 접근한다 — repository를 우회한 영속성 API 직접 사용 금지");
 
   /**
    * 자사 패키지의 {@code *Service}에 대한 의존을 위반으로 본다. 같은 최상위 클래스 안의 의존(중첩
