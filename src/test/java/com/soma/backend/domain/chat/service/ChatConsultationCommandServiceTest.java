@@ -88,7 +88,7 @@ class ChatConsultationCommandServiceTest {
   }
 
   private ReportReview reviewWithId(UUID id, UUID reportId, UUID adjusterId, ReviewStatus status) {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", id);
     ReflectionTestUtils.setField(review, "status", status);
     return review;

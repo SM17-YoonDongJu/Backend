@@ -279,7 +279,7 @@ class ReportCardQuerydslExecutionTest {
   }
 
   private void saveReview(UUID reportId, UUID adjusterId, ReviewStatus status) {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "status", status);
     reportReviewRepository.save(review);
   }

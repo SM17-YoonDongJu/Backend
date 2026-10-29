@@ -114,23 +114,14 @@ public class ReportReviewCommandService {
       ReviewReportRequest.IssueReview issueRequest, Map<UUID, ReportIssue> reportIssuesById) {
     IssueReviewStatus reviewStatus = parseIssueReviewStatus(issueRequest.reviewStatus());
 
-    if (reviewStatus == IssueReviewStatus.ADDED) {
-      if (!StringUtils.hasText(issueRequest.title()) || !StringUtils.hasText(issueRequest.description())) {
-        throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
-      }
-    } else if (REQUIRES_EXISTING_ISSUE.contains(reviewStatus)) {
+    if (REQUIRES_EXISTING_ISSUE.contains(reviewStatus)) {
       if (issueRequest.issueId() == null || !reportIssuesById.containsKey(issueRequest.issueId())) {
         throw new BusinessException(ErrorCode.REPORT_ISSUE_NOT_FOUND);
       }
     }
 
-    if (reviewStatus == IssueReviewStatus.MODIFIED && !StringUtils.hasText(issueRequest.modifiedReason())) {
-      throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
-    }
-    if (reviewStatus == IssueReviewStatus.EXCLUDED && !StringUtils.hasText(issueRequest.excludedReason())) {
-      throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
-    }
-    return new ReportReviewIssue(issueRequest.issueId(), issueRequest.title(), issueRequest.description(),
+    // 상태별 필수값(추가=제목·설명, 수정·제외=사유)은 ReportReviewIssue.create가 강제한다
+    return ReportReviewIssue.create(issueRequest.issueId(), issueRequest.title(), issueRequest.description(),
         issueRequest.impactAmount(), reviewStatus, issueRequest.adjusterOpinion(), issueRequest.modifiedReason(),
         issueRequest.excludedReason());
   }

@@ -113,7 +113,7 @@ class AdjusterReviewCommandServiceConcurrencyIntegrationTest {
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     UUID reportId = reportRepository.save(report).getId();
 
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     review.accept();
     reportReviewRepository.save(review);
     return customer.getId();

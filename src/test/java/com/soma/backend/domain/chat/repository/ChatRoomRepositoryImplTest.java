@@ -130,7 +130,7 @@ class ChatRoomRepositoryImplTest {
     Report report = Report.createPending(
         customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260716-100");
     reportRepository.save(report);
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster.getId()));
     ChatRoom pipelineRoom = persistRoom(customer, adjuster, report.getId(), review.getId());
 
     User searchAdjuster = userRepository.save(

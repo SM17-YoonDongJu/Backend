@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.chat.dto.UploadAttachmentResponse;
 import com.soma.backend.domain.chat.entity.ChatRoom;
-import com.soma.backend.domain.chat.entity.ChatRoomStatus;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -39,12 +38,7 @@ public class ChatAttachmentService {
   public UploadAttachmentResponse upload(UUID me, UUID roomId, MultipartFile file) {
     ChatRoom room = chatRoomRepository.findById(roomId)
         .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
-    if (!room.isMember(me)) {
-      throw new BusinessException(ErrorCode.CHAT_NOT_A_MEMBER);
-    }
-    if (room.getStatus() == ChatRoomStatus.CLOSED) {
-      throw new BusinessException(ErrorCode.CHAT_ROOM_CLOSED);
-    }
+    room.ensureWritableBy(me);
     validate(file);
     String key = chatAttachmentUploader.upload(roomId, file);
     return new UploadAttachmentResponse(key, file.getOriginalFilename(), file.getContentType(), file.getSize());

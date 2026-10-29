@@ -202,6 +202,18 @@ public class Report extends BaseEntity {
   }
 
   /**
+   * 상담 거절 뒤 리포트를 채택 대기로 되돌릴지 판단해 반영한다. 같은 리포트에 아직 상담 중인 다른 제안이
+   * 있거나({@code otherCounselingRemains}) 리포트가 상담 중(COUNSELING)이 아니면 그대로 둔다 — 다른 상담이
+   * 살아 있는데 채택 대기로 새면 미채택 스윕에 NOT_SELECTED로 잘못 전이된다.
+   */
+  public void reopenForAdoptionIfNoCounselingLeft(boolean otherCounselingRemains) {
+    if (otherCounselingRemains || this.status != ReportStatus.COUNSELING) {
+      return;
+    }
+    reopenForAdoption();
+  }
+
+  /**
    * 미채택(NOT_SELECTED) 자동 전이. 접수 후 기한(1주일) 내에 상담 완료(CLOSED)되지 못했거나(케이스1)
    * 검수를 하나도 받지 못한(케이스2) 리포트를 스케줄러 스윕이 전이시킨다. 검수 대기·채택 대기에서만
    * 진입한다(전이표) — 이후 {@link #applyReviewStart()}가 NOT_SELECTED에서 예외를 던져 신규 사정사 검수는

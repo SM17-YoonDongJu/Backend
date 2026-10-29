@@ -187,7 +187,7 @@ public class ReportCommandService {
 
     ReportReview review = reportReviewRepository.findById(proposalId)
         .orElseThrow(() -> new BusinessException(ErrorCode.PROPOSAL_NOT_FOUND));
-    if (!review.getReportId().equals(reportId)) {
+    if (!review.belongsTo(reportId)) {
       throw new BusinessException(ErrorCode.PROPOSAL_NOT_FOUND);
     }
 

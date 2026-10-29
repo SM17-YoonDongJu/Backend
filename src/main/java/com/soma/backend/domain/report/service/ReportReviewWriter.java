@@ -32,7 +32,7 @@ public class ReportReviewWriter {
     if (reportReviewRepository.existsByReportIdAndAdjusterId(reportId, adjusterId)) {
       return false;
     }
-    reportReviewRepository.save(new ReportReview(reportId, adjusterId));
+    reportReviewRepository.save(ReportReview.create(reportId, adjusterId));
     return true;
   }
 }

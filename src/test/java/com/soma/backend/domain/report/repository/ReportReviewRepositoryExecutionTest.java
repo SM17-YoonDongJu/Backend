@@ -52,7 +52,7 @@ class ReportReviewRepositoryExecutionTest {
   private EntityManager entityManager;
 
   private ReportReview saveReview(UUID adjusterId) {
-    return reportReviewRepository.save(new ReportReview(UUID.randomUUID(), adjusterId));
+    return reportReviewRepository.save(ReportReview.create(UUID.randomUUID(), adjusterId));
   }
 
   private User saveAdjusterUser(String nickname) {
@@ -71,7 +71,7 @@ class ReportReviewRepositoryExecutionTest {
   /** created_at은 엔티티에서 updatable=false라 네이티브 UPDATE로 강제한다(테스트 전용 결정적 타임스탬프). */
   private ReportReview saveProposal(
       UUID reportId, UUID adjusterId, String review, ReviewStatus status, LocalDateTime createdAt) {
-    ReportReview proposal = reportReviewRepository.save(new ReportReview(reportId, adjusterId));
+    ReportReview proposal = reportReviewRepository.save(ReportReview.create(reportId, adjusterId));
     proposal.updateReviewContent(null, null, null, null, null, review);
     switch (status) {
       case SENT -> {

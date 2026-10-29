@@ -77,7 +77,7 @@ class AdjusterRatingSyncIntegrationTest {
     Report report = reportRepository.save(Report.createPending(
         customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "RSYNC-" + UUID.randomUUID()));
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster.getId()));
     review.accept();
     return customer;
   }
