@@ -43,7 +43,7 @@ import com.soma.backend.domain.user.entity.Role;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
-import com.soma.backend.infra.fcm.FcmService;
+import com.soma.backend.infra.fcm.FcmPushSender;
 
 /**
  * RECEIVED_PROPOSAL 알림 producer 배선(AFTER_COMMIT + REQUIRES_NEW)의 실제 test_db 통합 테스트.
@@ -51,7 +51,7 @@ import com.soma.backend.infra.fcm.FcmService;
  * <p>Mockito 단위 테스트로는 확인할 수 없는 "원 트랜잭션 커밋 후 리스너 발화 → 새 트랜잭션에서 인앱 insert"를
  * 실제 커밋 경로로 검증한다. 이 때문에 클래스에 {@code @Transactional}을 두지 않는다 —
  * 테스트 트랜잭션으로 감싸면 커밋이 일어나지 않아 AFTER_COMMIT 리스너가 절대 발화하지 않기 때문이다.
- * 커밋한 데이터는 {@code @AfterEach}에서 정리한다. FCM I/O는 {@link FcmService}를 @MockitoBean으로 대체한다.
+ * 커밋한 데이터는 {@code @AfterEach}에서 정리한다. FCM I/O는 {@link FcmPushSender}를 @MockitoBean으로 대체한다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -76,7 +76,7 @@ class ReportNotificationAfterCommitIntegrationTest {
   private DeviceTokenRepository deviceTokenRepository;
 
   @MockitoBean
-  private FcmService fcmService;
+  private FcmPushSender fcmPushSender;
 
   private User customer;
   private User adjuster;
@@ -128,7 +128,7 @@ class ReportNotificationAfterCommitIntegrationTest {
     assertThat(notifications.get(0).getType()).isEqualTo(NotificationType.RECEIVED_PROPOSAL);
     assertThat(notifications.get(0).getUserId()).isEqualTo(customer.getId());
     assertThat(notifications.get(0).getTitle()).isEqualTo(EXPECTED_TITLE);
-    verify(fcmService).send(anyList(), eq(EXPECTED_TITLE), anyString(), anyMap());
+    verify(fcmPushSender).send(anyList(), eq(EXPECTED_TITLE), anyString(), anyMap());
   }
 
   @Test
@@ -145,7 +145,7 @@ class ReportNotificationAfterCommitIntegrationTest {
     List<Notification> notifications = notificationsOfCustomer();
     assertThat(notifications).hasSize(1);
     assertThat(notifications.get(0).getType()).isEqualTo(NotificationType.RECEIVED_PROPOSAL);
-    verify(fcmService, never()).send(any(), any(), any(), any());
+    verify(fcmPushSender, never()).send(any(), any(), any(), any());
   }
 
   @Test
@@ -159,6 +159,6 @@ class ReportNotificationAfterCommitIntegrationTest {
         .isInstanceOf(BusinessException.class);
 
     assertThat(notificationsOfCustomer()).isEmpty();
-    verify(fcmService, never()).send(any(), any(), any(), any());
+    verify(fcmPushSender, never()).send(any(), any(), any(), any());
   }
 }

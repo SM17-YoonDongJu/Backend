@@ -14,7 +14,7 @@ import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 /**
  * 상담 방(제안당 1개) 최초 INSERT 전용. 별도 트랜잭션(REQUIRES_NEW)에서 저장하므로 동시 최초 개설로
  * 부분 UNIQUE 인덱스({@code uk_chatroom_report_review_id}, V44)가 충돌해도 이 트랜잭션만 롤백되고
- * 호출자 트랜잭션은 오염되지 않는다({@code ReportReviewSkeletonInitializer}와 같은 패턴).
+ * 호출자 트랜잭션은 오염되지 않는다({@code ReportReviewWriter}와 같은 패턴).
  *
  * <p>별도 Bean으로 분리한 이유는 전파 때문이다 — 호출자와 같은 클래스에 두면 자가 호출(self-invocation)이라
  * Spring AOP 프록시를 타지 않아 REQUIRES_NEW가 조용히 무시된다.
@@ -26,7 +26,7 @@ import com.soma.backend.domain.chat.repository.ChatRoomRepository;
  */
 @Component
 @RequiredArgsConstructor
-public class ChatRoomInsertOperator {
+public class ChatRoomWriter {
 
   private final ChatRoomRepository chatRoomRepository;
 

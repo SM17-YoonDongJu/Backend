@@ -18,7 +18,7 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
  */
 @Component
 @RequiredArgsConstructor
-public class ReportReviewSkeletonInitializer {
+public class ReportReviewWriter {
 
   private final ReportReviewRepository reportReviewRepository;
 

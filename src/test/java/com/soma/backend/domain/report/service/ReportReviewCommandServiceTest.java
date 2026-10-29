@@ -55,7 +55,7 @@ class ReportReviewCommandServiceTest {
   @Mock
   private ReportIssueRepository reportIssueRepository;
   @Mock
-  private ReportReviewSkeletonInitializer reportReviewSkeletonInitializer;
+  private ReportReviewWriter reportReviewWriter;
   @Mock
   private ApplicationEventPublisher eventPublisher;
 
@@ -211,7 +211,7 @@ class ReportReviewCommandServiceTest {
     assertThat(review.getIssues()).hasSize(1);
     assertThat(review.getIssues().get(0).getTitle()).isEqualTo("신규 쟁점 제목");
     assertThat(review.getIssues().get(0).getImpactAmount()).isEqualTo(1_500_000);
-    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
+    verify(reportReviewWriter).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
   }
 
@@ -261,7 +261,7 @@ class ReportReviewCommandServiceTest {
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
     assertThat(review.getIssues()).hasSize(1);
-    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
+    verify(reportReviewWriter).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
     verify(reportRepository).save(report);
   }
@@ -363,7 +363,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(true);
+    given(reportReviewWriter.ensureExists(reportId, adjusterId)).willReturn(true);
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
@@ -388,7 +388,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(true);
+    given(reportReviewWriter.ensureExists(reportId, adjusterId)).willReturn(true);
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
@@ -406,7 +406,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(false);
+    given(reportReviewWriter.ensureExists(reportId, adjusterId)).willReturn(false);
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
@@ -423,7 +423,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId))
+    given(reportReviewWriter.ensureExists(reportId, adjusterId))
         .willThrow(new DataIntegrityViolationException("동시 최초 삽입 UK 충돌"));
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));

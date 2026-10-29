@@ -20,7 +20,7 @@ import com.soma.backend.domain.report.repository.ReportHoldRepository;
  */
 @Component
 @RequiredArgsConstructor
-public class ReportHoldInitializer {
+public class ReportHoldWriter {
 
   private final ReportHoldRepository reportHoldRepository;
 

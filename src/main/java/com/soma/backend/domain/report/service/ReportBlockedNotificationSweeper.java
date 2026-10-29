@@ -19,14 +19,14 @@ import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
 import com.soma.backend.domain.report.repository.ReportRepository;
 
 /**
- * BLOCKED(AI 입력 가드레일 차단) 알림 스윕(design.md F1 후속). {@link AnalysisFailureNotificationSweeper}와
+ * BLOCKED(AI 입력 가드레일 차단) 알림 스윕(design.md F1 후속). {@link ReportAnalysisFailureNotificationSweeper}와
  * 같은 "무음 실패는 폴링 스윕으로 잡는다" 원칙을 따르되, 대상 저널이 다르다 — BLOCKED는 가드레일이 OCR·초안
  * 생성 <b>이전</b>에 파이프라인을 끊어버려 {@code ai.ocr_job_failures}에 흔적이 안 남는다. 그래서 이 스윕은
  * 저널이 아니라 {@code reports.status}를 직접 스캔한다.
  *
  * <p><b>트랜잭션 경계:</b> 이 트랜잭션은 {@link Report} Aggregate 하나만 수정한다(통지 시각). 알림 행 생성
  * ({@code Notification} Aggregate)과 FCM 발송은 {@link ReportBlockedEvent}를 통해 커밋 후(AFTER_COMMIT)로
- * 분리한다 — {@code AnalysisFailureNotificationSweeper}·{@code ReviewProposalReceivedEvent}와 동일한 구조다.
+ * 분리한다 — {@code ReportAnalysisFailureNotificationSweeper}·{@code ReviewProposalReceivedEvent}와 동일한 구조다.
  *
  * <p><b>관측성(Micrometer):</b> {@code report.blocked.notified} → Prometheus
  * {@code report_blocked_notified_total}(사이클당 통지 건수), {@code report.blocked.sweep.errors} →
@@ -34,7 +34,7 @@ import com.soma.backend.domain.report.repository.ReportRepository;
  */
 @Slf4j
 @Service
-public class BlockedReportNotificationSweeper {
+public class ReportBlockedNotificationSweeper {
 
   /** 한 사이클 처리 상한. AFTER_COMMIT 리스너가 FCM I/O를 동기 수행하므로 무제한으로 늘리지 않는다. */
   private static final int BATCH_SIZE = 100;
@@ -48,7 +48,7 @@ public class BlockedReportNotificationSweeper {
   @Value("${app.report.blocked-sweep-enabled:true}")
   private boolean sweepEnabled;
 
-  public BlockedReportNotificationSweeper(
+  public ReportBlockedNotificationSweeper(
       ReportRepository reportRepository, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
     this.reportRepository = reportRepository;
     this.eventPublisher = eventPublisher;

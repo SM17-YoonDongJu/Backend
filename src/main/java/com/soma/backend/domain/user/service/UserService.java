@@ -17,11 +17,11 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.crypto.PiiAad;
 import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * 내 정보 조회·수정·탈퇴 유스케이스.
@@ -38,9 +38,9 @@ public class UserService {
 
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
-  private final AuthTokenService authTokenService;
+  private final AuthTokenManager authTokenManager;
   private final OutboxEventPublisher outboxEventPublisher;
-  private final S3UploadService s3UploadService;
+  private final S3ObjectStorage s3ObjectStorage;
   private final PiiHmac piiHmac;
 
   /**
@@ -49,7 +49,7 @@ public class UserService {
   @Transactional(readOnly = true)
   public UserMeResponse getMe(UUID userId) {
     return UserMeResponse.from(
-        findActiveUser(userId), resolveSocialProvider(userId), s3UploadService::presignedGetUrl);
+        findActiveUser(userId), resolveSocialProvider(userId), s3ObjectStorage::presignedGetUrl);
   }
 
   /**
@@ -71,7 +71,7 @@ public class UserService {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
     user.updateProfile(newPhone, newPhoneHmac, request.region(), request.avatarUrl());
-    return UserMeResponse.from(user, resolveSocialProvider(userId), s3UploadService::presignedGetUrl);
+    return UserMeResponse.from(user, resolveSocialProvider(userId), s3ObjectStorage::presignedGetUrl);
   }
 
   /**
@@ -90,7 +90,7 @@ public class UserService {
             userId, account.getProvider(), account.getProviderUserId(), account.getRefreshToken()));
     socialAccountRepository.deleteByUserId(userId);
     outboxEventPublisher.publishAuthCleanup(userId);
-    authTokenService.expireCookies(response);
+    authTokenManager.expireCookies(response);
   }
 
   /**

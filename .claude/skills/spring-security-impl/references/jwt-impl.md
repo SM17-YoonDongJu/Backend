@@ -66,7 +66,7 @@ UUID userId = userDetails.getUserId();
 
 ## 2. 구현 완료 — 쿠키 기반 발급·회전
 
-토큰은 응답 바디가 아니라 HttpOnly 쿠키로만 전달된다. 발급·회전·쿠키 부착은 `global/security/AuthTokenService`가 오케스트레이션하고, 도메인 인증 서비스(`OAuthLoginService`·`AuthRegisterService`·`AuthReissueService`·`AuthLogoutService`)가 이를 호출한다.
+토큰은 응답 바디가 아니라 HttpOnly 쿠키로만 전달된다. 발급·회전·쿠키 부착은 `global/security/AuthTokenManager`가 오케스트레이션하고, 도메인 인증 서비스(`OAuthLoginService`·`AuthRegisterService`·`AuthReissueService`·`AuthLogoutService`)가 이를 호출한다.
 
 ### RefreshTokenRepository (`infra/redis/RefreshTokenRepository.java`)
 
@@ -117,7 +117,7 @@ public class RefreshTokenRepository {
 }
 ```
 
-### AuthTokenService 플로우 (`global/security/AuthTokenService.java`)
+### AuthTokenManager 플로우 (`global/security/AuthTokenManager.java`)
 
 **토큰 발급 — `issueTokens` (OAuth 로그인·회원가입 성공 시)**
 ```

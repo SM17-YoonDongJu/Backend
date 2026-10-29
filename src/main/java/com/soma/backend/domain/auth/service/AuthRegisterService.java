@@ -19,7 +19,7 @@ import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.common.RegionFormat;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.crypto.PiiAad;
 import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
@@ -44,7 +44,7 @@ public class AuthRegisterService {
   private final SignupTicketProvider signupTicketProvider;
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
-  private final AuthTokenService authTokenService;
+  private final AuthTokenManager authTokenManager;
   private final AppleRefreshStagingRepository appleRefreshStagingRepository;
   private final PiiHmac piiHmac;
 
@@ -82,7 +82,7 @@ public class AuthRegisterService {
         .ifPresent(account::linkRefreshToken);
     socialAccountRepository.save(account);
 
-    authTokenService.issueTokens(response, user.getId(), role.name());
+    authTokenManager.issueTokens(response, user.getId(), role.name());
     return new RegisterResponse(user.getId(), user.getNickname(), role.name());
   }
 }

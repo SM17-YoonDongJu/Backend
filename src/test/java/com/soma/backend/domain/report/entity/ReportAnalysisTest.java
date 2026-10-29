@@ -172,7 +172,7 @@ class ReportAnalysisTest {
 
     ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering));
 
-    // Then: AnalysisFailureNotificationSweeper는 isFailed()로 통지 대상을 고르므로 중복 알림이 나가지 않는다.
+    // Then: ReportAnalysisFailureNotificationSweeper는 isFailed()로 통지 대상을 고르므로 중복 알림이 나가지 않는다.
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
     assertThat(analysis.isFailed()).isFalse();
   }

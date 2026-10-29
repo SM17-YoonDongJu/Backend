@@ -38,8 +38,8 @@ import com.soma.backend.domain.notification.repository.NotificationSettingReposi
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.repository.ReportRepository;
-import com.soma.backend.domain.report.service.AnalysisFailureNotificationSweeper;
-import com.soma.backend.infra.fcm.FcmService;
+import com.soma.backend.domain.report.service.ReportAnalysisFailureNotificationSweeper;
+import com.soma.backend.infra.fcm.FcmPushSender;
 
 /**
  * ANALYSIS_FAILED 알림 스윕의 실제 커밋 경로 통합 테스트(design.md §15 Q8·Q9).
@@ -61,7 +61,7 @@ class AnalysisFailedNotificationIntegrationTest {
   private static final LocalDateTime FAILED_AT = LocalDateTime.now().minusHours(1);
 
   @Autowired
-  private AnalysisFailureNotificationSweeper sweeper;
+  private ReportAnalysisFailureNotificationSweeper sweeper;
   @Autowired
   private ReportRepository reportRepository;
   @Autowired
@@ -74,7 +74,7 @@ class AnalysisFailedNotificationIntegrationTest {
   private JdbcTemplate jdbcTemplate;
 
   @MockitoBean
-  private FcmService fcmService;
+  private FcmPushSender fcmPushSender;
 
   private UUID ownerId;
   private UUID reportId;
@@ -127,7 +127,7 @@ class AnalysisFailedNotificationIntegrationTest {
     assertThat(notifications).hasSize(1);
     assertThat(notifications.get(0).getType()).isEqualTo(NotificationType.ANALYSIS_FAILED);
     assertThat(notifications.get(0).getTitle()).isEqualTo("문서 분석에 실패했어요");
-    verify(fcmService, times(1)).send(anyList(), anyString(), anyString(), anyMap());
+    verify(fcmPushSender, times(1)).send(anyList(), anyString(), anyString(), anyMap());
     // 통지 시각이 기록돼 다음 사이클의 조회 대상에서 빠진다.
     assertThat(reportRepository.findById(reportId).orElseThrow())
         .extracting(report -> ReflectionTestUtils.getField(report, "analysisFailureNotifiedAt"))
@@ -150,7 +150,7 @@ class AnalysisFailedNotificationIntegrationTest {
     assertThat(notificationsOfOwner()).singleElement()
         .satisfies(notification ->
             assertThat(notification.getType()).isEqualTo(NotificationType.ANALYSIS_FAILED));
-    verify(fcmService).send(anyList(), eq("문서 분석에 실패했어요"), anyString(), anyMap());
+    verify(fcmPushSender).send(anyList(), eq("문서 분석에 실패했어요"), anyString(), anyMap());
   }
 
   @Test
@@ -161,7 +161,7 @@ class AnalysisFailedNotificationIntegrationTest {
     sweeper.sweep();
 
     assertThat(notificationsOfOwner()).isEmpty();
-    verify(fcmService, never()).send(any(), any(), any(), any());
+    verify(fcmPushSender, never()).send(any(), any(), any(), any());
   }
 
   @Test
@@ -175,7 +175,7 @@ class AnalysisFailedNotificationIntegrationTest {
     sweeper.sweep();
 
     assertThat(notificationsOfOwner()).isEmpty();
-    verify(fcmService, never()).send(any(), any(), any(), any());
+    verify(fcmPushSender, never()).send(any(), any(), any(), any());
   }
 
   @Test

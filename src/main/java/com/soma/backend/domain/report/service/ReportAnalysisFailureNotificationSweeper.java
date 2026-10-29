@@ -61,7 +61,7 @@ import com.soma.backend.domain.report.repository.ReportRepository;
  */
 @Slf4j
 @Service
-public class AnalysisFailureNotificationSweeper {
+public class ReportAnalysisFailureNotificationSweeper {
 
   /** 조회 창 — {@code last_failed_at}이 이 기간 안인 실패만 본다(무기한 스캔 방지, 부분 인덱스 범위 스캔). */
   private static final long LOOKBACK_DAYS = 7L;
@@ -82,7 +82,7 @@ public class AnalysisFailureNotificationSweeper {
   @Value("${app.report.analysis-failure-sweep-enabled:true}")
   private boolean sweepEnabled;
 
-  public AnalysisFailureNotificationSweeper(
+  public ReportAnalysisFailureNotificationSweeper(
       OcrJobFailureViewRepository ocrJobFailureViewRepository,
       ReportRepository reportRepository,
       ApplicationEventPublisher eventPublisher,

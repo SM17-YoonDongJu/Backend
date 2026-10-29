@@ -19,10 +19,10 @@ import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.repository.ReportRepository;
 
 /**
- * NEEDS_REUPLOAD(OCR 품질 미달 — 재업로드 필요) 알림 스윕. {@link BlockedReportNotificationSweeper}와 같은
+ * NEEDS_REUPLOAD(OCR 품질 미달 — 재업로드 필요) 알림 스윕. {@link ReportBlockedNotificationSweeper}와 같은
  * "무음 정지는 폴링 스윕으로 잡는다" 원칙을 따르되 대상 신호가 다르다 — 이 판정은 OCR '실패'가 아니라
  * '품질 판정'이라 {@code ai.ocr_job_failures}에 행이 남지 않으므로 저널 기반
- * {@link AnalysisFailureNotificationSweeper}가 절대 잡지 못한다. 그래서 저널이 아니라
+ * {@link ReportAnalysisFailureNotificationSweeper}가 절대 잡지 못한다. 그래서 저널이 아니라
  * {@code reports.status}를 직접 스캔한다.
  *
  * <p><b>기존 스윕에 통합하지 않은 이유:</b> 멱등 가드 컬럼이 다르다. 현재 조회는 Spring Data 파생 쿼리라
@@ -39,7 +39,7 @@ import com.soma.backend.domain.report.repository.ReportRepository;
  */
 @Slf4j
 @Service
-public class NeedsReuploadNotificationSweeper {
+public class ReportNeedsReuploadNotificationSweeper {
 
   /** 한 사이클 처리 상한. AFTER_COMMIT 리스너가 FCM I/O를 동기 수행하므로 무제한으로 늘리지 않는다. */
   private static final int BATCH_SIZE = 100;
@@ -53,7 +53,7 @@ public class NeedsReuploadNotificationSweeper {
   @Value("${app.report.needs-reupload-sweep-enabled:true}")
   private boolean sweepEnabled;
 
-  public NeedsReuploadNotificationSweeper(
+  public ReportNeedsReuploadNotificationSweeper(
       ReportRepository reportRepository, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
     this.reportRepository = reportRepository;
     this.eventPublisher = eventPublisher;

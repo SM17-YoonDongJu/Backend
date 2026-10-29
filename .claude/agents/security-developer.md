@@ -18,7 +18,7 @@ description: "Spring Security, JWT(Access+Refresh+RTR), OAuth2 소셜 로그인(
 
 ## 작업 원칙
 - spring-security-impl 스킬을 참조한다
-- 토큰 전송은 **HttpOnly 쿠키** 기반 — `AuthTokenService`가 발급을 오케스트레이션하고 `CookieProvider`가 `access_token`(Path `/`)·`refresh_token`(Path `/auth`) 쿠키를 생성·조회·만료한다. 응답 바디로 토큰을 내려주지 않는다
+- 토큰 전송은 **HttpOnly 쿠키** 기반 — `AuthTokenManager`가 발급을 오케스트레이션하고 `CookieProvider`가 `access_token`(Path `/`)·`refresh_token`(Path `/auth`) 쿠키를 생성·조회·만료한다. 응답 바디로 토큰을 내려주지 않는다
 - Refresh Token은 RTR(Refresh Token Rotation) 적용 — 재발급은 Lua 원자적 CAS(`rotate(userId, oldToken, newToken)`)로 저장값 대조·교체를 한 번에 수행, 동시 재발급 경쟁 창 없음
 - Redis는 JWT Refresh Token 저장 전용. Redis 키는 `refresh:{userId}` 단일 패턴만 사용
 - OAuth2 Client ID·Secret·Redirect URI는 환경변수로 관리, 코드 하드코딩 금지

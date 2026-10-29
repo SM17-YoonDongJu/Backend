@@ -41,8 +41,9 @@ class LayerArchitectureTest {
    * 겹치고 컨텍스트 간 결합이 숨는다 — 다른 Aggregate의 변경은 도메인 이벤트로, 공통 로직은 엔티티나
    * 전용 협력 객체(Reader·Writer 등)로 내린다.
    *
-   * <p>{@code @Service}가 아니라 이름으로 판정한다. {@code S3UploadService}처럼 {@code @Component}인데
-   * Service라는 이름을 단 인프라 클래스도 같은 혼동을 만들기 때문이다(이름을 바꾸면 규칙에서 빠진다).
+   * <p>{@code @Service}가 아니라 이름으로 판정한다. {@code @Component}인데 Service라는 이름을 단 인프라
+   * 클래스도 유스케이스처럼 읽혀 같은 혼동을 만들기 때문이다. 그래서 infra·global 어댑터는 Service 대신
+   * 역할 이름을 쓴다(예: {@code S3ObjectStorage}, {@code FcmPushSender}, {@code AuthTokenManager}).
    * 같은 이유로 검사 대상(origin)도 domain service 패키지뿐 아니라 {@code infra}·{@code global}의
    * {@code *Service}까지 포함한다.
    */

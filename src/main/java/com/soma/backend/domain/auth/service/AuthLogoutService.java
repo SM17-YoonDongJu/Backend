@@ -9,7 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.CookieProvider;
 import com.soma.backend.global.security.JwtProvider;
 
@@ -23,14 +23,14 @@ import com.soma.backend.global.security.JwtProvider;
 @RequiredArgsConstructor
 public class AuthLogoutService {
 
-  private final AuthTokenService authTokenService;
+  private final AuthTokenManager authTokenManager;
   private final CookieProvider cookieProvider;
   private final JwtProvider jwtProvider;
 
   public void logout(
       HttpServletRequest request, HttpServletResponse response, @Nullable UUID principalUserId) {
     UUID userId = principalUserId != null ? principalUserId : resolveFromRefreshCookie(request);
-    authTokenService.clearTokens(response, userId);
+    authTokenManager.clearTokens(response, userId);
   }
 
   private @Nullable UUID resolveFromRefreshCookie(HttpServletRequest request) {

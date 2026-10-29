@@ -50,7 +50,7 @@ Spring `oauth2Login` 필터를 쓰지 않는다. 프론트가 인가코드를 �
    - code → access_token 교환(POST form) → user-info 조회(Bearer)
    - scope는 id만 — OAuthProfile(provider, providerUserId)로 정규화 (이메일·프로필 미수집)
 2. SocialAccount 조회 (provider + providerUserId)
-   - 기존 회원 → AuthTokenService.issueTokens(쿠키 발급) → OAuthCallbackResponse.existingUser(userId) (isNewUser=false)
+   - 기존 회원 → AuthTokenManager.issueTokens(쿠키 발급) → OAuthCallbackResponse.existingUser(userId) (isNewUser=false)
    - 신규 회원 → SignupTicket 발급(쿠키 없음)          → OAuthCallbackResponse.newUser(ticket)   (isNewUser=true)
 ```
 
@@ -60,7 +60,7 @@ Spring `oauth2Login` 필터를 쓰지 않는다. 프론트가 인가코드를 �
 1. SignupTicketProvider.parse(socialToken)   // 서명·만료(5분)·purpose="signup" 검증
 2. provider 일치 + SocialAccount/전화번호 중복 검사
 3. User + SocialAccount 한 트랜잭션 생성
-4. AuthTokenService.issueTokens(쿠키 발급) → RegisterResponse
+4. AuthTokenManager.issueTokens(쿠키 발급) → RegisterResponse
 ```
 
 > **SignupTicket**(`SignupTicketProvider`): `jwt.secret`으로 서명한 단기(5분) JWT. `purpose="signup"` 클레임으로 액세스 토큰과 구분하고, subject=providerUserId·provider 클레임을 담는다. 토큰을 쿼리 파라미터로 프론트에 리다이렉트하지 않는다(쿠키 인증이라 리다이렉트-토큰 패턴 불필요).
@@ -190,7 +190,7 @@ public class RefreshTokenRepository {
 }
 ```
 
-> 발급·회전·쿠키 부착 오케스트레이션은 `AuthTokenService`(`issueTokens`/`validateRefreshCookie`+`reissueTokens`/`clearTokens`)가 담당한다.
+> 발급·회전·쿠키 부착 오케스트레이션은 `AuthTokenManager`(`issueTokens`/`validateRefreshCookie`+`reissueTokens`/`clearTokens`)가 담당한다.
 
 ## 보안 체크리스트
 - [ ] 토큰은 HttpOnly 쿠키로만 전달, 응답 바디·쿼리 파라미터에 노출 금지

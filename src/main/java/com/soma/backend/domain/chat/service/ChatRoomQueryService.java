@@ -15,7 +15,7 @@ import com.soma.backend.domain.chat.repository.ChatRoomListRow;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /** 채팅방 목록·단건 상세 조회(설계서 §4 ①). 상대방 이름을 me 기준으로 결정하고 안읽음 수를 포함한다. */
 @Service
@@ -23,7 +23,7 @@ import com.soma.backend.infra.s3.S3UploadService;
 public class ChatRoomQueryService {
 
   private final ChatRoomRepository chatRoomRepository;
-  private final S3UploadService s3UploadService;
+  private final S3ObjectStorage s3ObjectStorage;
 
   @Transactional(readOnly = true)
   public ChatRoomListResponse listMyRooms(UUID me) {
@@ -75,7 +75,7 @@ public class ChatRoomQueryService {
     String counterpartName = iAmUser ? row.adjusterNickname() : row.userNickname();
     String counterpartAvatarUrl = iAmUser ? row.adjusterAvatarUrl() : row.userAvatarUrl();
     return new ChatRoomSummaryResponse.Counterpart(
-        counterpartId, counterpartName, s3UploadService.presignedGetUrl(counterpartAvatarUrl));
+        counterpartId, counterpartName, s3ObjectStorage.presignedGetUrl(counterpartAvatarUrl));
   }
 
   private long unread(ChatRoomListRow row) {

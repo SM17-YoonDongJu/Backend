@@ -23,7 +23,7 @@ import com.soma.backend.infra.redis.RefreshTokenRepository.RotateResult;
  */
 @Service
 @RequiredArgsConstructor
-public class AuthTokenService {
+public class AuthTokenManager {
 
   private final JwtProvider jwtProvider;
   private final CookieProvider cookieProvider;
