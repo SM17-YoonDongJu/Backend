@@ -16,7 +16,6 @@ import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
 import com.soma.backend.domain.chat.dto.SharedReportResponse;
 import com.soma.backend.domain.chat.entity.ChatRoom;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
-import com.soma.backend.domain.report.entity.IssueReviewStatus;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportIssue;
 import com.soma.backend.domain.report.entity.ReportReview;
@@ -81,7 +80,7 @@ public class SharedReportQueryService {
     List<SharedReportResponse.Issue> issues = new ArrayList<>();
     for (ReportIssue ai : aiIssues) {
       ReportReviewIssue overlay = overlayByReportIssueId.get(ai.getId());
-      if (overlay == null || overlay.getReviewStatus() == IssueReviewStatus.EXCLUDED) {
+      if (overlay == null || overlay.isExcluded()) {
         continue;
       }
       issues.add(toIssue(ai, overlay));

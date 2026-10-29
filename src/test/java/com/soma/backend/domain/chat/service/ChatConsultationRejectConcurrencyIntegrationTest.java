@@ -114,7 +114,7 @@ class ChatConsultationRejectConcurrencyIntegrationTest {
 
   /** 상담 진행 중(COUNSELING) 제안. 트랜잭션 밖이라 상태 전이를 저장 전에 끝내야 반영된다. */
   private UUID saveCounselingReview(UUID adjusterId) {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     review.startCounseling();
     return reportReviewRepository.save(review).getId();
   }

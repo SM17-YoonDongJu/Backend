@@ -359,4 +359,34 @@ class ReportTest {
     ReflectionTestUtils.setField(drafted, "applicableGuarantees", List.of("상해후유장해"));
     assertThat(drafted.isAiDraftGenerated()).isTrue();
   }
+
+  @Test
+  @DisplayName("reopenForAdoptionIfNoCounselingLeft: 마지막 상담이 끝난 COUNSELING 리포트는 채택 대기로 돌아간다")
+  void reopenWhenLastCounselingEnded() {
+    Report report = reportWithStatus(ReportStatus.COUNSELING);
+
+    report.reopenForAdoptionIfNoCounselingLeft(false);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+  }
+
+  @Test
+  @DisplayName("reopenForAdoptionIfNoCounselingLeft: 다른 상담이 남아 있으면 COUNSELING을 유지한다")
+  void keepCounselingWhenOtherCounselingRemains() {
+    Report report = reportWithStatus(ReportStatus.COUNSELING);
+
+    report.reopenForAdoptionIfNoCounselingLeft(true);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.COUNSELING);
+  }
+
+  @Test
+  @DisplayName("reopenForAdoptionIfNoCounselingLeft: COUNSELING이 아니면 예외 없이 그대로 둔다")
+  void noopWhenNotCounseling() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+
+    report.reopenForAdoptionIfNoCounselingLeft(false);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+  }
 }

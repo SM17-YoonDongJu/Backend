@@ -99,7 +99,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_persistsRoomAndTransitionsInOneCommit() {
     // Given
     Report report = awaitingAdoptionReport("20260815-001");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
     ProposalDecisionResponse response = reportCommandService.decide(
@@ -137,7 +137,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_isIdempotentOnRepeatedRequests() {
     // Given
     Report report = awaitingAdoptionReport("20260815-002");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
     ProposalDecisionResponse first = reportCommandService.decide(
@@ -158,8 +158,8 @@ class ProposalCounselingIntegrationTest {
   void counseling_opensSeparateRoomPerProposal() {
     // Given
     Report report = awaitingAdoptionReport("20260815-003");
-    ReportReview review1 = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
-    ReportReview review2 = reportReviewRepository.save(new ReportReview(report.getId(), adjuster2.getId()));
+    ReportReview review1 = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
+    ReportReview review2 = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster2.getId()));
 
     // When
     ProposalDecisionResponse first = reportCommandService.decide(
@@ -177,7 +177,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_roomAppearsInBothParticipantsRoomList() {
     // Given
     Report report = awaitingAdoptionReport("20260815-004");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
     ProposalDecisionResponse response = reportCommandService.decide(
@@ -203,7 +203,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("상담을 시작하기 전에는 그 제안에 연결된 방이 없다")
   void noRoomExistsBeforeCounselingStarts() {
     Report report = awaitingAdoptionReport("20260815-005");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     assertThat(chatRoomRepository.findByReportReviewId(review.getId())).isEmpty();
     assertThat(chatRoomRepository.findMyRoomRows(customer.getId())).isEmpty();
@@ -214,7 +214,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_thenChatAcceptCompletesFlow() {
     // Given
     Report report = awaitingAdoptionReport("20260815-006");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
         customer.getId(), report.getId(), review.getId(), true);
 
@@ -238,7 +238,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_cannotRestartAfterChatReject() {
     // Given
     Report report = awaitingAdoptionReport("20260815-007");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
         customer.getId(), report.getId(), review.getId(), true);
     chatConsultationCommandService.reject(customer.getId(), counseling.chatRoomId());
@@ -257,7 +257,7 @@ class ProposalCounselingIntegrationTest {
     // Given
     Report report = reportRepository.save(Report.createPending(
         customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260815-008"));
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When & Then
     assertThatThrownBy(() -> reportCommandService.decide(
@@ -272,7 +272,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_forbiddenForNonOwner() {
     // Given
     Report report = awaitingAdoptionReport("20260815-009");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When & Then
     assertThatThrownBy(() -> reportCommandService.decide(
@@ -287,7 +287,7 @@ class ProposalCounselingIntegrationTest {
   void rejected_isNoOp_andPersistsNothing() {
     // Given
     Report report = awaitingAdoptionReport("20260815-010");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
     ProposalDecisionResponse response = reportCommandService.decide(
@@ -312,7 +312,7 @@ class ProposalCounselingIntegrationTest {
   void rejected_isNoOp_evenWhenProposalCounseling() {
     // Given — 먼저 상담을 시작해 방까지 열어 둔다
     Report report = awaitingAdoptionReport("20260815-011");
-    ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
         customer.getId(), report.getId(), review.getId(), true);
 

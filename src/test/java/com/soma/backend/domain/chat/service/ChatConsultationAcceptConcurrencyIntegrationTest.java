@@ -136,7 +136,7 @@ class ChatConsultationAcceptConcurrencyIntegrationTest {
     report.applyReviewTransition(ReportStatus.COUNSELING);
     UUID reportId = reportRepository.save(report).getId();
 
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     review.startCounseling();
     UUID reviewId = reportReviewRepository.save(review).getId();
 

@@ -16,7 +16,7 @@ import com.soma.backend.global.exception.ErrorCode;
 class ReportReviewTest {
 
   private static ReportReview reviewWithStatus(ReviewStatus status) {
-    ReportReview review = new ReportReview(UUID.randomUUID(), UUID.randomUUID());
+    ReportReview review = ReportReview.create(UUID.randomUUID(), UUID.randomUUID());
     ReflectionTestUtils.setField(review, "status", status);
     return review;
   }
@@ -24,7 +24,7 @@ class ReportReviewTest {
   @Test
   @DisplayName("검수 등록 직후 제안 상태는 SENT다")
   void newReviewStartsAsSent() {
-    ReportReview review = new ReportReview(UUID.randomUUID(), UUID.randomUUID());
+    ReportReview review = ReportReview.create(UUID.randomUUID(), UUID.randomUUID());
 
     assertThat(review.getStatus()).isEqualTo(ReviewStatus.SENT);
   }
@@ -150,5 +150,23 @@ class ReportReviewTest {
     // Then
     assertThat(toAccept.getStatus()).isEqualTo(ReviewStatus.ACCEPTED);
     assertThat(toReject.getStatus()).isEqualTo(ReviewStatus.REJECTED);
+  }
+
+  @Test
+  @DisplayName("belongsTo: 만들 때 지정한 리포트에만 속한다")
+  void belongsToOnlyItsReport() {
+    UUID reportId = UUID.randomUUID();
+    ReportReview review = ReportReview.create(reportId, UUID.randomUUID());
+
+    assertThat(review.belongsTo(reportId)).isTrue();
+    assertThat(review.belongsTo(UUID.randomUUID())).isFalse();
+  }
+
+  @Test
+  @DisplayName("isCounseling: COUNSELING 상태에서만 참이다")
+  void isCounselingOnlyWhenCounseling() {
+    assertThat(reviewWithStatus(ReviewStatus.COUNSELING).isCounseling()).isTrue();
+    assertThat(reviewWithStatus(ReviewStatus.SENT).isCounseling()).isFalse();
+    assertThat(reviewWithStatus(ReviewStatus.ACCEPTED).isCounseling()).isFalse();
   }
 }

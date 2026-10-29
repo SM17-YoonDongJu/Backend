@@ -53,7 +53,7 @@ class ReportHoldCommandServiceTest {
 
   private void givenExistingHold(HoldReason reason, String reasonDetail) {
     given(reportHoldRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.of(new ReportHold(reportId, adjusterId, reason, reasonDetail)));
+        .willReturn(Optional.of(ReportHold.create(reportId, adjusterId, reason, reasonDetail)));
   }
 
   @Test

@@ -94,7 +94,7 @@ class ChatConsultationCommandServiceIntegrationTest {
 
   /** 상담이 진행 중인(COUNSELING) 제안 — 채팅 화면에서 수락/거절을 누를 수 있는 실제 상태다. */
   private ReportReview counselingReview(UUID reportId, UUID adjusterId) {
-    ReportReview review = reportReviewRepository.save(new ReportReview(reportId, adjusterId));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(reportId, adjusterId));
     review.startCounseling();
     return review;
   }
@@ -131,7 +131,7 @@ class ChatConsultationCommandServiceIntegrationTest {
   void accept_syncsCompletedConsultCount() {
     savedProfile(adjuster1.getId());
     Report report = counselingReport();
-    ReportReview myReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview myReview = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
 
     chatConsultationCommandService.accept(customer.getId(), myRoom.getId());
@@ -146,7 +146,7 @@ class ChatConsultationCommandServiceIntegrationTest {
     savedProfile(adjuster1.getId());
     for (int i = 0; i < 2; i++) {
       Report report = counselingReport();
-      ReportReview review = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+      ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
       ChatRoom room = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), review.getId());
       chatConsultationCommandService.accept(customer.getId(), room.getId());
     }
@@ -179,7 +179,7 @@ class ChatConsultationCommandServiceIntegrationTest {
   @DisplayName("프로필 행이 없는 사정사를 수락해도 상담 수락은 성립한다(집계만 건너뛴다)")
   void accept_succeedsWithoutAdjusterProfileRow() {
     Report report = counselingReport();
-    ReportReview myReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview myReview = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
 
     ConsultationDecisionResponse response = chatConsultationCommandService.accept(customer.getId(), myRoom.getId());
@@ -193,8 +193,8 @@ class ChatConsultationCommandServiceIntegrationTest {
       + " + SYSTEM 메시지 저장")
   void accept_persistsAtomicTransitionAcrossAggregates() {
     Report report = counselingReport();
-    ReportReview myReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
-    ReportReview siblingReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster2.getId()));
+    ReportReview myReview = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
+    ReportReview siblingReview = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster2.getId()));
     ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
     ChatRoom siblingRoom = savedRoom(customer.getId(), adjuster2.getId(), report.getId(), siblingReview.getId());
 
@@ -232,8 +232,8 @@ class ChatConsultationCommandServiceIntegrationTest {
   @DisplayName("정상 거절: 내 제안 REJECTED·report AWAITING_ADOPTION·방 CLOSED, 다른 제안은 유지")
   void reject_persistsAtomicTransitionAndKeepsOtherReviews() {
     Report report = counselingReport();
-    ReportReview myReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
-    ReportReview otherReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster2.getId()));
+    ReportReview myReview = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
+    ReportReview otherReview = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster2.getId()));
     ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
 
     ConsultationDecisionResponse response = chatConsultationCommandService.reject(customer.getId(), myRoom.getId());
@@ -295,8 +295,8 @@ class ChatConsultationCommandServiceIntegrationTest {
         User.create("사정사3", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
     Report report = counselingReport();
     ReportReview myReview = counselingReview(report.getId(), adjuster1.getId());
-    ReportReview sentSibling = reportReviewRepository.save(new ReportReview(report.getId(), adjuster2.getId()));
-    ReportReview rejectedSibling = reportReviewRepository.save(new ReportReview(report.getId(), adjuster3.getId()));
+    ReportReview sentSibling = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster2.getId()));
+    ReportReview rejectedSibling = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster3.getId()));
     rejectedSibling.reject();
     ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
 
@@ -385,7 +385,7 @@ class ChatConsultationCommandServiceIntegrationTest {
   @DisplayName("소유자가 아닌 사용자가 수락 시도하면 CHAT_NOT_ROOM_OWNER(403)")
   void accept_notOwner_throwsForbidden() {
     Report report = counselingReport();
-    ReportReview myReview = reportReviewRepository.save(new ReportReview(report.getId(), adjuster1.getId()));
+    ReportReview myReview = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ChatRoom myRoom = savedRoom(customer.getId(), adjuster1.getId(), report.getId(), myReview.getId());
 
     assertThatThrownBy(() -> chatConsultationCommandService.accept(UUID.randomUUID(), myRoom.getId()))

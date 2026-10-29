@@ -486,7 +486,7 @@ class ReportCommandServiceTest {
   }
 
   private ReportReview review() {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", proposalId);
     return review;
   }

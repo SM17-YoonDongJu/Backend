@@ -212,7 +212,7 @@ class CustomerReportDetailExecutionTest {
   private void saveAcceptedReviewWithOpinion(UUID reportId, UUID adjusterId, String review,
       List<String> guarantees, List<String> special, List<String> basis,
       UUID reportIssueId, String adjusterOpinion) {
-    ReportReview reportReview = new ReportReview(reportId, adjusterId);
+    ReportReview reportReview = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(reportReview, "status", ReviewStatus.ACCEPTED);
     ReflectionTestUtils.setField(reportReview, "review", review);
     ReflectionTestUtils.setField(reportReview, "applicableGuarantees", guarantees);
@@ -227,7 +227,7 @@ class CustomerReportDetailExecutionTest {
   }
 
   private void saveReview(UUID reportId, UUID adjusterId, ReviewStatus status) {
-    ReportReview reportReview = new ReportReview(reportId, adjusterId);
+    ReportReview reportReview = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(reportReview, "status", status);
     reportReviewRepository.save(reportReview);
   }

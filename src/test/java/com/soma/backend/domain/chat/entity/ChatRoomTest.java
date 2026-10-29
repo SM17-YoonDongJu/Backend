@@ -98,4 +98,36 @@ class ChatRoomTest {
     // Then
     assertThat(room.getStatus()).isEqualTo(ChatRoomStatus.CLOSED);
   }
+
+  @Test
+  @DisplayName("ensureWritableBy: 참여자이고 열린 방이면 통과한다")
+  void ensureWritableByPassesForMemberOfActiveRoom() {
+    ChatRoom room = ChatRoom.openConsultation(userId, adjusterId, reportId, reportReviewId);
+
+    room.ensureWritableBy(userId);
+    room.ensureWritableBy(adjusterId);
+  }
+
+  @Test
+  @DisplayName("ensureWritableBy: 참여자가 아니면 방이 닫혀 있어도 CHAT_NOT_A_MEMBER를 먼저 던진다")
+  void ensureWritableByRejectsNonMemberBeforeClosedCheck() {
+    ChatRoom room = ChatRoom.openConsultation(userId, adjusterId, reportId, reportReviewId);
+    room.close();
+
+    assertThatThrownBy(() -> room.ensureWritableBy(UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode").isEqualTo(ErrorCode.CHAT_NOT_A_MEMBER);
+  }
+
+  @Test
+  @DisplayName("ensureWritableBy: 닫힌 방이면 참여자라도 CHAT_ROOM_CLOSED")
+  void ensureWritableByRejectsClosedRoom() {
+    ChatRoom room = ChatRoom.openConsultation(userId, adjusterId, reportId, reportReviewId);
+    room.close();
+
+    assertThat(room.isClosed()).isTrue();
+    assertThatThrownBy(() -> room.ensureWritableBy(userId))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode").isEqualTo(ErrorCode.CHAT_ROOM_CLOSED);
+  }
 }

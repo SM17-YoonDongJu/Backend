@@ -163,7 +163,7 @@ public class K6ScenarioSeedWriter {
     Report report = createReport(userId, claimId, accidentType, POOL_PROPOSAL, userSeq, idx);
 
     for (UUID adjusterId : adjusterIds) {
-      ReportReview review = new ReportReview(report.getId(), adjusterId);
+      ReportReview review = ReportReview.create(report.getId(), adjusterId);
       review.updateReviewContent(REVIEW_ESTIMATE_MIN_AMOUNT, REVIEW_ESTIMATE_MAX_AMOUNT,
           AI_GUARANTEES, List.of(), AI_PRECEDENTS, SYNTHETIC_REVIEW);
       reportReviewRepository.save(review);
@@ -188,7 +188,7 @@ public class K6ScenarioSeedWriter {
     UUID claimId = createClaim(userId, accidentType);
     Report report = createReport(userId, claimId, accidentType, POOL_CONSULT, userSeq, idx);
 
-    ReportReview review = new ReportReview(report.getId(), adjusterId);
+    ReportReview review = ReportReview.create(report.getId(), adjusterId);
     review.updateReviewContent(REVIEW_ESTIMATE_MIN_AMOUNT, REVIEW_ESTIMATE_MAX_AMOUNT,
         AI_GUARANTEES, List.of(), AI_PRECEDENTS, SYNTHETIC_REVIEW);
     reportReviewRepository.save(review);
@@ -220,7 +220,7 @@ public class K6ScenarioSeedWriter {
     UUID claimId = createClaim(userId, accidentType);
     Report report = createReport(userId, claimId, accidentType, POOL_DURABLE, userSeq, idx);
 
-    ReportReview review = new ReportReview(report.getId(), adjusterId);
+    ReportReview review = ReportReview.create(report.getId(), adjusterId);
     review.updateReviewContent(REVIEW_ESTIMATE_MIN_AMOUNT, REVIEW_ESTIMATE_MAX_AMOUNT,
         AI_GUARANTEES, List.of(), AI_PRECEDENTS, SYNTHETIC_REVIEW);
     reportReviewRepository.save(review);

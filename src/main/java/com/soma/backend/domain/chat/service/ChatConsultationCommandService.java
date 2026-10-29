@@ -13,13 +13,10 @@ import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 import com.soma.backend.domain.chat.entity.ChatRoom;
-import com.soma.backend.domain.chat.entity.ChatRoomStatus;
 import com.soma.backend.domain.chat.repository.ChatMessageRepository;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
-import com.soma.backend.domain.report.entity.ReportStatus;
-import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -96,10 +93,7 @@ public class ChatConsultationCommandService {
     Report report = loadReportForUpdate(room.getReportId());
 
     myReview.reject();
-    if (!hasOtherCounselingReview(report.getId(), myReview.getId())
-        && report.getStatus() == ReportStatus.COUNSELING) {
-      report.reopenForAdoption();
-    }
+    report.reopenForAdoptionIfNoCounselingLeft(hasOtherCounselingReview(report.getId(), myReview.getId()));
     room.close();
     appendSystemMessage(room, REJECT_SYSTEM_MESSAGE);
 
@@ -117,8 +111,7 @@ public class ChatConsultationCommandService {
    */
   private boolean hasOtherCounselingReview(UUID reportId, UUID myReviewId) {
     return reportReviewRepository.findByReportId(reportId).stream()
-        .anyMatch(sibling -> !sibling.getId().equals(myReviewId)
-            && sibling.getStatus() == ReviewStatus.COUNSELING);
+        .anyMatch(sibling -> !sibling.getId().equals(myReviewId) && sibling.isCounseling());
   }
 
   /** 소유자(user)이며 상담 결정이 가능한(파이프라인) 방인지 확인 후 반환한다. */
@@ -170,7 +163,7 @@ public class ChatConsultationCommandService {
   private void closeSiblingRooms(UUID reportId, UUID myRoomId) {
     List<ChatRoom> siblings = chatRoomRepository.findByReportId(reportId);
     for (ChatRoom sibling : siblings) {
-      if (sibling.getId().equals(myRoomId) || sibling.getStatus() == ChatRoomStatus.CLOSED) {
+      if (sibling.getId().equals(myRoomId) || sibling.isClosed()) {
         continue;
       }
       sibling.close();

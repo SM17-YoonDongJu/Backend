@@ -120,7 +120,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("해외여행 실손의료비"), List.of(), List.of("약관 제5조 해외 발생 의료비 보상 기준"),
         "해외 발생 상병으로 국내 실손 보상 여부 확인 필요", "medium");
 
-    ReportReview review = new ReportReview(report.getId(), ADJUSTER_QA);
+    ReportReview review = ReportReview.create(report.getId(), ADJUSTER_QA);
     review.updateReviewContent(250_000, 320_000,
         List.of("해외여행 실손의료비"), List.of(),
         List.of("약관 제5조 해외 발생 의료비 보상 기준"),
@@ -158,14 +158,14 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("질병통원 실손의료비", "비급여 주사료 특약"), List.of(), List.of("약관 제8조 통원의료비 지급기준"),
         "비수술적 통증 치료(신경차단술) 반복 시행, 회차별 청구 가능 여부 확인 필요", "high");
 
-    ReportReview review = new ReportReview(report.getId(), ADJUSTER_1);
+    ReportReview review = ReportReview.create(report.getId(), ADJUSTER_1);
     review.updateReviewContent(800_000, 950_000,
         List.of("질병통원 실손의료비", "비급여 주사료 특약"), List.of(),
         List.of("약관 제8조 통원의료비 지급기준"),
         "제출하신 신경차단술 시술 기록과 영수증을 확인한 결과, 3회 시술 모두 실손의료비 지급 대상으로 확인됩니다. "
             + "안내드린 금액 기준으로 청구 진행하시면 됩니다.");
     review.accept();
-    review.upsertIssue(null, new ReportReviewIssue(null, "신경차단술 반복 시행 인정 여부",
+    review.upsertIssue(null, ReportReviewIssue.create(null, "신경차단술 반복 시행 인정 여부",
         "1년 내 동일 부위 신경차단술 3회 시행, 약관상 통원 1일 1회 한도 내 각 회차 인정",
         900_000, IssueReviewStatus.ACCEPTED, "3회 모두 통원의료비 지급 대상으로 인정", null, null));
     reportReviewRepository.save(review);
@@ -219,7 +219,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("약관 제6조 상해의 정의 및 보상"),
         "뇌진탕 후 지연성 증상, 통원 장기화 가능성 있어 경과 관찰 권고", "medium");
 
-    ReportReview review = new ReportReview(report.getId(), ADJUSTER_2);
+    ReportReview review = ReportReview.create(report.getId(), ADJUSTER_2);
     review.updateReviewContent(950_000, 1_200_000,
         List.of("교통상해 실손의료비", "상해통원비 특약"), List.of(),
         List.of("약관 제6조 상해의 정의 및 보상"),
@@ -277,7 +277,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("약관 제4조 중복보험 처리 기준"),
         "상가 건물 화재보험과의 중복보상 여부 확인 필요", "low");
 
-    ReportReview rejected = new ReportReview(report.getId(), ADJUSTER_QA);
+    ReportReview rejected = ReportReview.create(report.getId(), ADJUSTER_QA);
     rejected.updateReviewContent(300_000, 500_000, List.of(), List.of(), List.of(),
         "제출된 진단서 기준으로 검토했으나, 상가 건물 화재보험의 1차 보상 범위를 먼저 확인해야 중복 여부를 "
             + "판단할 수 있어 이번 제안은 보류합니다.");
@@ -285,14 +285,14 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
     reportReviewRepository.save(rejected);
     backdate("report_reviews", rejected.getId(), reportAt.plusDays(1), reportAt.plusDays(3));
 
-    ReportReview accepted = new ReportReview(report.getId(), ADJUSTER_2);
+    ReportReview accepted = ReportReview.create(report.getId(), ADJUSTER_2);
     accepted.updateReviewContent(450_000, 550_000,
         List.of("질병통원 실손의료비"), List.of(),
         List.of("약관 제4조 중복보험 처리 기준"),
         "상가 건물 화재보험과는 보장 항목이 겹치지 않는 개인 실손 특약 대상으로 확인되어, 안내드린 금액으로 "
             + "청구 가능합니다.");
     accepted.accept();
-    accepted.upsertIssue(null, new ReportReviewIssue(null, "건물 화재보험과의 중복보상 여부",
+    accepted.upsertIssue(null, ReportReviewIssue.create(null, "건물 화재보험과의 중복보상 여부",
         "상가 건물 화재보험은 재산 손해를, 개인 실손은 본인 치료비를 보장해 보장 항목이 겹치지 않음",
         500_000, IssueReviewStatus.MODIFIED, "중복이 아닌 것으로 판단해 전액 인정",
         "최초 검토 시 중복 우려로 보류했으나 보장 항목을 재확인해 인정으로 변경", null));
@@ -329,14 +329,14 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("암진단비(일반암)", "수술비 특약"), List.of("방사성동위원소 치료비 특약 - 청구 서류 미제출"),
         List.of("약관 제3조 암의 정의 및 진단확정"), "갑상선암 일반암/소액암 분류 기준 확인 필요", "medium");
 
-    ReportReview review = new ReportReview(report.getId(), ADJUSTER_QA);
+    ReportReview review = ReportReview.create(report.getId(), ADJUSTER_QA);
     review.updateReviewContent(18_000_000, 22_000_000,
         List.of("암진단비(일반암)", "수술비 특약"),
         List.of("방사성동위원소 치료비 특약 - 청구 서류 미제출"),
         List.of("약관 제3조 암의 정의 및 진단확정", "대법원 2018다1234 판결(경계성종양 관련)"),
         "제출하신 조직검사 결과지와 수술기록지를 확인했습니다. 갑상선 유두암은 약관상 일반암 분류 기준(침윤 "
             + "정도)에 따라 갈리는 경우가 있어, 병리 소견서의 침윤 범위를 한 번 더 확인 후 최종 의견 드리겠습니다.");
-    review.upsertIssue(null, new ReportReviewIssue(null, "갑상선암 일반암/소액암 분류",
+    review.upsertIssue(null, ReportReviewIssue.create(null, "갑상선암 일반암/소액암 분류",
         "병리 소견서상 침윤 범위 재확인 필요 — 결과에 따라 진단비 지급률이 달라질 수 있음",
         4_000_000, IssueReviewStatus.MODIFIED, "일반암 가능성이 높으나 서류 보완 후 최종 확정",
         "1차 검토에서는 소액암 우려가 있었으나 침윤 소견 재확인 후 일반암 쪽으로 조정", null));
@@ -373,7 +373,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("질병상해 수술비 특약"), List.of("후유장해 특약 - 장해진단서 미제출로 판단 보류"),
         List.of("약관 제9조 후유장해의 정의"), "수술 후 6개월 경과 후 장해평가 필요, 현재는 실손 항목만 확정 가능", "low");
 
-    ReportReview reviewA = new ReportReview(report.getId(), ADJUSTER_QA);
+    ReportReview reviewA = ReportReview.create(report.getId(), ADJUSTER_QA);
     reviewA.updateReviewContent(2_800_000, 3_200_000,
         List.of("질병상해 수술비 특약"), List.of(), List.of("약관 제9조 후유장해의 정의"),
         "재건술 기록과 MRI 판독 소견을 확인했습니다. 현재 재활 경과를 좀 더 지켜본 뒤 후유장해 평가가 가능한 "
@@ -381,12 +381,12 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
     reportReviewRepository.save(reviewA);
     backdate("report_reviews", reviewA.getId(), reportAt.plusDays(1), reportAt.plusDays(1));
 
-    ReportReview reviewB = new ReportReview(report.getId(), ADJUSTER_1);
+    ReportReview reviewB = ReportReview.create(report.getId(), ADJUSTER_1);
     reviewB.updateReviewContent(2_500_000, 3_000_000,
         List.of("질병상해 수술비 특약"), List.of(), List.of(),
         "동일 상병 관련 서류 검토 결과, 우선 실손 의료비 항목부터 청구 진행하시고 장해 관련은 향후 장해진단서 "
             + "발급 이후 별도로 진행하는 것을 제안드립니다.");
-    reviewB.upsertIssue(null, new ReportReviewIssue(null, "장해평가 시기 관련 추가 안내",
+    reviewB.upsertIssue(null, ReportReviewIssue.create(null, "장해평가 시기 관련 추가 안내",
         "수술 후 최소 6개월 경과 시점에 장해진단서 재발급 권고 — 사정사가 직접 추가한 안내 항목",
         null, IssueReviewStatus.ADDED, "재활 경과에 따라 장해율이 달라질 수 있어 조기 평가는 권하지 않음", null, null));
     reportReviewRepository.save(reviewB);
@@ -422,7 +422,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("질병상해 실손의료비", "화재배상책임 특약"), List.of(),
         List.of("약관 제7조 상해 치료비 지급기준"), "화재보험과 실손 중복 청구 가능 항목 정리 필요", "high");
 
-    ReportReview review = new ReportReview(report.getId(), ADJUSTER_2);
+    ReportReview review = ReportReview.create(report.getId(), ADJUSTER_2);
     review.updateReviewContent(3_800_000, 4_500_000,
         List.of("질병상해 실손의료비", "화재배상책임 특약"), List.of(),
         List.of("약관 제7조 상해 치료비 지급기준"),
@@ -485,7 +485,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         List.of("일상생활배상책임 특약"), List.of(),
         List.of("약관 제11조 일상생활배상책임의 보상범위"), "고의·중과실 여부 확인 필요, 그 외 지급 요건 충족", "high");
 
-    ReportReview review = new ReportReview(report.getId(), ADJUSTER_QA);
+    ReportReview review = ReportReview.create(report.getId(), ADJUSTER_QA);
     review.updateReviewContent(1_500_000, 2_000_000,
         List.of("일상생활배상책임 특약"), List.of(),
         List.of("약관 제11조 일상생활배상책임의 보상범위"),

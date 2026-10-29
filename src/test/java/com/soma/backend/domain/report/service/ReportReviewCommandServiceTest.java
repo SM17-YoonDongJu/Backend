@@ -79,7 +79,7 @@ class ReportReviewCommandServiceTest {
   }
 
   private ReportReview persistedReview() {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", UUID.randomUUID());
     return review;
   }
@@ -91,7 +91,7 @@ class ReportReviewCommandServiceTest {
   }
 
   private ReportReviewIssue reviewIssueRow(UUID reportIssueId, IssueReviewStatus status, String opinion) {
-    return new ReportReviewIssue(reportIssueId, null, null, null, status, opinion, null, null);
+    return ReportReviewIssue.create(reportIssueId, null, null, null, status, opinion, null, null);
   }
 
   private ReviewReportRequest request(List<ReviewReportRequest.IssueReview> issues) {

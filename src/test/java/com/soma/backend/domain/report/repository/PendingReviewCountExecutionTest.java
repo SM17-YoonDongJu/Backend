@@ -72,7 +72,7 @@ class PendingReviewCountExecutionTest {
     UUID held = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-1");
     saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-2");
     saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "HP-3");
-    entityManager.persist(new ReportHold(held, adjuster, HoldReason.SCHEDULE_CONFLICT, null));
+    entityManager.persist(ReportHold.create(held, adjuster, HoldReason.SCHEDULE_CONFLICT, null));
     flushAndClear();
 
     // 내 보류 1건 제외 → 2건. 보류는 사정사별이라 다른 사정사에겐 3건 그대로.
@@ -87,8 +87,8 @@ class PendingReviewCountExecutionTest {
     UUID sent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-1");
     UUID rejected = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-2");
     saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "IR-3");
-    entityManager.persist(new ReportReview(sent, adjuster));   // 기본 status = SENT
-    ReportReview rejectedReview = new ReportReview(rejected, adjuster);
+    entityManager.persist(ReportReview.create(sent, adjuster));   // 기본 status = SENT
+    ReportReview rejectedReview = ReportReview.create(rejected, adjuster);
     ReflectionTestUtils.setField(rejectedReview, "status", ReviewStatus.REJECTED);
     entityManager.persist(rejectedReview);
     flushAndClear();

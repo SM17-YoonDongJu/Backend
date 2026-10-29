@@ -27,7 +27,7 @@ public class ReportHoldWriter {
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void ensureExists(UUID reportId, UUID adjusterId, HoldReason reason, String reasonDetail) {
     if (!reportHoldRepository.existsByReportIdAndAdjusterId(reportId, adjusterId)) {
-      reportHoldRepository.save(new ReportHold(reportId, adjusterId, reason, reasonDetail));
+      reportHoldRepository.save(ReportHold.create(reportId, adjusterId, reason, reasonDetail));
     }
   }
 }

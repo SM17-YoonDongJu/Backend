@@ -311,7 +311,7 @@ class SharedReportQueryServiceTest {
   }
 
   private ReportReview review() {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", reviewId);
     ReflectionTestUtils.setField(review, "review", "검수 요약 인용문");
     ReflectionTestUtils.setField(review, "estimateMinAmount", 12_000_000);
@@ -336,8 +336,11 @@ class SharedReportQueryServiceTest {
 
   private ReportReviewIssue overlay(UUID reportIssueId, IssueReviewStatus status,
       String title, String description, Integer impactAmount, String opinion) {
-    ReportReviewIssue overlay = new ReportReviewIssue(
-        reportIssueId, title, description, impactAmount, status, opinion, null, null);
+    // 수정·제외는 사유가 필수라(ReportReviewIssue.create) 해당 상태일 때만 채운다
+    String modifiedReason = status == IssueReviewStatus.MODIFIED ? "수정 사유" : null;
+    String excludedReason = status == IssueReviewStatus.EXCLUDED ? "제외 사유" : null;
+    ReportReviewIssue overlay = ReportReviewIssue.create(
+        reportIssueId, title, description, impactAmount, status, opinion, modifiedReason, excludedReason);
     ReflectionTestUtils.setField(overlay, "id", UUID.randomUUID());
     return overlay;
   }

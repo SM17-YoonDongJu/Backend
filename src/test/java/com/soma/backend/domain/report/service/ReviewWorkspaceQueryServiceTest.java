@@ -187,7 +187,7 @@ class ReviewWorkspaceQueryServiceTest {
   }
 
   private ReportReview review() {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", UUID.randomUUID());
     ReflectionTestUtils.setField(review, "estimateMinAmount", 14_000_000);
     ReflectionTestUtils.setField(review, "estimateMaxAmount", 17_500_000);
@@ -197,7 +197,9 @@ class ReviewWorkspaceQueryServiceTest {
 
   private ReportReviewIssue reviewIssue(
       UUID reportIssueId, IssueReviewStatus status, String title, String opinion, Integer impactAmount) {
-    return new ReportReviewIssue(reportIssueId, title, null, impactAmount, status, opinion, null, null);
+    // 추가(ADDED) 쟁점은 설명이 필수라(ReportReviewIssue.create) 해당 상태일 때만 채운다
+    String description = status == IssueReviewStatus.ADDED ? "쟁점 설명" : null;
+    return ReportReviewIssue.create(reportIssueId, title, description, impactAmount, status, opinion, null, null);
   }
 
   private ReviewContextRow context() {

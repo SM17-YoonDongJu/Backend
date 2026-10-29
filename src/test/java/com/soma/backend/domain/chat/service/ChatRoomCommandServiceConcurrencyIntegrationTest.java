@@ -103,7 +103,7 @@ class ChatRoomCommandServiceConcurrencyIntegrationTest {
         "질문", "CONC-" + UUID.randomUUID().toString().substring(0, 12));
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     reportId = reportRepository.save(report).getId();
-    reviewId = reportReviewRepository.save(new ReportReview(reportId, adjusterId)).getId();
+    reviewId = reportReviewRepository.save(ReportReview.create(reportId, adjusterId)).getId();
   }
 
   @AfterEach

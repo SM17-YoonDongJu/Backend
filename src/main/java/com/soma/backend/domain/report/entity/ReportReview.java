@@ -77,10 +77,25 @@ public class ReportReview extends BaseEntity {
   @JoinColumn(name = "report_review_id", nullable = false)
   private List<ReportReviewIssue> issues = new ArrayList<>();
 
-  public ReportReview(UUID reportId, UUID adjusterId) {
+  private ReportReview(UUID reportId, UUID adjusterId) {
     this.reportId = reportId;
     this.adjusterId = adjusterId;
     this.status = ReviewStatus.SENT;
+  }
+
+  /** 사정사의 첫 검수 제출로 제안(SENT)을 만든다. */
+  public static ReportReview create(UUID reportId, UUID adjusterId) {
+    return new ReportReview(reportId, adjusterId);
+  }
+
+  /** 이 제안이 지정한 리포트에 대한 것인지 — 경로의 reportId와 proposalId가 서로 맞는지 확인할 때 쓴다. */
+  public boolean belongsTo(UUID reportId) {
+    return this.reportId.equals(reportId);
+  }
+
+  /** 상담 중(COUNSELING)인 제안인지. */
+  public boolean isCounseling() {
+    return this.status == ReviewStatus.COUNSELING;
   }
 
   /** 사용자가 이 제안을 채택. 리포트 종결과 함께 호출된다(design.md §6 decide). */
@@ -101,7 +116,7 @@ public class ReportReview extends BaseEntity {
    * 종료 상태(ACCEPTED/REJECTED)에서는 409 INVALID_STATE_TRANSITION.
    */
   public void startCounseling() {
-    if (this.status == ReviewStatus.COUNSELING) {
+    if (isCounseling()) {
       return;
     }
     ensureDecidable();
