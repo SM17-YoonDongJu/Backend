@@ -108,6 +108,8 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	// 레이어 의존 규칙 강제(architecture/LayerArchitectureTest) — 스프링 컨텍스트 없이 바이트코드만 분석한다
+	testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.1'
 
 	// Mockito 5는 JDK 21+에서 self-attach가 막히므로 -javaagent로 명시 로딩(공식 권장)
 	mockitoAgent('org.mockito:mockito-core') {
