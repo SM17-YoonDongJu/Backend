@@ -50,7 +50,7 @@ import com.soma.backend.infra.redis.ChatEventPublisher;
 @SpringBootTest
 @ActiveProfiles("test")
 @DisplayName("상담방 최초 개설 동시성 통합 테스트")
-class ChatRoomCommandServiceConcurrencyIntegrationTest {
+class ConsultationRoomOpenerConcurrencyIntegrationTest {
 
   private static final int TIMEOUT_SECONDS = 30;
 
@@ -65,7 +65,7 @@ class ChatRoomCommandServiceConcurrencyIntegrationTest {
   private static final String DROP_UNIQUE_INDEX = "DROP INDEX IF EXISTS uk_chatroom_report_review_id";
 
   @Autowired
-  private ChatRoomCommandService chatRoomCommandService;
+  private ConsultationRoomOpener consultationRoomOpener;
   @Autowired
   private UserRepository userRepository;
   @Autowired
@@ -149,7 +149,7 @@ class ChatRoomCommandServiceConcurrencyIntegrationTest {
   void concurrentFirstOpen_isIdempotent() throws InterruptedException {
     List<ConsultationRoomResult> results = Collections.synchronizedList(new ArrayList<>());
     Runnable open = () -> results.add(
-        chatRoomCommandService.openConsultationRoom(customerId, adjusterId, reportId, reviewId));
+        consultationRoomOpener.openConsultationRoom(customerId, adjusterId, reportId, reviewId));
 
     List<Throwable> failures = runConcurrently(open, open);
 

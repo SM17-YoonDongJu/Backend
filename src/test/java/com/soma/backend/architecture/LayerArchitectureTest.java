@@ -17,19 +17,15 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
-import com.tngtech.archunit.library.freeze.FreezingArchRule;
 
 import jakarta.persistence.EntityManager;
 
 /**
  * CLAUDE.md의 레이어 의존 규칙을 빌드에서 강제한다. 스프링 컨텍스트 없이 바이트코드만 읽으므로 빠르다.
  *
- * <p>service → service 규칙은 {@link FreezingArchRule}로 감쌌다 — 도입 시점의 위반은
- * {@code src/test/resources/archunit_store}에 기록해 통과시키고, 그 밖의 <b>새 위반만</b> 실패시킨다.
- * 기존 위반을 고치면 다음 실행에서 저장소에서도 자동으로 빠지므로 목록은 줄어들기만 한다.
- * 위반을 의도적으로 추가해야 한다면 저장소를 손으로 고치지 말고 규칙의 예외로 사유와 함께 명시할 것.
- *
- * <p>나머지 레이어 규칙은 현재 위반이 없어 freeze 없이 바로 강제한다.
+ * <p>모든 규칙을 예외 없이 강제한다. service → service 규칙은 도입(#358) 때 기존 위반을 FreezingArchRule로
+ * 기록해 두고 새 위반만 막다가, 위반을 모두 정리한 뒤(#366) freeze를 걷어냈다. 위반을 의도적으로 허용해야
+ * 한다면 규칙에 예외를 사유와 함께 명시할 것.
  */
 @AnalyzeClasses(packages = "com.soma.backend", importOptions = ImportOption.DoNotIncludeTests.class)
 class LayerArchitectureTest {
@@ -48,12 +44,11 @@ class LayerArchitectureTest {
    * {@code *Service}까지 포함한다.
    */
   @ArchTest
-  static final ArchRule serviceShouldNotDependOnOtherService = FreezingArchRule.freeze(
-      noClasses()
-          .that().resideInAPackage("..domain..service..")
-          .or().haveSimpleNameEndingWith("Service")
-          .should(dependOnOtherServices())
-          .because("service는 다른 service를 호출하지 않는다 (CLAUDE.md 레이어 의존 규칙)"));
+  static final ArchRule serviceShouldNotDependOnOtherService = noClasses()
+      .that().resideInAPackage("..domain..service..")
+      .or().haveSimpleNameEndingWith("Service")
+      .should(dependOnOtherServices())
+      .because("service는 다른 service를 호출하지 않는다 (CLAUDE.md 레이어 의존 규칙)");
 
   @ArchTest
   static final ArchRule entityShouldNotDependOnOuterLayers = noClasses()

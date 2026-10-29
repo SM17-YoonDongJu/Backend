@@ -31,7 +31,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.soma.backend.domain.chat.dto.ConsultationRoomResult;
-import com.soma.backend.domain.chat.service.ChatRoomCommandService;
+import com.soma.backend.domain.chat.service.ConsultationRoomOpener;
 import com.soma.backend.domain.report.dto.CreateReportRequest;
 import com.soma.backend.domain.report.dto.CreateReportResponse;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
@@ -74,7 +74,7 @@ class ReportCommandServiceTest {
   @Mock
   private CaseNoGenerator caseNoGenerator;
   @Mock
-  private ChatRoomCommandService chatRoomCommandService;
+  private ConsultationRoomOpener consultationRoomOpener;
   @Mock
   private ApplicationEventPublisher eventPublisher;
   // 구간 타이머(#306)가 Timer.start(registry)로 registry.config().clock()을 타므로 mock이 아니라
@@ -213,7 +213,7 @@ class ReportCommandServiceTest {
     ReportReview review = review();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review));
-    given(chatRoomCommandService.openConsultationRoom(userId, adjusterId, reportId, proposalId))
+    given(consultationRoomOpener.openConsultationRoom(userId, adjusterId, reportId, proposalId))
         .willReturn(new ConsultationRoomResult(chatRoomId, true));
 
     // When
@@ -225,7 +225,7 @@ class ReportCommandServiceTest {
     assertThat(response.reportStatus()).isEqualTo(ReportStatus.COUNSELING);
     assertThat(review.getStatus()).isEqualTo(ReviewStatus.COUNSELING);
     assertThat(report.getStatus()).isEqualTo(ReportStatus.COUNSELING);
-    verify(chatRoomCommandService, times(1))
+    verify(consultationRoomOpener, times(1))
         .openConsultationRoom(userId, adjusterId, reportId, proposalId);
   }
 
@@ -236,7 +236,7 @@ class ReportCommandServiceTest {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.NOT_SELECTED)));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
-    given(chatRoomCommandService.openConsultationRoom(any(), any(), any(), any()))
+    given(consultationRoomOpener.openConsultationRoom(any(), any(), any(), any()))
         .willReturn(new ConsultationRoomResult(chatRoomId, true));
 
     ProposalDecisionResponse response = service.decide(userId, reportId, proposalId, true);
@@ -253,7 +253,7 @@ class ReportCommandServiceTest {
     given(reportRepository.findById(reportId))
         .willReturn(Optional.of(reportOwnedBy(userId, ReportStatus.AWAITING_ADOPTION)));
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(review()));
-    given(chatRoomCommandService.openConsultationRoom(any(), any(), any(), any()))
+    given(consultationRoomOpener.openConsultationRoom(any(), any(), any(), any()))
         .willReturn(new ConsultationRoomResult(chatRoomId, true));
 
     // When
@@ -281,7 +281,7 @@ class ReportCommandServiceTest {
     ReportReview counseling = review();
     ReflectionTestUtils.setField(counseling, "status", ReviewStatus.COUNSELING);
     given(reportReviewRepository.findById(proposalId)).willReturn(Optional.of(counseling));
-    given(chatRoomCommandService.openConsultationRoom(any(), any(), any(), any()))
+    given(consultationRoomOpener.openConsultationRoom(any(), any(), any(), any()))
         .willReturn(new ConsultationRoomResult(chatRoomId, false));
 
     // When
@@ -306,7 +306,7 @@ class ReportCommandServiceTest {
     assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
     verify(eventPublisher, never()).publishEvent(any(ConsultationRequestedEvent.class));
   }
 
@@ -320,7 +320,7 @@ class ReportCommandServiceTest {
     assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test
@@ -333,7 +333,7 @@ class ReportCommandServiceTest {
     assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test
@@ -350,7 +350,7 @@ class ReportCommandServiceTest {
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
     // 제안 검증이 리포트 전이보다 먼저다 — 리포트 상태도 오염되지 않는다
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test
@@ -365,7 +365,7 @@ class ReportCommandServiceTest {
     assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -393,7 +393,7 @@ class ReportCommandServiceTest {
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
     assertThat(response.chatRoomId()).isNull();
     assertThat(response.adjusterId()).isEqualTo(adjusterId);
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
     verify(eventPublisher, never()).publishEvent(any(ConsultationRequestedEvent.class));
   }
 
@@ -414,7 +414,7 @@ class ReportCommandServiceTest {
     assertThat(report.getStatus()).isEqualTo(initial);
     assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.SENT);
     assertThat(response.chatRoomId()).isNull();
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test
@@ -431,7 +431,7 @@ class ReportCommandServiceTest {
     assertThat(response.reportStatus()).isEqualTo(ReportStatus.CLOSED);
     assertThat(response.reviewStatus()).isEqualTo(ReviewStatus.ACCEPTED);
     assertThat(response.chatRoomId()).isNull();
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -446,7 +446,7 @@ class ReportCommandServiceTest {
     assertThatThrownBy(() -> service.decide(userId, reportId, proposalId, true))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test
@@ -463,7 +463,7 @@ class ReportCommandServiceTest {
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     verify(reportReviewRepository, never()).findById(any());
-    verify(chatRoomCommandService, never()).openConsultationRoom(any(), any(), any(), any());
+    verify(consultationRoomOpener, never()).openConsultationRoom(any(), any(), any(), any());
   }
 
   @Test

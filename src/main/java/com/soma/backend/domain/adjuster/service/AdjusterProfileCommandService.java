@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 
-import com.soma.backend.domain.adjuster.dto.AdjusterProfileResponse;
 import com.soma.backend.domain.adjuster.dto.UpdateAdjusterProfileRequest;
 import com.soma.backend.domain.adjuster.entity.AdjusterProfile;
 import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
@@ -30,16 +29,15 @@ public class AdjusterProfileCommandService {
 
   private final AdjusterProfileRepository adjusterProfileRepository;
   private final UserRepository userRepository;
-  private final AdjusterProfileQueryService adjusterProfileQueryService;
 
   /**
    * 본인 프로필 부분 수정. 값이 있는 필드만 반영하고 {@code null}은 유지한다. activityRegion은 단일 문자열을
    * text[]로 되돌려 저장하고, avatarUrl이 있으면 USERS.avatar_url에 반영한다. 프로필이 없으면
-   * {@code ADJUSTER_NOT_FOUND}, avatarUrl 반영 시 사용자가 없으면 {@code USER_NOT_FOUND}. 갱신 후
-   * 조회 응답을 재조립해 최신 값(updated_at 포함)을 내린다.
+   * {@code ADJUSTER_NOT_FOUND}, avatarUrl 반영 시 사용자가 없으면 {@code USER_NOT_FOUND}. 응답 조립은 하지
+   * 않는다 — 컨트롤러가 커밋 후 {@code AdjusterProfileQueryService.getProfile}로 최신 값(updated_at 포함)을 읽는다.
    */
   @Transactional
-  public AdjusterProfileResponse updateProfile(UUID userId, UpdateAdjusterProfileRequest request) {
+  public void updateProfile(UUID userId, UpdateAdjusterProfileRequest request) {
     AdjusterProfile profile = adjusterProfileRepository.findByUserId(userId)
         .orElseThrow(() -> new BusinessException(ErrorCode.ADJUSTER_NOT_FOUND));
 
@@ -54,10 +52,6 @@ public class AdjusterProfileCommandService {
           .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
       user.updateProfile(null, null, null, request.avatarUrl());
     }
-
-    // @LastModifiedDate(updated_at)까지 반영된 최신 값을 응답에 담기 위해 재조립 전에 flush.
-    adjusterProfileRepository.flush();
-    return adjusterProfileQueryService.getProfile(userId);
   }
 
   private static @Nullable List<AdjusterProfile.Career> toCareers(

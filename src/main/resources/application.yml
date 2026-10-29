@@ -28,7 +28,7 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      # 10 → 15: ReportAnalysisStatusQueryService.resolveAll이 REQUIRES_NEW라, 목록/상세 조회
+      # 10 → 15: ReportAnalysisResolver.resolveAll이 REQUIRES_NEW라, 목록/상세 조회
       # 요청 하나가 바깥 트랜잭션 커넥션을 쥔 채로 그 안에서 잠깐 커넥션을 하나 더 잡는다(degrade 격리를
       # 위해 필요 — 같은 트랜잭션에서 예외를 잡으면 Hibernate가 세션을 rollback-only로 표시해 커밋 시점에
       # 다시 실패한다). 동시 요청이 몰리면 실효 동시성이 사실상 절반이 되어 10에서는 connection-timeout이

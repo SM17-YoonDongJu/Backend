@@ -47,7 +47,7 @@ public class ReportQueryService {
   private final ReportRepository reportRepository;
   private final ReportIssueRepository reportIssueRepository;
   private final ReportReviewRepository reportReviewRepository;
-  private final ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
+  private final ReportAnalysisResolver reportAnalysisResolver;
 
   /** userId 소유 리포트 카드 목록. status는 옵션 필터(REPORTS.status), page는 1-based. */
   public ReportCardListResponse getUserReports(UUID userId, String status, int page, int size) {
@@ -109,7 +109,7 @@ public class ReportQueryService {
    */
   private Map<UUID, ReportAnalysis> analysesOrDegrade(Collection<UUID> reportIds) {
     try {
-      return reportAnalysisStatusQueryService.resolveAll(reportIds);
+      return reportAnalysisResolver.resolveAll(reportIds);
     } catch (DataAccessException ex) {
       log.warn("분석 처리 상태 조회 실패 — PROCESSING으로 degrade한다(대상 {}건). cause={}",
           reportIds.size(), ex.getMostSpecificCause().getMessage());

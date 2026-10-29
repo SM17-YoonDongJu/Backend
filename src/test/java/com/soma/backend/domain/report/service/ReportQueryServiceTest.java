@@ -42,7 +42,7 @@ class ReportQueryServiceTest {
 
   /** 분석 상태 부착 협력자 — 목록 조립 시 호출된다(기본 스텁은 빈 맵 = 전 카드 PROCESSING). */
   @Mock
-  private ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
+  private ReportAnalysisResolver reportAnalysisResolver;
 
   private void givenEmptyPage() {
     Page<ReportCardRow> empty = new PageImpl<>(List.of());

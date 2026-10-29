@@ -52,6 +52,9 @@ class ReportAnalysisAttachmentIntegrationTest {
   private ReportQueryService reportQueryService;
   @Autowired
   private ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
+
+  @Autowired
+  private ReportAnalysisResolver reportAnalysisResolver;
   @Autowired
   private ReportRepository reportRepository;
   @Autowired
@@ -191,7 +194,7 @@ class ReportAnalysisAttachmentIntegrationTest {
 
     // When
     Map<UUID, ReportAnalysis> analyses =
-        reportAnalysisStatusQueryService.resolveAll(Arrays.asList(failed, clean, failed, null));
+        reportAnalysisResolver.resolveAll(Arrays.asList(failed, clean, failed, null));
 
     // Then: 중복·null은 걸러지고 요청한 리포트만 담긴다
     assertThat(analyses).containsOnlyKeys(failed, clean);
@@ -209,7 +212,7 @@ class ReportAnalysisAttachmentIntegrationTest {
     markStatus(reportId, "NEEDS_REUPLOAD");
 
     // When
-    Map<UUID, ReportAnalysis> analyses = reportAnalysisStatusQueryService.resolveAll(List.of(reportId));
+    Map<UUID, ReportAnalysis> analyses = reportAnalysisResolver.resolveAll(List.of(reportId));
 
     // Then
     ReportAnalysis analysis = analyses.get(reportId);

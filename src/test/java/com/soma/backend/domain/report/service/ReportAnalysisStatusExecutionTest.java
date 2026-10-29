@@ -53,6 +53,9 @@ class ReportAnalysisStatusExecutionTest {
 
   @Autowired
   private ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
+
+  @Autowired
+  private ReportAnalysisResolver reportAnalysisResolver;
   @Autowired
   private ReportRepository reportRepository;
   @Autowired
@@ -291,8 +294,8 @@ class ReportAnalysisStatusExecutionTest {
   @Test
   @DisplayName("resolveAll — 빈 입력·null 입력은 조회 없이 빈 맵이다(불필요한 IN () 쿼리 방지)")
   void resolveAllShortCircuitsOnEmptyInput() {
-    assertThat(reportAnalysisStatusQueryService.resolveAll(List.of())).isEmpty();
-    assertThat(reportAnalysisStatusQueryService.resolveAll(null)).isEmpty();
+    assertThat(reportAnalysisResolver.resolveAll(List.of())).isEmpty();
+    assertThat(reportAnalysisResolver.resolveAll(null)).isEmpty();
   }
 
   @Test

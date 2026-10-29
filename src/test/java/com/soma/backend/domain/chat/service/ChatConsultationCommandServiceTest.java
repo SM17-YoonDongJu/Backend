@@ -24,14 +24,15 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.soma.backend.domain.adjuster.service.AdjusterProfileStatsCommandService;
 import com.soma.backend.domain.chat.ChatRoomFixture;
 import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatRoom;
 import com.soma.backend.domain.chat.entity.ChatRoomStatus;
+import com.soma.backend.domain.chat.entity.event.ConsultationAcceptedEvent;
 import com.soma.backend.domain.chat.repository.ChatMessageRepository;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.domain.report.entity.AccidentType;
@@ -63,7 +64,7 @@ class ChatConsultationCommandServiceTest {
   @Mock
   private ChatEventPublisher chatEventPublisher;
   @Mock
-  private AdjusterProfileStatsCommandService adjusterProfileStatsCommandService;
+  private ApplicationEventPublisher eventPublisher;
 
   @InjectMocks
   private ChatConsultationCommandService service;
@@ -153,11 +154,11 @@ class ChatConsultationCommandServiceTest {
       // 내 방(수락 안내) + 형제 방(종료 안내) 각각 SYSTEM 브로드캐스트 → 2회 발행
       verify(chatEventPublisher, times(2)).publishAfterCommit(any());
 
-      // 담당이 확정됐으므로 사정사 프로필의 상담 완료 수를 재집계한다. 프로필 행 잠금 보유 시간을 줄이려고
-      // 형제 방 정리까지 끝난 트랜잭션 후반부에 호출한다.
-      InOrder order = inOrder(chatRoomRepository, adjusterProfileStatsCommandService);
+      // 담당이 확정됐으므로 상담 완료 수 재집계 이벤트를 발행한다. 형제 방 정리까지 끝난 트랜잭션 후반부에
+      // 발행하며, adjuster 쪽 리스너가 동기로 받아 같은 트랜잭션에서 갱신한다.
+      InOrder order = inOrder(chatRoomRepository, eventPublisher);
       order.verify(chatRoomRepository).findByReportId(reportId);
-      order.verify(adjusterProfileStatsCommandService).refreshCompletedConsultCount(adjusterId);
+      order.verify(eventPublisher).publishEvent(new ConsultationAcceptedEvent(adjusterId, reportId));
     }
 
     @Test
@@ -262,7 +263,7 @@ class ChatConsultationCommandServiceTest {
       verify(chatMessageRepository, never()).save(any());
       verify(chatEventPublisher, never()).publishAfterCommit(any());
       // 더블클릭 2회차 — 수락이 성립하지 않았으므로 상담 완료 수가 이중 계상되지 않는다.
-      verifyNoInteractions(adjusterProfileStatsCommandService);
+      verifyNoInteractions(eventPublisher);
     }
   }
 
@@ -298,7 +299,7 @@ class ChatConsultationCommandServiceTest {
       verify(chatRoomRepository, never()).findByReportId(any());
       verify(chatEventPublisher, times(1)).publishAfterCommit(any());
       // 거절은 담당 확정이 아니다 — completed_consult_count는 건드리지 않는다.
-      verifyNoInteractions(adjusterProfileStatsCommandService);
+      verifyNoInteractions(eventPublisher);
     }
 
     /**

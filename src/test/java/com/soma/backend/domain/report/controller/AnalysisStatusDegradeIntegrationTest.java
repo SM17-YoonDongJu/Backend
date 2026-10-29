@@ -102,7 +102,7 @@ class AnalysisStatusDegradeIntegrationTest {
 
   /**
    * E13 — {@code NEEDS_REUPLOAD}·{@code BLOCKED} 판정은 {@code reports.status}만 보면 되고 {@code ai} 저널이
-   * 전혀 필요 없다. {@code ReportAnalysisStatusQueryService.resolveAll}이 저널 조회 실패를 리포트 단위
+   * 전혀 필요 없다. {@code ReportAnalysisResolver.resolveAll}이 저널 조회 실패를 리포트 단위
    * 판정까지 버리지 않고 흡수하므로, GRANT 미적용 환경에서도 두 상태는 목록·상세에서 그대로 노출돼야
    * 한다 — 그래야 이 기능이 없애려던 "무음 정지"가 degrade 상황에서 재현되지 않는다.
    */
