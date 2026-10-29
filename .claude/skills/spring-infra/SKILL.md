@@ -90,7 +90,7 @@ spring:
 
 - **풀 크기 근거:** 무한정 늘리면 DB가 죽는다. `maximum-pool-size`는 DB `max_connections`와 인스턴스 수를 역산해서 정한다(기본 10은 단일 인스턴스 보수값). 하드닝 시 env로 환경별 오버라이드를 배선한다.
 - **`max-lifetime`은 DB/LB 유휴 종료 시간보다 짧게** — 그래야 죽은 커넥션을 쥐고 있다가 터지는 걸 막는다. 현재는 미설정(Hikari 기본 30분)이라 명시 설정을 권장한다.
-- **현재 배포 토폴로지: 인스턴스 1개, 단 dev는 배포 중 잠깐 2개.** prod는 `deploy/prod/docker-compose.yml`의 `backend` 컨테이너 1개다(재생성 방식이라 구·신이 겹치지 않는다). dev는 soma-k8s의 Deployment `replicas: 1`(차트는 K8s-manifests `charts/backend`)인데, 롤링 업데이트 기본값(maxSurge 1·maxUnavailable 0)이라 새 파드가 Ready가 될 때까지 구·신 파드가 함께 뜬다 — 스케줄러는 컨텍스트 리프레시 직후(readiness 이전)부터 돌기 때문에 매 배포마다 수십 초, 시드 러너를 켠 배포는 시딩 내내 겹친다. `@Scheduled` 스윕러(`BlockedReportNotificationSweeper` 등)가 행 잠금·`@Version` 없이 "동시 실행 시 중복 처리" 위험을 감수하는 근거가 단일 인스턴스였으므로, dev에서는 이 겹침 구간에 중복 알림이 날 수 있다. replica를 늘리거나 prod를 k8s로 옮기기 전에 스윕러 전반에 분산 락(ShedLock 등) 또는 `@Version` 낙관적 잠금을 재검토해야 한다(PR #251 CodeRabbit 리뷰에서 지적됨).
+- **현재 배포 토폴로지: 인스턴스 1개, 단 dev는 배포 중 잠깐 2개.** prod는 `deploy/prod/docker-compose.yml`의 `backend` 컨테이너 1개다(재생성 방식이라 구·신이 겹치지 않는다). dev는 soma-k8s의 Deployment `replicas: 1`(차트는 K8s-manifests `charts/backend`)인데, 롤링 업데이트 기본값(maxSurge 1·maxUnavailable 0)이라 새 파드가 Ready가 될 때까지 구·신 파드가 함께 뜬다 — 스케줄러는 컨텍스트 리프레시 직후(readiness 이전)부터 돌기 때문에 매 배포마다 수십 초, 시드 러너를 켠 배포는 시딩 내내 겹친다. `@Scheduled` 스윕러(`ReportBlockedNotificationSweeper` 등)가 행 잠금·`@Version` 없이 "동시 실행 시 중복 처리" 위험을 감수하는 근거가 단일 인스턴스였으므로, dev에서는 이 겹침 구간에 중복 알림이 날 수 있다. replica를 늘리거나 prod를 k8s로 옮기기 전에 스윕러 전반에 분산 락(ShedLock 등) 또는 `@Version` 낙관적 잠금을 재검토해야 한다(PR #251 CodeRabbit 리뷰에서 지적됨).
 
 ## 4. SQS producer 배선 + 로컬 브로커(LocalStack)
 

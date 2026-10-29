@@ -32,7 +32,7 @@ public class ReportHoldCommandService {
 
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;
-  private final ReportHoldInitializer reportHoldInitializer;
+  private final ReportHoldWriter reportHoldWriter;
 
   /** 보류 추가(멱등). 이미 보류 중이어도 최신 사유로 갱신하고 held=true. */
   public HoldResponse addHold(UUID reportId, UUID adjusterId, HoldReportRequest request) {
@@ -50,7 +50,7 @@ public class ReportHoldCommandService {
    */
   private void upsertHold(UUID reportId, UUID adjusterId, HoldReason reason, String reasonDetail) {
     try {
-      reportHoldInitializer.ensureExists(reportId, adjusterId, reason, reasonDetail);
+      reportHoldWriter.ensureExists(reportId, adjusterId, reason, reasonDetail);
     } catch (DataIntegrityViolationException ex) {
       // 동시 최초 보류: 다른 트랜잭션이 먼저 생성했다. 멱등 처리로 무시하고 아래에서 로드해 사유를 갱신한다.
       log.debug("동시 최초 보류 감지 — reportId={}, adjusterId={}", reportId, adjusterId);

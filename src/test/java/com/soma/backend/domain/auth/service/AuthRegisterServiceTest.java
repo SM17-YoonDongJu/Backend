@@ -35,7 +35,7 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
@@ -56,7 +56,7 @@ class AuthRegisterServiceTest {
   private SocialAccountRepository socialAccountRepository;
 
   @Mock
-  private AuthTokenService authTokenService;
+  private AuthTokenManager authTokenManager;
 
   @Mock
   private AppleRefreshStagingRepository appleRefreshStagingRepository;
@@ -110,7 +110,7 @@ class AuthRegisterServiceTest {
     assertThat(result.role()).isEqualTo(Role.USER.name());
     then(userRepository).should().save(any(User.class));
     then(socialAccountRepository).should().save(any(SocialAccount.class));
-    then(authTokenService).should().issueTokens(any(HttpServletResponse.class), any(), anyString());
+    then(authTokenManager).should().issueTokens(any(HttpServletResponse.class), any(), anyString());
   }
 
   @Test
@@ -244,6 +244,6 @@ class AuthRegisterServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting(ex -> ((BusinessException) ex).getErrorCode())
         .isEqualTo(ErrorCode.DUPLICATE_RESOURCE);
-    then(authTokenService).should(never()).issueTokens(any(), any(), anyString());
+    then(authTokenManager).should(never()).issueTokens(any(), any(), anyString());
   }
 }

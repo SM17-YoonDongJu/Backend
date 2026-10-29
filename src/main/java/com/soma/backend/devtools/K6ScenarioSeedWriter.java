@@ -33,12 +33,12 @@ import com.soma.backend.domain.report.repository.UserClaimRepository;
  * 자기 자신의 {@code @Transactional} private 메서드를 부르면 Spring AOP 프록시를 타지 않아 트랜잭션이
  * 조용히 열리지 않는다. 그러면 {@code report.applyReviewStart()} 같은 dirty-checking 전이가 UPDATE 없이
  * 사라져 "상태만 안 바뀐" 시드가 만들어진다(가장 찾기 어려운 종류의 버그다). 레포에 같은 이유로 분리된
- * Bean이 이미 3개 있다 — {@code ReportReviewSkeletonInitializer}, {@code ChatRoomInsertOperator},
+ * Bean이 이미 3개 있다 — {@code ReportReviewWriter}, {@code ChatRoomWriter},
  * {@code TerminalFailureJournalReader}.
  *
- * <p><b>{@code REQUIRES_NEW}를 쓰지 않는다.</b> {@code ChatRoomInsertOperator}가 그 전파를 쓰는 이유는
+ * <p><b>{@code REQUIRES_NEW}를 쓰지 않는다.</b> {@code ChatRoomWriter}가 그 전파를 쓰는 이유는
  * "동시 최초 개설의 UNIQUE 충돌을 호출자 트랜잭션에서 격리"하기 위함인데, 이 시더는 부트타임 단일
- * 스레드라 경쟁이 없다. 그래서 {@code ChatRoomInsertOperator}·{@code ReportReviewSkeletonInitializer}를
+ * 스레드라 경쟁이 없다. 그래서 {@code ChatRoomWriter}·{@code ReportReviewWriter}를
  * 호출하지 않고 리포지토리로 직접 저장한다(커넥션 이중 점유·aborted 세션 커밋 함정 회피).
  *
  * <p><b>한 트랜잭션에 여러 Aggregate를 담는 근거.</b> D 풀 1건은 UserClaim·Report·ReportReview·ChatRoom·

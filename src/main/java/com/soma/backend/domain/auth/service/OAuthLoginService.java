@@ -14,7 +14,7 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.crypto.AesGcmCipher;
 import com.soma.backend.global.security.crypto.PiiAad;
 import com.soma.backend.global.security.crypto.PiiHmac;
@@ -41,7 +41,7 @@ public class OAuthLoginService {
   private final SocialAccountRepository socialAccountRepository;
   private final UserRepository userRepository;
   private final SignupTicketProvider signupTicketProvider;
-  private final AuthTokenService authTokenService;
+  private final AuthTokenManager authTokenManager;
   private final AesGcmCipher aesGcmCipher;
   private final AppleRefreshStagingRepository appleRefreshStagingRepository;
   private final PiiHmac piiHmac;
@@ -62,7 +62,7 @@ public class OAuthLoginService {
   private OAuthCallbackResponse loginExisting(HttpServletResponse response, SocialAccount account) {
     User user = userRepository.findById(account.getUserId())
         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-    authTokenService.issueTokens(response, user.getId(), user.getRole().name());
+    authTokenManager.issueTokens(response, user.getId(), user.getRole().name());
     return OAuthCallbackResponse.existingUser(user.getId());
   }
 

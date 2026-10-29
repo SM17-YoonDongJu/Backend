@@ -23,10 +23,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.soma.backend.domain.notification.entity.DeviceToken;
 import com.soma.backend.domain.notification.entity.Platform;
 import com.soma.backend.domain.notification.repository.DeviceTokenRepository;
-import com.soma.backend.infra.fcm.FcmService;
+import com.soma.backend.infra.fcm.FcmPushSender;
 
 /**
- * PushNotificationService(발송 오케스트레이터) 단위 테스트. 죽은 토큰 정리 책임이 infra(FcmService)가 아니라
+ * PushNotificationService(발송 오케스트레이터) 단위 테스트. 죽은 토큰 정리 책임이 infra(FcmPushSender)가 아니라
  * 소유 도메인(DeadDeviceTokenCleaner)에 있고, 발송 I/O가 트랜잭션 밖에서 이뤄짐을 검증한다(strict layering).
  */
 @ExtendWith(MockitoExtension.class)
@@ -40,7 +40,7 @@ class PushNotificationServiceTest {
   private DeviceTokenRepository deviceTokenRepository;
 
   @Mock
-  private FcmService fcmService;
+  private FcmPushSender fcmPushSender;
 
   @Mock
   private DeadDeviceTokenCleaner deadDeviceTokenCleaner;
@@ -54,14 +54,14 @@ class PushNotificationServiceTest {
     DeviceToken t2 = DeviceToken.create(userId, "token-2", Platform.IOS);
     Map<String, String> data = Map.of("reportId", "r-1");
     given(deviceTokenRepository.findByUserId(userId)).willReturn(List.of(t1, t2));
-    given(fcmService.send(anyList(), eq("제목"), eq("본문"), eq(data))).willReturn(List.of("token-2"));
+    given(fcmPushSender.send(anyList(), eq("제목"), eq("본문"), eq(data))).willReturn(List.of("token-2"));
 
     // When
     pushNotificationService.sendToUser(userId, "제목", "본문", data);
 
     // Then
     ArgumentCaptor<List<String>> tokensCaptor = ArgumentCaptor.forClass(List.class);
-    then(fcmService).should().send(tokensCaptor.capture(), eq("제목"), eq("본문"), eq(data));
+    then(fcmPushSender).should().send(tokensCaptor.capture(), eq("제목"), eq("본문"), eq(data));
     assertThat(tokensCaptor.getValue()).containsExactly("token-1", "token-2");
     then(deadDeviceTokenCleaner).should().delete(userId, List.of("token-2"));
   }
@@ -73,7 +73,7 @@ class PushNotificationServiceTest {
     UUID userId = UUID.randomUUID();
     DeviceToken t1 = DeviceToken.create(userId, "token-1", Platform.ANDROID);
     given(deviceTokenRepository.findByUserId(userId)).willReturn(List.of(t1));
-    given(fcmService.send(anyList(), any(), any(), any())).willReturn(List.of());
+    given(fcmPushSender.send(anyList(), any(), any(), any())).willReturn(List.of());
 
     // When
     pushNotificationService.sendToUser(userId, "제목", "본문", Map.of());
@@ -93,7 +93,7 @@ class PushNotificationServiceTest {
     pushNotificationService.sendToUser(userId, "제목", "본문", Map.of());
 
     // Then
-    then(fcmService).shouldHaveNoInteractions();
+    then(fcmPushSender).shouldHaveNoInteractions();
     then(deadDeviceTokenCleaner).should(never()).delete(any(), any());
   }
 }

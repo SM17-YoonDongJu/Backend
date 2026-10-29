@@ -27,17 +27,17 @@ import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.MessagingErrorCode;
 
 /**
- * FcmService(순수 발송 어댑터) 단위 테스트. 정적 팩터리 FirebaseMessaging.getInstance(...)는 mockStatic으로,
+ * FcmPushSender(순수 발송 어댑터) 단위 테스트. 정적 팩터리 FirebaseMessaging.getInstance(...)는 mockStatic으로,
  * final 예외 FirebaseMessagingException은 inline mock으로 대체한다(프로젝트 기본 inline mock maker). DB 무관.
  */
-@DisplayName("FcmService 단위 테스트 (순수 발송 어댑터)")
-class FcmServiceTest {
+@DisplayName("FcmPushSender 단위 테스트 (순수 발송 어댑터)")
+class FcmPushSenderTest {
 
   private ObjectProvider<FirebaseApp> firebaseAppProvider;
   private FirebaseApp firebaseApp;
   private FirebaseMessaging messaging;
   private MockedStatic<FirebaseMessaging> firebaseMessagingStatic;
-  private FcmService fcmService;
+  private FcmPushSender fcmPushSender;
 
   @BeforeEach
   @SuppressWarnings("unchecked")
@@ -46,7 +46,7 @@ class FcmServiceTest {
     firebaseApp = mock(FirebaseApp.class);
     messaging = mock(FirebaseMessaging.class);
     firebaseMessagingStatic = mockStatic(FirebaseMessaging.class);
-    fcmService = new FcmService(firebaseAppProvider);
+    fcmPushSender = new FcmPushSender(firebaseAppProvider);
   }
 
   @AfterEach
@@ -61,7 +61,7 @@ class FcmServiceTest {
     given(firebaseAppProvider.getIfAvailable()).willReturn(null);
 
     // When
-    List<String> dead = fcmService.send(List.of("token-1"), "제목", "본문", Map.of());
+    List<String> dead = fcmPushSender.send(List.of("token-1"), "제목", "본문", Map.of());
 
     // Then
     assertThat(dead).isEmpty();
@@ -75,7 +75,7 @@ class FcmServiceTest {
     given(firebaseAppProvider.getIfAvailable()).willReturn(firebaseApp);
 
     // When
-    List<String> dead = fcmService.send(List.of(), "제목", "본문", Map.of());
+    List<String> dead = fcmPushSender.send(List.of(), "제목", "본문", Map.of());
 
     // Then
     assertThat(dead).isEmpty();
@@ -90,7 +90,7 @@ class FcmServiceTest {
     given(messaging.send(any(Message.class))).willReturn("message-id");
 
     // When
-    List<String> dead = fcmService.send(List.of("token-1"), "제목", "본문", Map.of());
+    List<String> dead = fcmPushSender.send(List.of("token-1"), "제목", "본문", Map.of());
 
     // Then
     assertThat(dead).isEmpty();
@@ -107,7 +107,7 @@ class FcmServiceTest {
     given(messaging.send(any(Message.class))).willThrow(error);
 
     // When
-    List<String> dead = fcmService.send(List.of("token-1"), "제목", "본문", Map.of());
+    List<String> dead = fcmPushSender.send(List.of("token-1"), "제목", "본문", Map.of());
 
     // Then
     assertThat(dead).containsExactly("token-1");
@@ -122,7 +122,7 @@ class FcmServiceTest {
     given(messaging.send(any(Message.class))).willThrow(error);
 
     // When
-    List<String> dead = fcmService.send(List.of("token-1"), "제목", "본문", Map.of());
+    List<String> dead = fcmPushSender.send(List.of("token-1"), "제목", "본문", Map.of());
 
     // Then
     assertThat(dead).containsExactly("token-1");
@@ -137,7 +137,7 @@ class FcmServiceTest {
     given(messaging.send(any(Message.class))).willThrow(error);
 
     // When
-    List<String> dead = fcmService.send(List.of("token-1"), "제목", "본문", Map.of());
+    List<String> dead = fcmPushSender.send(List.of("token-1"), "제목", "본문", Map.of());
 
     // Then
     assertThat(dead).isEmpty();
@@ -156,7 +156,7 @@ class FcmServiceTest {
 
     // When
     List<String> dead =
-        fcmService.send(List.of("token-1", "token-2", "token-3"), "제목", "본문", Map.of());
+        fcmPushSender.send(List.of("token-1", "token-2", "token-3"), "제목", "본문", Map.of());
 
     // Then
     assertThat(dead).containsExactly("token-2");
@@ -171,7 +171,7 @@ class FcmServiceTest {
     given(messaging.send(any(Message.class))).willReturn("message-id");
 
     // When
-    List<String> dead = fcmService.send(List.of("token-1"), "제목", "본문", null);
+    List<String> dead = fcmPushSender.send(List.of("token-1"), "제목", "본문", null);
 
     // Then
     assertThat(dead).isEmpty();

@@ -37,7 +37,7 @@ class ReportHoldCommandServiceTest {
   @Mock
   private ReportHoldRepository reportHoldRepository;
   @Mock
-  private ReportHoldInitializer reportHoldInitializer;
+  private ReportHoldWriter reportHoldWriter;
 
   @InjectMocks
   private ReportHoldCommandService service;
@@ -66,7 +66,7 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.REPORT_NOT_FOUND);
-    verify(reportHoldInitializer, never()).ensureExists(any(), any(), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(any(), any(), any(), any());
   }
 
   @Test
@@ -82,7 +82,7 @@ class ReportHoldCommandServiceTest {
     assertThat(result.reportId()).isEqualTo(reportId);
     assertThat(result.reason()).isEqualTo("SCHEDULE_CONFLICT");
     assertThat(result.reasonDetail()).isNull();
-    verify(reportHoldInitializer).ensureExists(reportId, adjusterId, HoldReason.SCHEDULE_CONFLICT, null);
+    verify(reportHoldWriter).ensureExists(reportId, adjusterId, HoldReason.SCHEDULE_CONFLICT, null);
   }
 
   @Test
@@ -96,7 +96,7 @@ class ReportHoldCommandServiceTest {
 
     assertThat(result.reason()).isEqualTo("OTHER");
     assertThat(result.reasonDetail()).isEqualTo("장해진단서, MRI 판독지 필요");
-    verify(reportHoldInitializer).ensureExists(reportId, adjusterId, HoldReason.OTHER, "장해진단서, MRI 판독지 필요");
+    verify(reportHoldWriter).ensureExists(reportId, adjusterId, HoldReason.OTHER, "장해진단서, MRI 판독지 필요");
   }
 
   @Test
@@ -109,7 +109,7 @@ class ReportHoldCommandServiceTest {
     HoldResponse result = service.addHold(reportId, adjusterId, request);
 
     assertThat(result.reasonDetail()).isNull();
-    verify(reportHoldInitializer).ensureExists(reportId, adjusterId, HoldReason.OUT_OF_SPECIALTY, null);
+    verify(reportHoldWriter).ensureExists(reportId, adjusterId, HoldReason.OUT_OF_SPECIALTY, null);
   }
 
   @Test
@@ -122,7 +122,7 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD);
-    verify(reportHoldInitializer, never()).ensureExists(any(), any(), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(any(), any(), any(), any());
   }
 
   @Test
@@ -135,7 +135,7 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.VALIDATION_ERROR);
-    verify(reportHoldInitializer, never()).ensureExists(any(), any(), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(any(), any(), any(), any());
   }
 
   @Test
@@ -148,6 +148,6 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD);
-    verify(reportHoldInitializer, never()).ensureExists(eq(reportId), eq(adjusterId), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(eq(reportId), eq(adjusterId), any(), any());
   }
 }

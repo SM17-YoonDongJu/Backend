@@ -36,7 +36,7 @@ import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
  * 상담 채팅방 개설(design.md §8-6 #10) 단위 테스트. 제안 1건당 방 1개 멱등 확보와, 방이 실제로 새로 열릴
  * 때만 따라붙는 부수효과(SYSTEM 안내 메시지 저장 · 커밋 후 브로드캐스트)를 검증한다.
  *
- * <p>방 INSERT 자체는 {@link ChatRoomInsertOperator}(REQUIRES_NEW)에 격리돼 있으므로 여기서는 mock으로
+ * <p>방 INSERT 자체는 {@link ChatRoomWriter}(REQUIRES_NEW)에 격리돼 있으므로 여기서는 mock으로
  * 세운다 — 실제 UNIQUE 충돌·격리 동작은 {@code ChatRoomCommandServiceConcurrencyIntegrationTest}가 본다.
  */
 @ExtendWith(MockitoExtension.class)
@@ -48,7 +48,7 @@ class ChatRoomCommandServiceTest {
   @Mock
   private ChatMessageRepository chatMessageRepository;
   @Mock
-  private ChatRoomInsertOperator chatRoomInsertOperator;
+  private ChatRoomWriter chatRoomWriter;
   @Mock
   private ChatEventPublisher chatEventPublisher;
   @InjectMocks
@@ -71,7 +71,7 @@ class ChatRoomCommandServiceTest {
     ChatRoom inserted = insertedRoom();
     given(chatRoomRepository.findByReportReviewId(reportReviewId))
         .willReturn(Optional.empty(), Optional.of(inserted));
-    given(chatRoomInsertOperator.insertConsultationRoom(userId, adjusterId, reportId, reportReviewId))
+    given(chatRoomWriter.insertConsultationRoom(userId, adjusterId, reportId, reportReviewId))
         .willReturn(true);
     return inserted;
   }
@@ -99,7 +99,7 @@ class ChatRoomCommandServiceTest {
     // Then
     assertThat(result.created()).isTrue();
     assertThat(result.chatRoomId()).isEqualTo(roomId);
-    verify(chatRoomInsertOperator).insertConsultationRoom(userId, adjusterId, reportId, reportReviewId);
+    verify(chatRoomWriter).insertConsultationRoom(userId, adjusterId, reportId, reportReviewId);
   }
 
   @Test
@@ -164,7 +164,7 @@ class ChatRoomCommandServiceTest {
     // Then
     assertThat(result.created()).isFalse();
     assertThat(result.chatRoomId()).isEqualTo(roomId);
-    verify(chatRoomInsertOperator, never()).insertConsultationRoom(any(), any(), any(), any());
+    verify(chatRoomWriter, never()).insertConsultationRoom(any(), any(), any(), any());
     verify(chatMessageRepository, never()).save(any(ChatMessage.class));
     verify(chatEventPublisher, never()).publishAfterCommit(any(ChatBroadcastMessage.class));
   }
@@ -182,7 +182,7 @@ class ChatRoomCommandServiceTest {
     given(chatRoomRepository.findByReportReviewId(reportReviewId))
         .willReturn(Optional.empty(), Optional.of(winnerRoom));
     willThrow(new DataIntegrityViolationException("uk_chatroom_report_review_id"))
-        .given(chatRoomInsertOperator)
+        .given(chatRoomWriter)
         .insertConsultationRoom(userId, adjusterId, reportId, reportReviewId);
 
     // When
@@ -216,6 +216,6 @@ class ChatRoomCommandServiceTest {
     // Then
     assertThat(result.created()).isFalse();
     assertThat(result.chatRoomId()).isEqualTo(roomId);
-    verify(chatRoomInsertOperator, never()).insertConsultationRoom(any(), any(), any(), any());
+    verify(chatRoomWriter, never()).insertConsultationRoom(any(), any(), any(), any());
   }
 }

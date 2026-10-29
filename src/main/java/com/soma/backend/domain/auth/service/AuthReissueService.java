@@ -11,8 +11,8 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
-import com.soma.backend.global.security.AuthTokenService.RefreshTokenContext;
+import com.soma.backend.global.security.AuthTokenManager;
+import com.soma.backend.global.security.AuthTokenManager.RefreshTokenContext;
 
 /**
  * 토큰 재발급 유스케이스. refresh 쿠키를 RTR 검증한 뒤 최신 role로 새 토큰 쌍을 발급한다.
@@ -21,14 +21,14 @@ import com.soma.backend.global.security.AuthTokenService.RefreshTokenContext;
 @RequiredArgsConstructor
 public class AuthReissueService {
 
-  private final AuthTokenService authTokenService;
+  private final AuthTokenManager authTokenManager;
   private final UserRepository userRepository;
 
   @Transactional(readOnly = true)
   public void reissue(HttpServletRequest request, HttpServletResponse response) {
-    RefreshTokenContext context = authTokenService.validateRefreshCookie(request);
+    RefreshTokenContext context = authTokenManager.validateRefreshCookie(request);
     User user = userRepository.findById(context.userId())
         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-    authTokenService.reissueTokens(response, context, user.getRole().name());
+    authTokenManager.reissueTokens(response, context, user.getRole().name());
   }
 }

@@ -9,7 +9,7 @@ import java.util.UUID;
  * "이 리포트가 차단됐다"는 사실만 발행하고, 알림(문안·토글·푸시)으로 만드는 결정은 notification 리스너가
  * 한다(Spring/JPA import 0).
  *
- * <p>발행 지점은 {@code BlockedReportNotificationSweeper}이며, 수신은 {@code AFTER_COMMIT}이라 알림 발송이
+ * <p>발행 지점은 {@code ReportBlockedNotificationSweeper}이며, 수신은 {@code AFTER_COMMIT}이라 알림 발송이
  * 실패해도 이미 커밋된 통지 시각 기록에는 영향이 없다. {@link AnalysisFailedEvent}와 달리 사유(reason)를
  * 안 담는다 — AI가 차단 사유(오프토픽·PII 복호화 실패 등)를 reports 테이블로 넘기지 않아 Backend가 구분할
  * 수단이 없다({@code ReportAnalysis#blocked()}가 중립 문구 하나로 통일하는 것과 같은 이유).

@@ -34,10 +34,10 @@ import com.soma.backend.domain.user.entity.UserStatus;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserService 단위 테스트")
@@ -56,7 +56,7 @@ class UserServiceTest {
   private SocialAccountRepository socialAccountRepository;
 
   @Mock
-  private AuthTokenService authTokenService;
+  private AuthTokenManager authTokenManager;
 
   @Mock
   private OutboxEventPublisher outboxEventPublisher;
@@ -65,7 +65,7 @@ class UserServiceTest {
   private HttpServletResponse response;
 
   @Mock
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
 
   @Mock
   private PiiHmac piiHmac;
@@ -174,7 +174,7 @@ class UserServiceTest {
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
     UserUpdateRequest request = new UserUpdateRequest(null, List.of("서울"), "https://img/new.png");
-    given(s3UploadService.presignedGetUrl("https://img/new.png")).willReturn("https://img/new.png");
+    given(s3ObjectStorage.presignedGetUrl("https://img/new.png")).willReturn("https://img/new.png");
 
     // When
     UserMeResponse result = userService.updateMe(userId, request);
@@ -219,7 +219,7 @@ class UserServiceTest {
     assertThat(user.getPhoneNumber()).isNull();
     then(socialAccountRepository).should().deleteByUserId(userId);
     then(outboxEventPublisher).should().publishAuthCleanup(userId);
-    then(authTokenService).should().expireCookies(response);
+    then(authTokenManager).should().expireCookies(response);
   }
 
   @Test

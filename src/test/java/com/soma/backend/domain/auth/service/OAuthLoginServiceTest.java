@@ -32,7 +32,7 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.crypto.AesGcmCipher;
 import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
@@ -57,7 +57,7 @@ class OAuthLoginServiceTest {
   private SignupTicketProvider signupTicketProvider;
 
   @Mock
-  private AuthTokenService authTokenService;
+  private AuthTokenManager authTokenManager;
 
   @Mock
   private AesGcmCipher aesGcmCipher;
@@ -94,7 +94,7 @@ class OAuthLoginServiceTest {
     assertThat(result.isNewUser()).isFalse();
     assertThat(result.userId()).isEqualTo(userId);
     assertThat(result.signupTicket()).isNull();
-    then(authTokenService).should().issueTokens(response, userId, "USER");
+    then(authTokenManager).should().issueTokens(response, userId, "USER");
     then(signupTicketProvider).should(never()).issue(anyString(), anyString());
   }
 
@@ -115,7 +115,7 @@ class OAuthLoginServiceTest {
     assertThat(result.isNewUser()).isTrue();
     assertThat(result.signupTicket()).isEqualTo("ticket-jwt");
     assertThat(result.userId()).isNull();
-    then(authTokenService).should(never()).issueTokens(any(), any(), anyString());
+    then(authTokenManager).should(never()).issueTokens(any(), any(), anyString());
     then(appleRefreshStagingRepository).should(never()).stage(anyString(), anyString(), anyString());
   }
 
@@ -159,6 +159,6 @@ class OAuthLoginServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting(ex -> ((BusinessException) ex).getErrorCode())
         .isEqualTo(ErrorCode.USER_NOT_FOUND);
-    then(authTokenService).should(never()).issueTokens(any(), eq(userId), anyString());
+    then(authTokenManager).should(never()).issueTokens(any(), eq(userId), anyString());
   }
 }

@@ -85,7 +85,7 @@ BLOCKED              ← AI 입력 가드레일 차단(보험·법률 외 주제
 - **`ai.ocr_job_failures`** — AI 워커가 OCR 처리 실패를 기록하는 계약 테이블. **AI 워커 소유**(Flyway로 만들지 않는다), Backend는 SELECT만 한다. 권한(GRANT)이 아직 없어도 앱 부팅이 막히지 않도록 `@Subselect` 읽기 전용 엔티티(`OcrJobFailureView`)로 매핑한다(§ddd-tactical 스킬 참고). `BLOCKED`·`NEEDS_REUPLOAD` 리포트에 저널 행이 남아 있어도(가정 위반 시) 이 우선순위 배치 덕분에 `isFailed()`가 `false`가 되어 실패 스윕과 중복 알림이 나지 않는다 — 다만 배치 슬롯은 계속 소모하므로 `OcrJobFailureViewRepositoryImpl`의 조회 조건에서 두 종료 상태를 제외한다.
 - **실패 사유(`AnalysisFailureReason`)**: `MASKING_RESIDUAL`(마스킹 잔류, 재업로드해도 동일 실패)/`SCHEMA_INVALID`(계약 위반)/`OCR_ERROR`/`UNKNOWN`/`UNREADABLE_FILE`(유일하게 재업로드로 해결 가능). 문서 여러 건이 다른 사유로 실패하면 이 순서로 대표 사유를 고른다 — `UNREADABLE_FILE`이 가장 낮은 우선순위라 다른 사유가 하나라도 섞이면 절대 대표가 되지 않는다(잘못된 재업로드 안내 방지). `NEEDS_REUPLOAD`는 `ai.ocr_results.ocr_quality`(다른 테이블·다른 컬럼)의 판정이라 이 ACL enum에 편입하지 않는다 — `NEEDS_REUPLOAD` 상태의 `failure_reason`은 항상 `null`.
 - **API**: `GET /reports/{reportId}/analysis-status`(폴링용 전용 엔드포인트, **소유자 전용** — 실패 문서 파일명이 실리는 유일한 응답이라 사정사에겐 안 연다) + 목록(`GET /reports`)·상세(`GET /reports/{reportId}`)에 평면 3필드(`analysis_state`/`analysis_failure_reason`/`analysis_failure_message`)로도 노출. `NEEDS_REUPLOAD`의 `failed_documents`는 현재 빈 배열 고정 — 문서 단위 상세(`ai.ocr_results` 연동)는 후속 이슈로 분리됐다(GRANT 미적용).
-- **알림**: 확정 실패·BLOCKED·NEEDS_REUPLOAD 각각 별도 스케줄러 스윕(`AnalysisFailureNotificationSweeper`/`BlockedReportNotificationSweeper`/`NeedsReuploadNotificationSweeper`)이 감지해 인앱 알림+FCM 푸시. 조회 시점 주입이 아니라 스윕인 이유는 앱을 닫아둔 사용자에게도 푸시로 알려야 하기 때문. 세 스윕 모두 토글 무관 항상 발송.
+- **알림**: 확정 실패·BLOCKED·NEEDS_REUPLOAD 각각 별도 스케줄러 스윕(`ReportAnalysisFailureNotificationSweeper`/`ReportBlockedNotificationSweeper`/`ReportNeedsReuploadNotificationSweeper`)이 감지해 인앱 알림+FCM 푸시. 조회 시점 주입이 아니라 스윕인 이유는 앱을 닫아둔 사용자에게도 푸시로 알려야 하기 때문. 세 스윕 모두 토글 무관 항상 발송.
 
 ---
 
@@ -419,7 +419,7 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 | `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED`, `BLOCKED`(AI 워커가 원시 SQL로 직접 세팅, §3-1 참고), `NEEDS_REUPLOAD`(AI 워커가 원시 SQL로 직접 세팅, OCR 품질 미달, §3-1 참고). DB는 varchar(30) — CHECK 제약·PostgreSQL enum 없음, 값 목록은 Java enum(`ReportStatus`)에서만 강제된다 |
 | `analysis_failure_notified_at` | timestamp(nullable) | 분석 확정 실패 알림 발송 시각(V41). NULL=미통지, 스윕의 멱등 가드. 분석 상태 자체는 저장 안 함(§3-1) |
 | `blocked_notified_at` | timestamp(nullable) | BLOCKED 알림 발송 시각(V42). NULL=미통지, 별도 스윕의 멱등 가드 |
-| `needs_reupload_notified_at` | timestamp(nullable) | NEEDS_REUPLOAD 알림 발송 시각(V43). NULL=미통지, 별도 스윕(`NeedsReuploadNotificationSweeper`)의 멱등 가드 |
+| `needs_reupload_notified_at` | timestamp(nullable) | NEEDS_REUPLOAD 알림 발송 시각(V43). NULL=미통지, 별도 스윕(`ReportNeedsReuploadNotificationSweeper`)의 멱등 가드 |
 | `claimed_min_amount` | bigint | 최소 청구 금액 (단정 표현 금지 — 범위로 표현) |
 | `claimed_max_amount` | bigint | 최대 청구 금액 |
 | `offered_amount` | bigint | 보험사 지급 금액 |

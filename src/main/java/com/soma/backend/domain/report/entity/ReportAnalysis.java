@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * 쓰인 모순 상태에서 COMPLETED를 내리면 "완료로 보이는데 실제로는 멈춰 있는" 무음 정지가 그대로 재현된다 —
  * 상태 컬럼은 AI가 명시적으로 쓴 최신 신호이므로 이쪽을 신뢰한다. ② 저널 검사(4번)보다 앞이라
  * {@link #isFailed()}가 {@code false}가 되어, 저널 기반 스윕
- * ({@code AnalysisFailureNotificationSweeper})과의 <b>중복 알림이 구조적으로 차단</b>된다 — 품질 판정
+ * ({@code ReportAnalysisFailureNotificationSweeper})과의 <b>중복 알림이 구조적으로 차단</b>된다 — 품질 판정
  * 리포트에 저널 행이 같이 생기더라도 안전하다.</p>
  *
  * <p>판정은 문서 단위가 아니라 <b>리포트 단위</b>다 — AI측 fan-in(doc_total)이 다 차지 않으면 리포트 생성이

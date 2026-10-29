@@ -14,7 +14,7 @@ import com.soma.backend.domain.adjuster.repository.AdjusterCardRow;
 import com.soma.backend.domain.adjuster.repository.AdjusterListCondition;
 import com.soma.backend.domain.adjuster.repository.AdjusterListMetaRow;
 import com.soma.backend.domain.adjuster.repository.AdjusterProfileRepository;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * 손해사정사 공개 목록/검색 유스케이스(GET /adjusters). 고객 앱 파인더·홈 추천이 공유한다.
@@ -32,7 +32,7 @@ public class AdjusterListQueryService {
   private static final int MAX_SIZE = 50;
 
   private final AdjusterProfileRepository adjusterProfileRepository;
-  private final S3UploadService s3UploadService;
+  private final S3ObjectStorage s3ObjectStorage;
 
   public AdjusterListResponse getAdjusters(
       String keyword, String specialty, String region, String sort, int page, int size) {
@@ -45,7 +45,7 @@ public class AdjusterListQueryService {
 
     Page<AdjusterCardRow> cards = adjusterProfileRepository.findAdjusterCards(condition, pageable);
     AdjusterListMetaRow meta = adjusterProfileRepository.findAdjusterListMeta();
-    return AdjusterListResponse.from(cards, pageNumber, meta, s3UploadService::presignedGetUrl);
+    return AdjusterListResponse.from(cards, pageNumber, meta, s3ObjectStorage::presignedGetUrl);
   }
 
   @Nullable

@@ -13,7 +13,7 @@ import com.soma.backend.domain.upload.dto.UploadResponse;
 import com.soma.backend.domain.upload.entity.UploadPurpose;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * 문서·이미지의 서버 경유(프록시) 업로드 유스케이스. purpose별 화이트리스트로 content_type과 용량을 검증하고,
@@ -28,7 +28,7 @@ public class UploadService {
   private static final byte[] JPEG_SIGNATURE = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
   private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
 
-  private final S3UploadService s3UploadService;
+  private final S3ObjectStorage s3ObjectStorage;
 
   /**
    * 업로드 파일을 검증하고 S3에 저장한 뒤 최종 object URL을 발급한다.
@@ -54,8 +54,8 @@ public class UploadService {
       throw new BusinessException(ErrorCode.UPLOAD_CONTENT_TYPE_NOT_ALLOWED);
     }
     String key = purpose.keyPrefix() + "/" + UUID.randomUUID() + "." + extensionFor(detected);
-    s3UploadService.putObject(key, detected, file);
-    return new UploadResponse(s3UploadService.objectUrl(key));
+    s3ObjectStorage.putObject(key, detected, file);
+    return new UploadResponse(s3ObjectStorage.objectUrl(key));
   }
 
   private String extensionFor(String contentType) {

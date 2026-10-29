@@ -31,7 +31,7 @@ import com.soma.backend.global.exception.ErrorCode;
  */
 @Component
 @RequiredArgsConstructor
-public class S3UploadService {
+public class S3ObjectStorage {
 
   /** presigned GET URL 만료(짧게 유지 — 민감 문서 노출 표면 축소). */
   private static final Duration PRESIGN_TTL = Duration.ofMinutes(5);

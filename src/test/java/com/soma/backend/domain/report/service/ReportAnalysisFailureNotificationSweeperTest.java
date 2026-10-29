@@ -44,8 +44,8 @@ import com.soma.backend.domain.report.repository.ReportRepository;
  * 실제 DB 없이 고정한다. 통지 시각 기록과 이벤트 발행이 한 쌍으로만 일어나야 중복 푸시가 나가지 않는다.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("AnalysisFailureNotificationSweeper 단위 테스트")
-class AnalysisFailureNotificationSweeperTest {
+@DisplayName("ReportAnalysisFailureNotificationSweeper 단위 테스트")
+class ReportAnalysisFailureNotificationSweeperTest {
 
   private static final LocalDateTime FAILED_AT = LocalDateTime.of(2026, 8, 12, 14, 3, 11);
 
@@ -57,12 +57,12 @@ class AnalysisFailureNotificationSweeperTest {
   private ApplicationEventPublisher eventPublisher;
 
   private SimpleMeterRegistry meterRegistry;
-  private AnalysisFailureNotificationSweeper sweeper;
+  private ReportAnalysisFailureNotificationSweeper sweeper;
 
   @BeforeEach
   void setUp() {
     meterRegistry = new SimpleMeterRegistry();
-    sweeper = new AnalysisFailureNotificationSweeper(
+    sweeper = new ReportAnalysisFailureNotificationSweeper(
         ocrJobFailureViewRepository, reportRepository, eventPublisher, meterRegistry);
     // 운영 기본값과 동일하게 켠 상태로 검증한다(@Value 주입은 단위 테스트에서 일어나지 않는다).
     ReflectionTestUtils.setField(sweeper, "sweepEnabled", true);

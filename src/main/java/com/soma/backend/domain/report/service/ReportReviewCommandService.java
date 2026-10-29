@@ -51,7 +51,7 @@ public class ReportReviewCommandService {
   private final ReportRepository reportRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final ReportIssueRepository reportIssueRepository;
-  private final ReportReviewSkeletonInitializer reportReviewSkeletonInitializer;
+  private final ReportReviewWriter reportReviewWriter;
   private final ApplicationEventPublisher eventPublisher;
 
   public ReviewReportResponse review(UUID adjusterId, UUID reportId, ReviewReportRequest request) {
@@ -78,7 +78,7 @@ public class ReportReviewCommandService {
     // (다른 트랜잭션이 먼저 커밋 → UK 충돌)은 false라 무발행(스팸 방지).
     boolean proposalCreated;
     try {
-      proposalCreated = reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId);
+      proposalCreated = reportReviewWriter.ensureExists(reportId, adjusterId);
     } catch (DataIntegrityViolationException ex) {
       proposalCreated = false;
       log.debug("동시 최초 검수 스켈레톤 삽입 감지 — reportId={}, adjusterId={}", reportId, adjusterId);

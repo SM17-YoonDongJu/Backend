@@ -33,7 +33,7 @@ import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
  *
  * <p>트랜잭션은 호출자(report의 커맨드 유스케이스)의 것을 그대로 쓴다(기본 전파 REQUIRED) —
  * 제안·리포트 상태 전이와 안내 메시지가 한 커밋으로 묶여야 "상태는 COUNSELING인데 안내가 없다"가
- * 생기지 않는다. 예외는 방 INSERT 한 문장뿐이다({@link ChatRoomInsertOperator}, REQUIRES_NEW) —
+ * 생기지 않는다. 예외는 방 INSERT 한 문장뿐이다({@link ChatRoomWriter}, REQUIRES_NEW) —
  * 동시 최초 개설의 UNIQUE 충돌을 호출자 트랜잭션에서 격리하기 위해서다. 그 대가로 바깥 트랜잭션이
  * 뒤이어 실패하면 방 행만 남을 수 있는데, 호출자가 던질 수 있는 검증을 모두 이 위임 앞에 끝내 두었고
  * (ReportCommandService#startCounseling) 남은 방은 제안당 1개로 고정돼 재요청 시 그대로 재사용된다.
@@ -48,7 +48,7 @@ public class ChatRoomCommandService {
 
   private final ChatRoomRepository chatRoomRepository;
   private final ChatMessageRepository chatMessageRepository;
-  private final ChatRoomInsertOperator chatRoomInsertOperator;
+  private final ChatRoomWriter chatRoomWriter;
   private final ChatEventPublisher chatEventPublisher;
 
   /**
@@ -56,7 +56,7 @@ public class ChatRoomCommandService {
    * 개설 후 SYSTEM 안내 메시지를 남긴다.
    *
    * <p>동시 최초 개설(선조회를 둘 다 통과)도 멱등이다 — INSERT는 별도 트랜잭션({@link
-   * ChatRoomInsertOperator})에 격리돼 있어 UNIQUE 인덱스(V44)에 걸린 쪽만 롤백되고, 진 쪽은 다시 조회해
+   * ChatRoomWriter})에 격리돼 있어 UNIQUE 인덱스(V44)에 걸린 쪽만 롤백되고, 진 쪽은 다시 조회해
    * 승자의 방을 그대로 돌려준다. 격리하지 않으면 진 쪽 요청이 409 DUPLICATE_RESOURCE로 실패해
    * "이미 있으면 그대로 반환"이라는 계약이 깨진다.
    *
@@ -74,7 +74,7 @@ public class ChatRoomCommandService {
 
     boolean created;
     try {
-      created = chatRoomInsertOperator.insertConsultationRoom(userId, adjusterId, reportId, reportReviewId);
+      created = chatRoomWriter.insertConsultationRoom(userId, adjusterId, reportId, reportReviewId);
     } catch (DataIntegrityViolationException ex) {
       // 동시 최초 개설 경쟁에서 졌다 — 승자가 이미 커밋한 방을 아래에서 다시 조회해 그대로 쓴다.
       created = false;

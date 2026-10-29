@@ -37,13 +37,13 @@ import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 
 /**
- * S3UploadService(S3 인프라 어댑터) 단위 테스트. S3Client를 mock으로 대체해 실제 S3 호출 없이 putObject 요청
+ * S3ObjectStorage(S3 인프라 어댑터) 단위 테스트. S3Client를 mock으로 대체해 실제 S3 호출 없이 putObject 요청
  * 조립(bucket·key·Content-Type·contentLength), SdkException·IOException → UPLOAD_FAILED 매핑, object URL
  * 위임을 검증한다. bucket은 @Value 주입 필드라 ReflectionTestUtils로 세팅한다.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("S3UploadService 단위 테스트")
-class S3UploadServiceTest {
+@DisplayName("S3ObjectStorage 단위 테스트")
+class S3ObjectStorageTest {
 
   private static final String BUCKET = "test-bucket";
   private static final String KEY = "avatars/uuid.png";
@@ -57,7 +57,7 @@ class S3UploadServiceTest {
   private static final byte[] BYTES = {(byte) 0x89, 0x50, 0x4E, 0x47};
 
   @InjectMocks
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
 
   @Mock
   private S3Client s3Client;
@@ -67,7 +67,7 @@ class S3UploadServiceTest {
 
   @BeforeEach
   void setBucket() {
-    ReflectionTestUtils.setField(s3UploadService, "bucket", BUCKET);
+    ReflectionTestUtils.setField(s3ObjectStorage, "bucket", BUCKET);
   }
 
   @Test
@@ -79,7 +79,7 @@ class S3UploadServiceTest {
     MultipartFile file = new MockMultipartFile("file", "profile.png", CONTENT_TYPE, BYTES);
 
     // When
-    s3UploadService.putObject(KEY, CONTENT_TYPE, file);
+    s3ObjectStorage.putObject(KEY, CONTENT_TYPE, file);
 
     // Then
     ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.forClass(PutObjectRequest.class);
@@ -100,7 +100,7 @@ class S3UploadServiceTest {
     MultipartFile file = new MockMultipartFile("file", "profile.png", CONTENT_TYPE, BYTES);
 
     // When & Then
-    assertThatThrownBy(() -> s3UploadService.putObject(KEY, CONTENT_TYPE, file))
+    assertThatThrownBy(() -> s3ObjectStorage.putObject(KEY, CONTENT_TYPE, file))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.UPLOAD_FAILED);
   }
@@ -114,7 +114,7 @@ class S3UploadServiceTest {
     given(file.getInputStream()).willThrow(new IOException("boom"));
 
     // When & Then
-    assertThatThrownBy(() -> s3UploadService.putObject(KEY, CONTENT_TYPE, file))
+    assertThatThrownBy(() -> s3ObjectStorage.putObject(KEY, CONTENT_TYPE, file))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.UPLOAD_FAILED);
   }
@@ -128,7 +128,7 @@ class S3UploadServiceTest {
     given(utilities.getUrl(any(GetUrlRequest.class))).willReturn(URI.create(OBJECT_URL).toURL());
 
     // When
-    String result = s3UploadService.objectUrl(KEY);
+    String result = s3ObjectStorage.objectUrl(KEY);
 
     // Then
     assertThat(result).isEqualTo(OBJECT_URL);
@@ -145,7 +145,7 @@ class S3UploadServiceTest {
     givenPresignerReturns(PRESIGNED_URL);
 
     // When
-    String result = s3UploadService.presignedGetUrl(DOCUMENT_KEY);
+    String result = s3ObjectStorage.presignedGetUrl(DOCUMENT_KEY);
 
     // Then
     assertThat(result).isEqualTo(PRESIGNED_URL);
@@ -160,7 +160,7 @@ class S3UploadServiceTest {
     givenPresignerReturns(PRESIGNED_URL);
 
     // When
-    String result = s3UploadService.presignedGetUrl(OBJECT_URL);
+    String result = s3ObjectStorage.presignedGetUrl(OBJECT_URL);
 
     // Then
     assertThat(result).isEqualTo(PRESIGNED_URL);
@@ -171,7 +171,7 @@ class S3UploadServiceTest {
   @DisplayName("presignedGetUrl은 외부 호스트 URL(소셜 프로필 등)이면 서명하지 않고 원본을 반환한다")
   void presignedGetUrl_externalUrl_returnsOriginal() {
     // When
-    String result = s3UploadService.presignedGetUrl(EXTERNAL_URL);
+    String result = s3ObjectStorage.presignedGetUrl(EXTERNAL_URL);
 
     // Then
     assertThat(result).isEqualTo(EXTERNAL_URL);
@@ -182,8 +182,8 @@ class S3UploadServiceTest {
   @DisplayName("presignedGetUrl은 null·blank는 서명 없이 그대로 통과시킨다")
   void presignedGetUrl_nullOrBlank_passesThrough() {
     // When & Then
-    assertThat(s3UploadService.presignedGetUrl(null)).isNull();
-    assertThat(s3UploadService.presignedGetUrl("  ")).isEqualTo("  ");
+    assertThat(s3ObjectStorage.presignedGetUrl(null)).isNull();
+    assertThat(s3ObjectStorage.presignedGetUrl("  ")).isEqualTo("  ");
     then(s3Presigner).shouldHaveNoInteractions();
   }
 

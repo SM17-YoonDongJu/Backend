@@ -29,16 +29,16 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportStatus;
-import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
+import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
 import com.soma.backend.domain.report.repository.ReportRepository;
 
 /**
- * NEEDS_REUPLOAD(OCR 품질 미달) 알림 스윕 단위 테스트. {@link BlockedReportNotificationSweeperTest}와 같은
- * 원칙을 전용 멱등 가드 컬럼(needs_reupload_notified_at)에 대해 검증한다.
+ * BLOCKED 알림 스윕 단위 테스트(F1 후속). {@link ReportAnalysisFailureNotificationSweeperTest}와 같은 원칙을
+ * 저널이 아니라 reports 직접 스캔에 대해 검증한다.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("NeedsReuploadNotificationSweeper 단위 테스트")
-class NeedsReuploadNotificationSweeperTest {
+@DisplayName("ReportBlockedNotificationSweeper 단위 테스트")
+class ReportBlockedNotificationSweeperTest {
 
   @Mock
   private ReportRepository reportRepository;
@@ -46,63 +46,63 @@ class NeedsReuploadNotificationSweeperTest {
   private ApplicationEventPublisher eventPublisher;
 
   private SimpleMeterRegistry meterRegistry;
-  private NeedsReuploadNotificationSweeper sweeper;
+  private ReportBlockedNotificationSweeper sweeper;
 
   @BeforeEach
   void setUp() {
     meterRegistry = new SimpleMeterRegistry();
-    sweeper = new NeedsReuploadNotificationSweeper(reportRepository, eventPublisher, meterRegistry);
+    sweeper = new ReportBlockedNotificationSweeper(reportRepository, eventPublisher, meterRegistry);
     ReflectionTestUtils.setField(sweeper, "sweepEnabled", true);
   }
 
-  private static Report needsReuploadReport(UUID userId) {
+  private static Report blockedReport(UUID userId) {
     Report report = BeanUtils.instantiateClass(Report.class);
     ReflectionTestUtils.setField(report, "id", UUID.randomUUID());
     ReflectionTestUtils.setField(report, "userId", userId);
-    ReflectionTestUtils.setField(report, "status", ReportStatus.NEEDS_REUPLOAD);
+    ReflectionTestUtils.setField(report, "status", ReportStatus.BLOCKED);
     return report;
   }
 
   private double notifiedCount() {
-    return meterRegistry.get("report.needs_reupload.notified").counter().count();
+    return meterRegistry.get("report.blocked.notified").counter().count();
   }
 
   @Test
   @DisplayName("스윕을 2회 연속 실행해도 리포트당 알림 이벤트는 1건만 발행된다(통지 시각 가드)")
   void secondSweepDoesNotNotifyAgain() {
     UUID userId = UUID.randomUUID();
-    Report target = needsReuploadReport(userId);
-    given(reportRepository.findAllByStatusAndNeedsReuploadNotifiedAtIsNull(any(), any(Pageable.class)))
+    Report target = blockedReport(userId);
+    given(reportRepository.findAllByStatusAndBlockedNotifiedAtIsNull(any(), any(Pageable.class)))
         .willReturn(List.of(target));
 
     sweeper.sweep();
     sweeper.sweep();
 
-    verify(eventPublisher).publishEvent(any(ReportNeedsReuploadEvent.class));
-    assertThat(ReflectionTestUtils.getField(target, "needsReuploadNotifiedAt")).isNotNull();
+    verify(eventPublisher).publishEvent(any(ReportBlockedEvent.class));
+    assertThat(ReflectionTestUtils.getField(target, "blockedNotifiedAt")).isNotNull();
     assertThat(notifiedCount()).isEqualTo(1.0);
   }
 
   @Test
-  @DisplayName("재업로드가 필요한 리포트의 소유자·리포트를 담은 ReportNeedsReuploadEvent를 발행한다")
+  @DisplayName("차단된 리포트의 소유자·리포트를 담은 ReportBlockedEvent를 발행한다")
   void publishesEventWithOwnerAndReport() {
     UUID userId = UUID.randomUUID();
-    Report target = needsReuploadReport(userId);
-    given(reportRepository.findAllByStatusAndNeedsReuploadNotifiedAtIsNull(any(), any(Pageable.class)))
+    Report target = blockedReport(userId);
+    given(reportRepository.findAllByStatusAndBlockedNotifiedAtIsNull(any(), any(Pageable.class)))
         .willReturn(List.of(target));
 
     sweeper.sweep();
 
-    ArgumentCaptor<ReportNeedsReuploadEvent> captor = ArgumentCaptor.forClass(ReportNeedsReuploadEvent.class);
+    ArgumentCaptor<ReportBlockedEvent> captor = ArgumentCaptor.forClass(ReportBlockedEvent.class);
     verify(eventPublisher).publishEvent(captor.capture());
     assertThat(captor.getValue().userId()).isEqualTo(userId);
     assertThat(captor.getValue().reportId()).isEqualTo(target.getId());
   }
 
   @Test
-  @DisplayName("status=NEEDS_REUPLOAD·needsReuploadNotifiedAt IS NULL·배치 상한 100으로 reports를 직접 조회한다")
+  @DisplayName("status=BLOCKED·blockedNotifiedAt IS NULL·배치 상한 100으로 reports를 직접 조회한다(저널 무관)")
   void queriesReportsDirectlyWithBatchLimit() {
-    given(reportRepository.findAllByStatusAndNeedsReuploadNotifiedAtIsNull(any(), any(Pageable.class)))
+    given(reportRepository.findAllByStatusAndBlockedNotifiedAtIsNull(any(), any(Pageable.class)))
         .willReturn(List.of());
 
     sweeper.sweep();
@@ -110,8 +110,8 @@ class NeedsReuploadNotificationSweeperTest {
     ArgumentCaptor<ReportStatus> statusCaptor = ArgumentCaptor.forClass(ReportStatus.class);
     ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
     verify(reportRepository)
-        .findAllByStatusAndNeedsReuploadNotifiedAtIsNull(statusCaptor.capture(), pageableCaptor.capture());
-    assertThat(statusCaptor.getValue()).isEqualTo(ReportStatus.NEEDS_REUPLOAD);
+        .findAllByStatusAndBlockedNotifiedAtIsNull(statusCaptor.capture(), pageableCaptor.capture());
+    assertThat(statusCaptor.getValue()).isEqualTo(ReportStatus.BLOCKED);
     assertThat(pageableCaptor.getValue()).isEqualTo(PageRequest.of(0, 100));
   }
 
@@ -128,21 +128,21 @@ class NeedsReuploadNotificationSweeperTest {
   @Test
   @DisplayName("조회가 실패하면 에러 카운터를 올리고 예외를 그대로 던진다(트랜잭션 오염 방지 + 지표 노출)")
   void countsAndRethrowsSweepError() {
-    given(reportRepository.findAllByStatusAndNeedsReuploadNotifiedAtIsNull(any(), any(Pageable.class)))
+    given(reportRepository.findAllByStatusAndBlockedNotifiedAtIsNull(any(), any(Pageable.class)))
         .willThrow(new InvalidDataAccessResourceUsageException("boom"));
 
     assertThatThrownBy(() -> sweeper.sweep()).isInstanceOf(InvalidDataAccessResourceUsageException.class);
-    assertThat(meterRegistry.get("report.needs_reupload.sweep.errors").counter().count()).isEqualTo(1.0);
+    assertThat(meterRegistry.get("report.blocked.sweep.errors").counter().count()).isEqualTo(1.0);
   }
 
   @Test
   @DisplayName("조회 대상이 없으면 이벤트를 발행하지 않는다")
   void skipsWhenNoPendingReports() {
-    given(reportRepository.findAllByStatusAndNeedsReuploadNotifiedAtIsNull(any(), any(Pageable.class)))
+    given(reportRepository.findAllByStatusAndBlockedNotifiedAtIsNull(any(), any(Pageable.class)))
         .willReturn(List.of());
 
     sweeper.sweep();
 
-    verify(eventPublisher, never()).publishEvent(any(ReportNeedsReuploadEvent.class));
+    verify(eventPublisher, never()).publishEvent(any(ReportBlockedEvent.class));
   }
 }
