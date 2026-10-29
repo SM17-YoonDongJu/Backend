@@ -1,6 +1,5 @@
 package com.soma.backend.domain.report.repository;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -15,7 +14,6 @@ import org.springframework.data.repository.query.Param;
 
 import jakarta.persistence.LockModeType;
 
-import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportStatus;
 
@@ -58,40 +56,11 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
   /**
    * 사건번호 발급용 시퀀스의 원자 증가값. {@code nextval}은 무락·비트랜잭셔널이라 동시 호출에도 서로 막지 않고
    * 각기 다른 값을 돌려줘 사전확인·재시도가 필요 없다(롤백 시 gap 허용). 시퀀스 이름을 스키마 수식하지 않아
-   * search_path로 해석된다 — 운영은 {@code core}(V47), 테스트는 {@code public}(sql/test-schema.sql)이다
-   * (옛 {@code report_case_sequences} 카운터와 같은 관례). JPQL로 표현할 수 없어 문서화된 native 예외로 둔다.
+   * search_path로 해석된다 — 운영은 {@code core}(V47), 테스트는 {@code public}(sql/test-schema.sql)이다.
+   * JPQL로 표현할 수 없어 문서화된 native 예외로 둔다 — 도메인 리포지토리에 남은 유일한 native 쿼리다.
    */
   @Query(value = "SELECT nextval('report_case_seq')", nativeQuery = true)
   long nextCaseNoSeq();
-
-  /**
-   * 당일 case_no 시퀀스를 원자적으로 발급한다(1부터). ON CONFLICT DO UPDATE로 동시 요청에도 단일 행이
-   * 원자 증가하므로, count-then-insert 경쟁으로 인한 case_no UNIQUE 위반(→500)을 원천 차단한다(ReportHold 관례).
-   *
-   * @deprecated 사건번호가 연번에서 랜덤 코드로 바뀌어(#309, {@link com.soma.backend.domain.report.service.CaseNoGenerator})
-   *     리포트 생성 경로는 더 이상 이 카운터를 쓰지 않는다. 되돌려야 할 상황에 대비해 메서드와
-   *     {@code report_case_sequences} 테이블을 함께 남겨 뒀으며, 전환이 안정화되면 후속 이슈에서 같이 제거한다.
-   */
-  @Deprecated(since = "#309")
-  @Query(value = "INSERT INTO report_case_sequences (day, seq) VALUES (:day, 1) "
-      + "ON CONFLICT (day) DO UPDATE SET seq = report_case_sequences.seq + 1 "
-      + "RETURNING seq", nativeQuery = true)
-  int nextCaseNoSequence(@Param("day") LocalDate day);
-
-  /**
-   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사의 '내 대기 큐' 카운트 —
-   * 본인이 보류(report_holds)하지도, 이미 검수 진행(report_reviews SENT·COUNSELING)하지도 않은 건수다.
-   * 내가 SENT 한 AWAITING_ADOPTION 건은 진행중으로 넘어갔으므로 검수 대기에서 뺀다(진행중∩검수대기=∅).
-   * 사정사별 개인화 카운트라 홈 풀(전역 정의)과 값이 다를 수 있다.
-   */
-  @Query("SELECT COUNT(r) FROM Report r "
-      + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
-      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId) "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportReview rv WHERE rv.reportId = r.id AND rv.adjusterId = :adjusterId "
-      + "AND rv.status IN (com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
-      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING))")
-  long countPendingNotHeldBy(@Param("adjusterId") UUID adjusterId);
 
   /** 마이페이지 활동 집계 — 요청 사용자가 만든 리포트 총수(GET /users/me/activity-summary). */
   @Query("SELECT COUNT(r) FROM Report r WHERE r.userId = :userId")
@@ -109,52 +78,4 @@ public interface ReportRepository extends JpaRepository<Report, UUID>, ReportRep
   @Query("SELECT r FROM Report r WHERE r.status IN :sources AND r.createdAt < :threshold")
   List<Report> findExpiredForNotSelection(
       @Param("sources") Collection<ReportStatus> sources, @Param("threshold") LocalDateTime threshold);
-
-  /** 마감 임박(AWAITING_INSPECTION·threshold 이전 접수) 중 본인이 보류·검수(SENT·COUNSELING)하지 않은 건수. */
-  @Query("SELECT COUNT(r) FROM Report r "
-      + "WHERE r.status = com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION "
-      + "AND r.createdAt <= :dueSoonThreshold "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId) "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportReview rv WHERE rv.reportId = r.id AND rv.adjusterId = :adjusterId "
-      + "AND rv.status IN (com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
-      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING))")
-  long countDueSoonNotHeldBy(
-      @Param("dueSoonThreshold") LocalDateTime dueSoonThreshold, @Param("adjusterId") UUID adjusterId);
-
-  /**
-   * 검수 대기 풀 중 지정 사고유형(사정사 전문분야 매칭)에 해당하고, 본인이 보류·검수(SENT·COUNSELING)하지
-   * 않은 건수. 요약의 '내 전문분야 매칭' 배지도 검수 대기와 같은 개인화 축(보류·내 검수 제외)에 맞춘다.
-   */
-  @Query("SELECT COUNT(r) FROM Report r "
-      + "WHERE r.status IN (com.soma.backend.domain.report.entity.ReportStatus.AWAITING_INSPECTION, "
-      + "com.soma.backend.domain.report.entity.ReportStatus.AWAITING_ADOPTION) "
-      + "AND r.accidentType IN :types "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportHold h WHERE h.reportId = r.id AND h.adjusterId = :adjusterId) "
-      + "AND NOT EXISTS (SELECT 1 FROM ReportReview rv WHERE rv.reportId = r.id AND rv.adjusterId = :adjusterId "
-      + "AND rv.status IN (com.soma.backend.domain.report.entity.ReviewStatus.SENT, "
-      + "com.soma.backend.domain.report.entity.ReviewStatus.COUNSELING))")
-  long countPendingByAccidentTypeInNotHeldBy(
-      @Param("types") Collection<AccidentType> types, @Param("adjusterId") UUID adjusterId);
-
-  /*
-   * 아직 엔티티로 모델링되지 않은 테이블을 조인하는 읽기 전용 projection이라 QueryDSL로 표현할 수 없다.
-   * 하네스의 native query 금지 규칙에 대한 '문서화된 예외'로 유지한다(해당 도메인 모델링 시 QueryDSL로 전환):
-   *   - findReviewContext : user_claims / insurance_products / insurers (미매핑)
-   * diagnosis·hospitalization은 user_claims details(jsonb) 전환으로 컬럼에서 제거됨(추후 details 기반 노출).
-   * region(text[])은 findRegionByReportId(QueryDSL)로 별도 조회하므로 여기서는 선택하지 않는다.
-   * additional_information·description은 암호화(bytea)로 전환돼 컨버터가 적용되는 엔티티(UserClaim) 경유
-   * 조회로 옮겼다 — native 결과에는 컨버터가 적용되지 않아 여기서 셀렉트하면 복호화되지 않은 봉투 바이트가 나온다.
-   */
-  @Query(value = "SELECT u.nickname AS nickname, u.gender AS gender, u.birth_date AS birthDate, "
-      + "u.created_at AS joinedAt, "
-      + "uc.accident_type AS claimAccidentType, uc.accident_date AS accidentDate, "
-      + "ip.product_name AS productName, ins.name AS insurerName "
-      + "FROM reports r "
-      + "JOIN users u ON u.id = r.user_id "
-      + "LEFT JOIN user_claims uc ON uc.id = r.claim_id "
-      + "LEFT JOIN insurance_products ip ON ip.id = r.product_id "
-      + "LEFT JOIN insurers ins ON ins.id = ip.insurer_id "
-      + "WHERE r.id = :reportId",
-      nativeQuery = true)
-  ReviewContextRow findReviewContext(@Param("reportId") UUID reportId);
 }
