@@ -275,8 +275,8 @@ public class K6ScenarioSeedWriter {
   }
 
   /**
-   * case_no는 {@code nextCaseNoSequence}(INSERT..ON CONFLICT..RETURNING)를 쓰지 않고 직접 만든다 —
-   * (1) 5,100번의 DB 왕복이 사라지고, (2) 당일 운영 카운터를 소모하지 않아 부하테스트 중 실제
+   * case_no는 {@code CaseNoGenerator}(시퀀스 nextval)를 쓰지 않고 직접 만든다 —
+   * (1) 5,100번의 DB 왕복이 사라지고, (2) 운영 사건번호 시퀀스를 소모하지 않아 부하테스트 중 실제
    * {@code POST /reports}의 사건번호가 이어서 발급되며, (3) {@code case_no LIKE 'K6-%'} 하나로 시드 전량을
    * 식별할 수 있어 멱등 체크와 사후 정리가 자명해진다. {@code case_no}는 {@code varchar(100) UNIQUE}이고
    * 포맷을 파싱하는 코드가 레포에 없다(표시용).

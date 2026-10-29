@@ -1,5 +1,7 @@
 package com.soma.backend.domain.report.repository;
 
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -43,4 +45,26 @@ public interface ReportRepositoryCustom {
    * ACCEPTED 제안·담당 사정사가 없으면 해당 필드는 null이다(존재 시 리포트당 ACCEPTED는 최대 1건).
    */
   CustomerReportDetailRow findCustomerReportDetail(UUID reportId);
+
+  /**
+   * 검수 화면 좌측 맥락(의뢰인·사고·상품). 리포트가 없으면 null, 청구·상품·보험사가 없으면 해당 필드만 null이다.
+   * 보험사·상품은 읽기 전용 엔티티({@code Insurer}·{@code InsuranceProduct})로 매핑해 엔티티 조인으로 붙인다.
+   */
+  ReviewContextRow findReviewContext(UUID reportId);
+
+  /**
+   * 검수 대기 풀(AWAITING_INSPECTION + AWAITING_ADOPTION) 중 요청 사정사의 '내 대기 큐' 건수 — 본인이
+   * 보류하지도, 이미 검수 진행(SENT·COUNSELING)하지도 않은 리포트. 사정사별 개인화 카운트라 홈 풀(전역 정의)과
+   * 값이 다를 수 있다.
+   */
+  long countPendingNotHeldBy(UUID adjusterId);
+
+  /** 마감 임박(AWAITING_INSPECTION·threshold 이전 접수) 중 '내 대기 큐'에 남은 건수. */
+  long countDueSoonNotHeldBy(LocalDateTime dueSoonThreshold, UUID adjusterId);
+
+  /**
+   * 검수 대기 풀 중 지정 사고유형(사정사 전문분야 매칭)에 해당하는 '내 대기 큐' 건수. 요약의 '내 전문분야 매칭'
+   * 배지도 검수 대기와 같은 개인화 축(보류·내 검수 제외)에 맞춘다. types가 비면 호출자가 0으로 처리한다.
+   */
+  long countPendingByAccidentTypeInNotHeldBy(Collection<AccidentType> types, UUID adjusterId);
 }

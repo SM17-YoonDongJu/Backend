@@ -27,6 +27,7 @@ import com.soma.backend.domain.report.entity.claim.MedicalIndemnityDetails;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
+import com.soma.backend.domain.report.service.CaseNoGenerator;
 
 /**
  * dev DB에 이미 등록된 사용자를 대상으로 report(user_claims+reports)·report_reviews·채팅 mock 데이터를
@@ -63,6 +64,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
   private final ReportRepository reportRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final ChatMessageRepository chatMessageRepository;
+  private final CaseNoGenerator caseNoGenerator;
   private final JdbcTemplate jdbcTemplate;
 
   private LocalDateTime now;
@@ -73,12 +75,14 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
       ReportRepository reportRepository,
       ReportReviewRepository reportReviewRepository,
       ChatMessageRepository chatMessageRepository,
+      CaseNoGenerator caseNoGenerator,
       JdbcTemplate jdbcTemplate) {
     this.enabled = enabled;
     this.userClaimRepository = userClaimRepository;
     this.reportRepository = reportRepository;
     this.reportReviewRepository = reportReviewRepository;
     this.chatMessageRepository = chatMessageRepository;
+    this.caseNoGenerator = caseNoGenerator;
     this.jdbcTemplate = jdbcTemplate;
   }
 
@@ -586,8 +590,8 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
   }
 
   private Report createReport(UUID userId, UUID claimId, AccidentType type, String question, LocalDateTime createdAt) {
-    String caseNo = String.format("%s-%03d", LocalDate.now().toString().replace("-", ""),
-        reportRepository.nextCaseNoSequence(LocalDate.now()));
+    // 운영 POST /reports와 같은 발급기를 쓴다(날짜 접두어 + 시퀀스)
+    String caseNo = caseNoGenerator.generate();
     return reportRepository.save(Report.createPending(userId, null, claimId, type, question, caseNo));
   }
 

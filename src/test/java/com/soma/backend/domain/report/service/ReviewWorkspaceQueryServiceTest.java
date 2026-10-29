@@ -203,47 +203,8 @@ class ReviewWorkspaceQueryServiceTest {
   }
 
   private ReviewContextRow context() {
-    return new ReviewContextRow() {
-      @Override
-      public String getNickname() {
-        return "운수";
-      }
-
-      @Override
-      public String getGender() {
-        return "M";
-      }
-
-      @Override
-      public LocalDate getBirthDate() {
-        return LocalDate.of(1990, 3, 1);
-      }
-
-      @Override
-      public LocalDateTime getJoinedAt() {
-        return LocalDateTime.of(2024, 3, 1, 0, 0);
-      }
-
-      @Override
-      public String getClaimAccidentType() {
-        return "traffic";
-      }
-
-      @Override
-      public LocalDate getAccidentDate() {
-        return LocalDate.of(2026, 5, 1);
-      }
-
-      @Override
-      public String getProductName() {
-        return "행복드림";
-      }
-
-      @Override
-      public String getInsurerName() {
-        return "OO손해보험";
-      }
-    };
+    return new ReviewContextRow("운수", "M", LocalDate.of(1990, 3, 1), LocalDateTime.of(2024, 3, 1, 0, 0),
+        AccidentType.TRAFFIC, LocalDate.of(2026, 5, 1), "행복드림", "OO손해보험");
   }
 
   private UserClaim claim() {

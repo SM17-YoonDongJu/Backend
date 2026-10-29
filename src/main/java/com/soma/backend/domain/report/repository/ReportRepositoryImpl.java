@@ -1,6 +1,8 @@
 package com.soma.backend.domain.report.repository;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -12,6 +14,7 @@ import org.springframework.data.domain.Pageable;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.core.types.dsl.NumberExpression;
@@ -22,10 +25,13 @@ import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.adjuster.entity.QAdjusterProfile;
 import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.QInsuranceProduct;
+import com.soma.backend.domain.report.entity.QInsurer;
 import com.soma.backend.domain.report.entity.QReport;
 import com.soma.backend.domain.report.entity.QReportHold;
 import com.soma.backend.domain.report.entity.QReportIssue;
 import com.soma.backend.domain.report.entity.QReportReview;
+import com.soma.backend.domain.report.entity.QUserClaim;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.user.entity.QUser;
@@ -43,21 +49,13 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
     QReport rp = QReport.report;
     QUser us = QUser.user;
     QReportIssue ri = QReportIssue.reportIssue;
-    QReportHold rh = QReportHold.reportHold;
-    QReportReview rv = QReportReview.reportReview;
 
     BooleanBuilder where = new BooleanBuilder();
     // 검수 대기 목록은 검수 단계(AWAITING_INSPECTION·AWAITING_ADOPTION, 상세 조회 노출 정책과 동일)만 노출한다.
     // CLOSED·COUNSELING·NOT_SELECTED가 목록에 새어 클릭 시 상세가 404 나던 불일치를 막는다.
     where.and(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION));
-    // 요청 사정사가 보류(report_holds)한 리포트는 목록에서 숨긴다(보류 = 내 대기열에서 제외). count 쿼리도 같은 where라 함께 줄어든다.
-    where.and(JPAExpressions.selectOne().from(rh)
-        .where(rh.reportId.eq(rp.id).and(rh.adjusterId.eq(adjusterId))).notExists());
-    // 본인이 이미 검수 진행 중(SENT·COUNSELING)인 리포트도 숨긴다 — 내가 SENT 한 AWAITING_ADOPTION 건은
-    // 진행중으로 넘어갔으므로 검수 대기(아직 안 본 큐)에서 제외한다(진행중∩검수대기=∅).
-    where.and(JPAExpressions.selectOne().from(rv)
-        .where(rv.reportId.eq(rp.id).and(rv.adjusterId.eq(adjusterId))
-            .and(rv.status.in(ReviewStatus.SENT, ReviewStatus.COUNSELING))).notExists());
+    // 내가 보류했거나 이미 검수 진행 중인 리포트는 숨긴다. count 쿼리도 같은 where라 함께 줄어든다.
+    where.and(inMyPendingQueue(rp, adjusterId));
     if (status != null) {
       where.and(rp.status.eq(status));
     }
@@ -257,5 +255,69 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .leftJoin(adjusterProfile).on(adjusterProfile.userId.eq(rp.adjusterId))
         .where(rp.id.eq(reportId))
         .fetchOne();
+  }
+
+  @Override
+  public ReviewContextRow findReviewContext(UUID reportId) {
+    QReport rp = QReport.report;
+    QUser us = QUser.user;
+    QUserClaim uc = QUserClaim.userClaim;
+    QInsuranceProduct ip = QInsuranceProduct.insuranceProduct;
+    QInsurer ins = QInsurer.insurer;
+
+    return queryFactory
+        .select(Projections.constructor(ReviewContextRow.class,
+            us.nickname, us.gender, us.birthDate, us.createdAt,
+            uc.accidentType, uc.accidentDate, ip.productName, ins.name))
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .leftJoin(uc).on(uc.id.eq(rp.claimId))
+        .leftJoin(ip).on(ip.id.eq(rp.productId))
+        .leftJoin(ins).on(ins.id.eq(ip.insurerId))
+        .where(rp.id.eq(reportId))
+        .fetchOne();
+  }
+
+  @Override
+  public long countPendingNotHeldBy(UUID adjusterId) {
+    QReport rp = QReport.report;
+    return countReports(rp, rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
+        .and(inMyPendingQueue(rp, adjusterId)));
+  }
+
+  @Override
+  public long countDueSoonNotHeldBy(LocalDateTime dueSoonThreshold, UUID adjusterId) {
+    QReport rp = QReport.report;
+    return countReports(rp, rp.status.eq(ReportStatus.AWAITING_INSPECTION)
+        .and(rp.createdAt.loe(dueSoonThreshold))
+        .and(inMyPendingQueue(rp, adjusterId)));
+  }
+
+  @Override
+  public long countPendingByAccidentTypeInNotHeldBy(Collection<AccidentType> types, UUID adjusterId) {
+    QReport rp = QReport.report;
+    return countReports(rp, rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
+        .and(rp.accidentType.in(types))
+        .and(inMyPendingQueue(rp, adjusterId)));
+  }
+
+  private long countReports(QReport rp, BooleanExpression condition) {
+    Long count = queryFactory.select(rp.count()).from(rp).where(condition).fetchOne();
+    return count == null ? 0L : count;
+  }
+
+  /**
+   * 요청 사정사의 '내 대기 큐'에 남은 리포트 조건 — 본인이 보류(report_holds)하지도, 이미 검수 진행
+   * (report_reviews SENT·COUNSELING)하지도 않았다. 내가 SENT 한 AWAITING_ADOPTION 건은 진행중으로 넘어갔으므로
+   * 대기 큐에서 뺀다(진행중∩검수대기=∅). 검수대기 목록과 요약 카운트 세 개가 이 정의를 공유한다.
+   */
+  private static BooleanExpression inMyPendingQueue(QReport rp, UUID adjusterId) {
+    QReportHold hold = new QReportHold("myHold");
+    QReportReview myReview = new QReportReview("myReview");
+    return JPAExpressions.selectOne().from(hold)
+        .where(hold.reportId.eq(rp.id).and(hold.adjusterId.eq(adjusterId))).notExists()
+        .and(JPAExpressions.selectOne().from(myReview)
+            .where(myReview.reportId.eq(rp.id).and(myReview.adjusterId.eq(adjusterId))
+                .and(myReview.status.in(ReviewStatus.SENT, ReviewStatus.COUNSELING))).notExists());
   }
 }

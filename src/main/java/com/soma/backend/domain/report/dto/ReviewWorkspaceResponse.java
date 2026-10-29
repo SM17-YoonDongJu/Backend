@@ -171,8 +171,8 @@ public record ReviewWorkspaceResponse(
         return null;
       }
       return new Client(
-          context.getNickname(), context.getGender(), context.getBirthDate(),
-          region, context.getJoinedAt());
+          context.nickname(), context.gender(), context.birthDate(),
+          region, context.joinedAt());
     }
   }
 
@@ -198,11 +198,12 @@ public record ReviewWorkspaceResponse(
         return null;
       }
       return new ClaimContext(
-          context.getClaimAccidentType(), context.getAccidentDate(),
+          // DB 코드값(medical_indemnity 등)을 그대로 내려준다 — native 프로젝션 시절과 같은 응답값
+          context.claimAccidentType() == null ? null : context.claimAccidentType().getValue(), context.accidentDate(),
           ReportResponseSupport.joinText(details == null ? null : details.diagnosis(), ", "),
           formatHospitalization(details == null ? null : details.hospitalizations()),
           description, additionalInformation,
-          context.getProductName(), context.getInsurerName());
+          context.productName(), context.insurerName());
     }
   }
 
