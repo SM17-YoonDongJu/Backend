@@ -184,7 +184,7 @@ class ProposalCounselingIntegrationTest {
         customer.getId(), report.getId(), review.getId(), true);
 
     // Then
-    List<ChatRoomListRow> customerRooms = chatRoomRepository.findMyRoomRows(customer.getId());
+    List<ChatRoomListRow> customerRooms = chatRoomRepository.findMyRoomRows(customer.getId(), null, 100);
     assertThat(customerRooms).hasSize(1);
     ChatRoomListRow row = customerRooms.get(0);
     assertThat(row.chatRoomId()).isEqualTo(response.chatRoomId());
@@ -194,7 +194,7 @@ class ProposalCounselingIntegrationTest {
     // SYSTEM 메시지는 sender_id가 null이라 안읽음 계산에서 제외된다
     assertThat(row.unreadCount()).isZero();
 
-    assertThat(chatRoomRepository.findMyRoomRows(adjuster1.getId()))
+    assertThat(chatRoomRepository.findMyRoomRows(adjuster1.getId(), null, 100))
         .extracting(ChatRoomListRow::chatRoomId)
         .containsExactly(response.chatRoomId());
   }
@@ -206,7 +206,7 @@ class ProposalCounselingIntegrationTest {
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     assertThat(chatRoomRepository.findByReportReviewId(review.getId())).isEmpty();
-    assertThat(chatRoomRepository.findMyRoomRows(customer.getId())).isEmpty();
+    assertThat(chatRoomRepository.findMyRoomRows(customer.getId(), null, 100)).isEmpty();
   }
 
   @Test

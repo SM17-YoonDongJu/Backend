@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,8 @@ import com.soma.backend.global.security.CustomUserDetails;
 @RequiredArgsConstructor
 public class ChatRoomController {
 
+  private static final int DEFAULT_SIZE = 20;
+
   private final ChatRoomQueryService chatRoomQueryService;
   private final ChatConsultationCommandService chatConsultationCommandService;
   private final ChatReadService chatReadService;
@@ -40,9 +43,11 @@ public class ChatRoomController {
 
   @GetMapping("/chats")
   public ApiResponse<ChatRoomListResponse> listMyRooms(
-      @AuthenticationPrincipal CustomUserDetails principal) {
+      @AuthenticationPrincipal CustomUserDetails principal,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "" + DEFAULT_SIZE) int size) {
     UUID me = requireUserId(principal);
-    return ApiResponse.ok(chatRoomQueryService.listMyRooms(me));
+    return ApiResponse.ok(chatRoomQueryService.listMyRooms(me, cursor, size));
   }
 
   @GetMapping("/chats/{chatRoomId}")
