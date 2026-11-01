@@ -22,6 +22,10 @@ import com.soma.backend.domain.user.entity.QUser;
 /**
  * ChatRoom 목록 조회 QueryDSL 구현. native 없이(하네스 규칙) 상관 서브쿼리로 안읽음 수를 계산하고,
  * report_reviews·users를 엔티티 조인해 제안 상태·상대방 이름을 함께 가져온다(크로스-애그리거트 읽기).
+ *
+ * <p>목록({@link #findMyRoomRows})은 2단계로 조회한다. 조인 쿼리에 바로 keyset·limit을 걸면 PostgreSQL이 LEFT JOIN
+ * 아래로 LIMIT을 내리지 못해, 내 방 전부를 report_reviews·reports(큰 테이블 Seq Scan)와 조인한 뒤에야 정렬·절단한다.
+ * 그래서 chat_rooms 단독으로 한 페이지 id만 먼저 고르고, 그 id들에만 조인·안읽음 서브쿼리를 붙인다(이슈 #371).
  */
 public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 
@@ -34,10 +38,21 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
   @Override
   public List<ChatRoomListRow> findMyRoomRows(UUID me, @Nullable ChatRoomCursor cursor, int limit) {
     QChatRoom room = QChatRoom.chatRoom;
-    return baseRoomQuery(me)
-        .where(after(room, cursor))
+    // 1단계: 조인 없이 chat_rooms만으로 keyset·정렬·limit → 이 페이지의 id만 확정한다.
+    List<UUID> ids = queryFactory
+        .select(room.id)
+        .from(room)
+        .where(participatedBy(room, me), after(room, cursor))
         .orderBy(room.lastMessageAt.desc().nullsLast(), room.id.desc())
         .limit(limit)
+        .fetch();
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+    // 2단계: 고른 id에만 조인·서브쿼리를 붙인다. IN은 순서를 보장하지 않으므로 같은 정렬을 다시 건다.
+    return baseRoomQuery(me)
+        .where(room.id.in(ids))
+        .orderBy(room.lastMessageAt.desc().nullsLast(), room.id.desc())
         .fetch();
   }
 
@@ -62,6 +77,11 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
     return room.lastMessageAt.lt(cursor.lastMessageAt())
         .or(room.lastMessageAt.eq(cursor.lastMessageAt()).and(room.id.lt(cursor.id())))
         .or(room.lastMessageAt.isNull());
+  }
+
+  /** 참여자(user·adjuster) 필터 — 목록 1단계와 기반 쿼리가 같은 식을 쓰도록 한 곳에 둔다(남의 방 id 노출 방지). */
+  private BooleanExpression participatedBy(QChatRoom room, UUID me) {
+    return room.userId.eq(me).or(room.adjusterId.eq(me));
   }
 
   /**
@@ -115,6 +135,6 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
         .leftJoin(report).on(report.id.eq(room.reportId))
         .leftJoin(userAccount).on(userAccount.id.eq(room.userId))
         .leftJoin(adjusterAccount).on(adjusterAccount.id.eq(room.adjusterId))
-        .where(room.userId.eq(me).or(room.adjusterId.eq(me)));
+        .where(participatedBy(room, me));
   }
 }
