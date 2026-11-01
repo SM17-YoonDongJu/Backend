@@ -18,6 +18,7 @@ import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /**
  * API#3 사정사별 보류 추가 유스케이스. 보류 취소는 없으므로 토글이 아닌 명시적 추가(add)만 두고
@@ -33,6 +34,7 @@ public class ReportHoldCommandService {
   private final ReportRepository reportRepository;
   private final ReportHoldRepository reportHoldRepository;
   private final ReportHoldWriter reportHoldWriter;
+  private final PendingReviewCountCache pendingReviewCountCache;
 
   /** 보류 추가(멱등). 이미 보류 중이어도 최신 사유로 갱신하고 held=true. */
   public HoldResponse addHold(UUID reportId, UUID adjusterId, HoldReportRequest request) {
@@ -40,6 +42,8 @@ public class ReportHoldCommandService {
     HoldReason reason = parseReason(request.reason());
     String reasonDetail = resolveReasonDetail(reason, request.reasonDetail());
     upsertHold(reportId, adjusterId, reason, reasonDetail);
+    // 보류한 건은 내 검수대기 목록에서 빠지므로 내 count 캐시를 커밋 후 비운다.
+    pendingReviewCountCache.evictAfterCommit(adjusterId);
     return new HoldResponse(reportId, true, reason.name(), reasonDetail);
   }
 

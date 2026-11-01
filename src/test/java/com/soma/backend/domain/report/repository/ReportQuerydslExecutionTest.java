@@ -30,35 +30,35 @@ class ReportQuerydslExecutionTest {
   private ReportReviewRepository reportReviewRepository;
 
   @Test
-  @DisplayName("findPendingReviewRows — users 조인 + 보류 제외(notExists) 서브쿼리 + 접수 최신순 SQL이 실행된다")
+  @DisplayName("findPendingReviewRows·countPendingReviewRows — users 조인 + 보류 제외(notExists) 서브쿼리 SQL이 실행된다")
   void pendingReviewRowsExecutes() {
-    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
-        null, null, null, UUID.randomUUID(), Set.of(), PageRequest.of(0, 20));
+    UUID adjusterId = UUID.randomUUID();
+    List<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
+        null, null, null, adjusterId, Set.of(), PageRequest.of(0, 20));
 
-    assertThat(page).isNotNull();
-    assertThat(page.getContent()).isEmpty();
-    assertThat(page.getTotalElements()).isZero();
+    assertThat(rows).isEmpty();
+    assertThat(reportRepository.countPendingReviewRows(null, null, null, adjusterId)).isZero();
   }
 
   @Test
   @DisplayName("findPendingReviewRows — 전문분야 매칭 accident_type 우선 정렬(CASE) SQL이 실행된다")
   void pendingReviewRowsSpecialtySortExecutes() {
-    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
+    List<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
         null, null, null, UUID.randomUUID(), Set.of(AccidentType.TRAFFIC, AccidentType.DISABILITY),
         PageRequest.of(0, 20));
 
-    assertThat(page).isNotNull();
-    assertThat(page.getContent()).isEmpty();
+    assertThat(rows).isEmpty();
   }
 
   @Test
   @DisplayName("findPendingReviewRows — region 필터가 users.region 배열 contains(array_contains)로 실행된다")
   void pendingReviewRowsRegionFilterExecutes() {
-    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
-        null, null, "서울", UUID.randomUUID(), Set.of(), PageRequest.of(0, 20));
+    UUID adjusterId = UUID.randomUUID();
+    List<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
+        null, null, "서울", adjusterId, Set.of(), PageRequest.of(0, 20));
 
-    assertThat(page).isNotNull();
-    assertThat(page.getContent()).isEmpty();
+    assertThat(rows).isEmpty();
+    assertThat(reportRepository.countPendingReviewRows(null, null, "서울", adjusterId)).isZero();
   }
 
   @Test

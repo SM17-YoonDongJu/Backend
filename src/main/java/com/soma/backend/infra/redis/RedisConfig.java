@@ -33,6 +33,9 @@ public class RedisConfig {
     template.setConnectionFactory(factory);
     template.setKeySerializer(new StringRedisSerializer());
     template.setValueSerializer(new StringRedisSerializer());
+    // 해시(PendingReviewCountCache)도 문자열로 저장한다. 지정하지 않으면 JDK 직렬화가 기본이라 redis-cli로 읽을 수 없다.
+    template.setHashKeySerializer(new StringRedisSerializer());
+    template.setHashValueSerializer(new StringRedisSerializer());
     return template;
   }
 

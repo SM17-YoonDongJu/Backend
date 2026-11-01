@@ -8,8 +8,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -28,6 +30,7 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.domain.report.repository.ReportReviewStatusRow;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /**
  * API#1(요약)·API#2(목록) 조회 전용 유스케이스(CQRS). Aggregate 로딩을 우회해 파생 필드를 조회한다.
@@ -55,6 +58,7 @@ public class PendingReviewQueryService {
   private final ReportRepository reportRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final AdjusterProfileRepository adjusterProfileRepository;
+  private final PendingReviewCountCache pendingReviewCountCache;
 
   public PendingReviewSummaryResponse getSummary(UUID adjusterId) {
     // 검수대기 풀 카운트는 요청 사정사가 보류한 건을 제외한다(보류 = 내 대기열에서 제외). 마감임박·전문분야
@@ -106,18 +110,39 @@ public class PendingReviewQueryService {
     AccidentType accidentTypeFilter = parseAccidentType(accidentType);
     // 전문분야 우선 정렬: 요청 사정사의 전문분야와 매칭되는 accident_type을 상단에 올린다(그 안에서는 접수 최신순).
     Set<AccidentType> specialtyTypes = matchedAccidentTypes(loadSpecialties(adjusterId));
-    Page<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
+    List<PendingReviewRow> content = reportRepository.findPendingReviewRows(
         statusFilter, accidentTypeFilter, region, adjusterId, specialtyTypes, pageable);
-    Map<UUID, String> reviewStatusByReportId = loadOwnReviewStatuses(adjusterId, rows);
+    // count는 페이지가 바뀌어도 같은 값이라 사정사·필터별로 짧게 캐시한다(PendingReviewCountCache 참고).
+    // getPage는 첫 페이지가 size보다 적게 채워지면 count 자체를 건너뛴다. specialtyTypes는 정렬 전용이라 키에 없다.
+    String filterKey = countFilterKey(statusFilter, accidentTypeFilter, region);
+    Page<PendingReviewRow> rows = PageableExecutionUtils.getPage(content, pageable,
+        () -> pendingReviewCountCache.getOrLoad(adjusterId, filterKey,
+            () -> reportRepository.countPendingReviewRows(statusFilter, accidentTypeFilter, region, adjusterId)));
+    Map<UUID, String> reviewStatusByReportId = loadOwnReviewStatuses(adjusterId, content);
     return PendingReviewListResponse.from(rows, reviewStatusByReportId);
+  }
+
+  /**
+   * count 캐시의 해시 필드({@code status:accidentType:region}). 값이 있으면 {@code v:} 접두어를 붙이고 null(필터
+   * 없음)은 {@code -}로 둔다 — 접두어 없이 쓰면 {@code ?region=-}가 "지역 필터 없음"과 같은 필드가 되어 서로의
+   * count를 덮어쓴다. status·accidentType은 ':'가 없는 enum 이름이고 region이 마지막이라 키가 겹치지 않는다.
+   */
+  static String countFilterKey(
+      @Nullable ReportStatus status, @Nullable AccidentType accidentType, @Nullable String region) {
+    return filterPart(status == null ? null : status.name()) + ":"
+        + filterPart(accidentType == null ? null : accidentType.name()) + ":" + filterPart(region);
+  }
+
+  private static String filterPart(@Nullable String value) {
+    return value == null ? "-" : "v:" + value;
   }
 
   /**
    * 목록 페이지의 리포트들에 대해 요청 사정사 본인의 검수 상태(REPORT_REVIEWS.status)를 report_id→status로
    * 한 번에 조회한다. 본인 검수가 없는 리포트는 맵에 없어 응답에서 null이 된다.
    */
-  private Map<UUID, String> loadOwnReviewStatuses(UUID adjusterId, Page<PendingReviewRow> rows) {
-    List<UUID> reportIds = rows.getContent().stream().map(PendingReviewRow::reportId).toList();
+  private Map<UUID, String> loadOwnReviewStatuses(UUID adjusterId, List<PendingReviewRow> rows) {
+    List<UUID> reportIds = rows.stream().map(PendingReviewRow::reportId).toList();
     if (reportIds.isEmpty()) {
       return Map.of();
     }

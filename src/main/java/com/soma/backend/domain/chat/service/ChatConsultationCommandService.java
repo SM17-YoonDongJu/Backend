@@ -23,6 +23,7 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.infra.redis.ChatEventPublisher;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
 
 /**
@@ -46,6 +47,7 @@ public class ChatConsultationCommandService {
   private final ReportRepository reportRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final ChatEventPublisher chatEventPublisher;
+  private final PendingReviewCountCache pendingReviewCountCache;
   private final ApplicationEventPublisher eventPublisher;
 
   /**
@@ -98,6 +100,9 @@ public class ChatConsultationCommandService {
     report.reopenForAdoptionIfNoCounselingLeft(hasOtherCounselingReview(report.getId(), myReview.getId()));
     room.close();
     appendSystemMessage(room, REJECT_SYSTEM_MESSAGE);
+    // 거절된 사정사의 제안이 COUNSELING → REJECTED가 되고 리포트가 채택 대기로 돌아오면, 이 리포트가 그 사정사의
+    // 검수대기 목록에 다시 나타난다. 그 사정사의 count 캐시를 커밋 후 비운다.
+    pendingReviewCountCache.evictAfterCommit(room.getAdjusterId());
 
     return new ConsultationDecisionResponse(
         room.getId(), room.getStatus(), myReview.getStatus(), report.getId(), report.getStatus());

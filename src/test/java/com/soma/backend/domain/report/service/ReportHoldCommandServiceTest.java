@@ -27,6 +27,7 @@ import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /** API#3 보류 추가 유스케이스 단위 테스트(멱등·404·사유 검증 경계). */
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +39,8 @@ class ReportHoldCommandServiceTest {
   private ReportHoldRepository reportHoldRepository;
   @Mock
   private ReportHoldWriter reportHoldWriter;
+  @Mock
+  private PendingReviewCountCache pendingReviewCountCache;
 
   @InjectMocks
   private ReportHoldCommandService service;
@@ -67,6 +70,7 @@ class ReportHoldCommandServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.REPORT_NOT_FOUND);
     verify(reportHoldWriter, never()).ensureExists(any(), any(), any(), any());
+    verify(pendingReviewCountCache, never()).evictAfterCommit(any());
   }
 
   @Test
@@ -83,6 +87,8 @@ class ReportHoldCommandServiceTest {
     assertThat(result.reason()).isEqualTo("SCHEDULE_CONFLICT");
     assertThat(result.reasonDetail()).isNull();
     verify(reportHoldWriter).ensureExists(reportId, adjusterId, HoldReason.SCHEDULE_CONFLICT, null);
+    // 보류로 내 검수대기 목록이 줄어드므로 내 count 캐시를 비운다.
+    verify(pendingReviewCountCache).evictAfterCommit(adjusterId);
   }
 
   @Test

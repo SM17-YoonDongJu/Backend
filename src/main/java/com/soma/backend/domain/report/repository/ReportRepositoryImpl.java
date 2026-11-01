@@ -43,18 +43,53 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
   private final JPAQueryFactory queryFactory;
 
   @Override
-  public Page<PendingReviewRow> findPendingReviewRows(
+  public List<PendingReviewRow> findPendingReviewRows(
       ReportStatus status, AccidentType accidentType, String region, UUID adjusterId,
       Set<AccidentType> specialtyTypes, Pageable pageable) {
     QReport rp = QReport.report;
     QUser us = QUser.user;
     QReportIssue ri = QReportIssue.reportIssue;
 
+    return queryFactory
+        .select(Projections.constructor(PendingReviewRow.class,
+            rp.id, rp.caseNo, rp.title, rp.accidentType, us.region, rp.status,
+            rp.claimedMinAmount, rp.claimedMaxAmount, rp.offeredAmount,
+            JPAExpressions.select(ri.count()).from(ri).where(ri.reportId.eq(rp.id)),
+            // 보류 건은 where에서 제외되므로 held는 항상 false다. FE 계약 유지를 위해 필드만 남긴다.
+            Expressions.constant(false),
+            rp.createdAt))
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .where(pendingReviewCondition(rp, us, status, accidentType, region, adjusterId))
+        .orderBy(pendingReviewOrder(rp, specialtyTypes))
+        .offset(pageable.getOffset())
+        .limit(pageable.getPageSize())
+        .fetch();
+  }
+
+  @Override
+  public long countPendingReviewRows(
+      ReportStatus status, AccidentType accidentType, String region, UUID adjusterId) {
+    QReport rp = QReport.report;
+    QUser us = QUser.user;
+    // 목록과 같은 조인·조건이어야 페이지 수가 맞는다(users 조인은 region 필터와 고아 리포트 제외에 필요).
+    Long total = queryFactory
+        .select(rp.count())
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .where(pendingReviewCondition(rp, us, status, accidentType, region, adjusterId))
+        .fetchOne();
+    return total == null ? 0L : total;
+  }
+
+  /** 검수대기 목록·건수 공용 조건. 두 쿼리가 어긋나지 않게 한 곳에서만 만든다. */
+  private static BooleanBuilder pendingReviewCondition(
+      QReport rp, QUser us, ReportStatus status, AccidentType accidentType, String region, UUID adjusterId) {
     BooleanBuilder where = new BooleanBuilder();
     // 검수 대기 목록은 검수 단계(AWAITING_INSPECTION·AWAITING_ADOPTION, 상세 조회 노출 정책과 동일)만 노출한다.
     // CLOSED·COUNSELING·NOT_SELECTED가 목록에 새어 클릭 시 상세가 404 나던 불일치를 막는다.
     where.and(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION));
-    // 내가 보류했거나 이미 검수 진행 중인 리포트는 숨긴다. count 쿼리도 같은 where라 함께 줄어든다.
+    // 내가 보류했거나 이미 검수 진행 중인 리포트는 숨긴다. count도 이 조건을 공유해 함께 줄어든다.
     where.and(inMyPendingQueue(rp, adjusterId));
     if (status != null) {
       where.and(rp.status.eq(status));
@@ -66,31 +101,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
       // users.region이 text[]라 동등비교 대신 '배열이 필터 지역을 포함'하는지로 매칭한다(Hibernate array_contains).
       where.and(Expressions.booleanTemplate("array_contains({0}, {1})", us.region, region));
     }
-
-    List<PendingReviewRow> content = queryFactory
-        .select(Projections.constructor(PendingReviewRow.class,
-            rp.id, rp.caseNo, rp.title, rp.accidentType, us.region, rp.status,
-            rp.claimedMinAmount, rp.claimedMaxAmount, rp.offeredAmount,
-            JPAExpressions.select(ri.count()).from(ri).where(ri.reportId.eq(rp.id)),
-            // 보류 건은 위 where에서 제외되므로 held는 항상 false다. FE 계약 유지를 위해 필드만 남긴다.
-            Expressions.constant(false),
-            rp.createdAt))
-        .from(rp)
-        .join(us).on(us.id.eq(rp.userId))
-        .where(where)
-        .orderBy(pendingReviewOrder(rp, specialtyTypes))
-        .offset(pageable.getOffset())
-        .limit(pageable.getPageSize())
-        .fetch();
-
-    Long total = queryFactory
-        .select(rp.count())
-        .from(rp)
-        .join(us).on(us.id.eq(rp.userId))
-        .where(where)
-        .fetchOne();
-
-    return new PageImpl<>(content, pageable, total == null ? 0L : total);
+    return where;
   }
 
   /**

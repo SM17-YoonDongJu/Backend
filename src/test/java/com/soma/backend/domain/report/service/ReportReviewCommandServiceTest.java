@@ -39,6 +39,7 @@ import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /**
  * API#4 검수 반영 유스케이스 단위 테스트(§10 경계 케이스).
@@ -58,6 +59,8 @@ class ReportReviewCommandServiceTest {
   private ReportReviewWriter reportReviewWriter;
   @Mock
   private ApplicationEventPublisher eventPublisher;
+  @Mock
+  private PendingReviewCountCache pendingReviewCountCache;
 
   @InjectMocks
   private ReportReviewCommandService service;
@@ -264,6 +267,8 @@ class ReportReviewCommandServiceTest {
     verify(reportReviewWriter).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
     verify(reportRepository).save(report);
+    // 검수 제출(SENT)로 이 리포트가 내 검수대기 목록에서 빠지므로 내 count 캐시를 비운다.
+    verify(pendingReviewCountCache).evictAfterCommit(adjusterId);
   }
 
   @Test
@@ -447,5 +452,6 @@ class ReportReviewCommandServiceTest {
         .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     verify(eventPublisher, never()).publishEvent(any());
+    verify(pendingReviewCountCache, never()).evictAfterCommit(any());
   }
 }
