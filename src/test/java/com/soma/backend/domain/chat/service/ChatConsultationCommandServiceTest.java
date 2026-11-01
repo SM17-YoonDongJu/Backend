@@ -45,6 +45,7 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.infra.redis.ChatEventPublisher;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /**
  * 상담 수락/거절(설계서 §4 ④·⑤, 확정 결정 §0) 단위 테스트. 원자적 상태 전이(내 제안·형제 제안·report·방)와
@@ -65,6 +66,8 @@ class ChatConsultationCommandServiceTest {
   private ChatEventPublisher chatEventPublisher;
   @Mock
   private ApplicationEventPublisher eventPublisher;
+  @Mock
+  private PendingReviewCountCache pendingReviewCountCache;
 
   @InjectMocks
   private ChatConsultationCommandService service;
@@ -159,6 +162,8 @@ class ChatConsultationCommandServiceTest {
       InOrder order = inOrder(chatRoomRepository, eventPublisher);
       order.verify(chatRoomRepository).findByReportId(reportId);
       order.verify(eventPublisher).publishEvent(new ConsultationAcceptedEvent(adjusterId, reportId));
+      // 수락은 리포트가 CLOSED로 풀 밖이 되어 어떤 사정사의 대기열 건수도 늘지 않는다 — 무효화하지 않는다.
+      verify(pendingReviewCountCache, never()).evictAfterCommit(any());
     }
 
     @Test
@@ -300,6 +305,8 @@ class ChatConsultationCommandServiceTest {
       verify(chatEventPublisher, times(1)).publishAfterCommit(any());
       // 거절은 담당 확정이 아니다 — completed_consult_count는 건드리지 않는다.
       verifyNoInteractions(eventPublisher);
+      // 리포트가 채택 대기로 돌아와 거절된 사정사의 검수대기 목록에 다시 나타나므로 그 사정사의 count 캐시를 비운다.
+      verify(pendingReviewCountCache).evictAfterCommit(adjusterId);
     }
 
     /**
@@ -397,6 +404,7 @@ class ChatConsultationCommandServiceTest {
       assertThatThrownBy(() -> service.reject(userId, roomId))
           .isInstanceOfSatisfying(BusinessException.class,
               ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_STATE_TRANSITION));
+      verify(pendingReviewCountCache, never()).evictAfterCommit(any());
     }
 
     /**

@@ -29,6 +29,7 @@ import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /**
  * API#4 검수 반영 유스케이스. 리더 확정(★#2)에 따라 "채택 사정사" 게이팅은 수행하지 않는다.
@@ -52,6 +53,7 @@ public class ReportReviewCommandService {
   private final ReportReviewRepository reportReviewRepository;
   private final ReportIssueRepository reportIssueRepository;
   private final ReportReviewWriter reportReviewWriter;
+  private final PendingReviewCountCache pendingReviewCountCache;
   private final ApplicationEventPublisher eventPublisher;
 
   public ReviewReportResponse review(UUID adjusterId, UUID reportId, ReviewReportRequest request) {
@@ -98,6 +100,8 @@ public class ReportReviewCommandService {
     reportReviewRepository.save(reportReview);
 
     report = reportRepository.save(report);
+    // 검수를 제출하면 내 제안이 SENT가 되어 이 리포트가 내 검수대기 목록에서 빠진다 — 내 count 캐시를 커밋 후 비운다.
+    pendingReviewCountCache.evictAfterCommit(adjusterId);
 
     // 저장 성공 후 발행 — 새 스켈레톤이 생성됐을 때만 "새 제안 도착"을 알린다. AFTER_COMMIT 리스너가
     // 원 트랜잭션 커밋 후 인앱 알림 저장 + 푸시를 수행한다(수신자=리포트 소유자).

@@ -16,12 +16,16 @@ import com.soma.backend.domain.report.entity.ReportStatus;
 public interface ReportRepositoryCustom {
 
   /**
-   * 검수대기 목록(동적 필터 + 페이지네이션). 요청 사정사가 보류(report_holds)한 리포트는 제외하고,
-   * specialtyTypes(사정사 전문분야와 매칭되는 accident_type)에 해당하는 건을 상단에 올린 뒤 접수 최신순으로 정렬한다.
+   * 검수대기 목록 한 페이지(동적 필터 + 페이지네이션). 요청 사정사가 보류(report_holds)했거나 이미 검수 진행 중인
+   * 리포트는 제외하고, specialtyTypes(사정사 전문분야와 매칭되는 accident_type)에 해당하는 건을 상단에 올린 뒤
+   * 접수 최신순으로 정렬한다. 전체 건수는 {@link #countPendingReviewRows}로 따로 센다(서비스가 캐시).
    */
-  Page<PendingReviewRow> findPendingReviewRows(
+  List<PendingReviewRow> findPendingReviewRows(
       ReportStatus status, AccidentType accidentType, String region, UUID adjusterId,
       Set<AccidentType> specialtyTypes, Pageable pageable);
+
+  /** {@link #findPendingReviewRows}와 같은 조건의 전체 건수. specialtyTypes는 정렬에만 쓰여 건수와 무관하다. */
+  long countPendingReviewRows(ReportStatus status, AccidentType accidentType, String region, UUID adjusterId);
 
   /**
    * GET /reports 고객 리포트 목록. userId 소유 리포트를 빠짐없이 반환한다 — 리뷰가 있으면 report_reviews
