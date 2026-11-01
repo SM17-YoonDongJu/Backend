@@ -436,4 +436,50 @@ class ChatRoomRepositoryImplTest {
     // 6개를 size 1로: 앞 5번은 has_next=true, 마지막 1번만 false(빈 다음 페이지 요청이 생기지 않는다)
     assertThat(hasNextFlags).containsExactly(true, true, true, true, true, false);
   }
+
+  @Test
+  @DisplayName("방이 하나도 없으면 빈 리스트를 반환한다(2단계 조회의 두 번째 쿼리 생략 경로)")
+  void findMyRoomRows_noRooms_returnsEmptyList() {
+    List<ChatRoomListRow> rows = chatRoomRepository.findMyRoomRows(customer.getId(), null, 21);
+
+    assertThat(rows).isEmpty();
+  }
+
+  @Test
+  @DisplayName("2단계 순서 유지: 같은 시각·null이 섞여도 한 번에 받은 결과와 keyset 순회 결과가 기대 순서와 같다")
+  void findMyRoomRows_twoStep_keepsKeysetOrderWithTiesAndNulls() {
+    LocalDateTime sameTime = LocalDateTime.of(2026, 10, 1, 9, 0, 0, 250_000_000);
+    ChatRoom latest = persistRoomWithLastMessageAt(customer, sameTime.plusMinutes(1));
+    List<UUID> tie = new ArrayList<>();
+    for (int index = 0; index < 4; index++) {
+      tie.add(persistRoomWithLastMessageAt(customer, sameTime).getId());
+    }
+    ChatRoom oldest = persistRoomWithLastMessageAt(customer, sameTime.minusDays(1));
+    List<UUID> nullRooms = new ArrayList<>();
+    for (int index = 0; index < 3; index++) {
+      nullRooms.add(persistRoom(customer, adjuster, null, null).getId());
+    }
+    flushAndClear();
+
+    List<UUID> expected = new ArrayList<>();
+    expected.add(latest.getId());
+    expected.addAll(sortedByIdDesc(tie));
+    expected.add(oldest.getId());
+    expected.addAll(sortedByIdDesc(nullRooms));
+
+    List<UUID> oneShot = idsOf(chatRoomRepository.findMyRoomRows(customer.getId(), null, 100));
+    List<UUID> walked = new ArrayList<>();
+    ChatRoomCursor cursor = null;
+    for (int step = 0; step < 10; step++) {
+      List<ChatRoomListRow> page = chatRoomRepository.findMyRoomRows(customer.getId(), cursor, 2);
+      if (page.isEmpty()) {
+        break;
+      }
+      walked.addAll(idsOf(page));
+      cursor = cursorOf(page.get(page.size() - 1));
+    }
+
+    assertThat(oneShot).containsExactlyElementsOf(expected);
+    assertThat(walked).containsExactlyElementsOf(expected);
+  }
 }
