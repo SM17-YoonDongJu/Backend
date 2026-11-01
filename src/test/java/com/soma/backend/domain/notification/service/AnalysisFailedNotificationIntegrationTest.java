@@ -91,6 +91,7 @@ class AnalysisFailedNotificationIntegrationTest {
   @AfterEach
   void cleanUp() {
     jdbcTemplate.update("DELETE FROM ai.ocr_job_failures");
+    jdbcTemplate.update("DELETE FROM ai.report_job_failures");
     notificationRepository.deleteAll();
     deviceTokenRepository.deleteAll();
     notificationSettingRepository.deleteAll();
@@ -105,6 +106,16 @@ class AnalysisFailedNotificationIntegrationTest {
         VALUES (?, ?, ?, ?, 'ValueError', 3, ?, ?, ?)
         """,
         UUID.randomUUID(), reportId, UUID.randomUUID(), failureClass, terminal, FAILED_AT, FAILED_AT);
+  }
+
+  /** 리포트 생성 실패 저널(AI 012) terminal 행 — 재전달 한도를 다 써 poison으로 걷힌 리포트. */
+  private void insertReportJobTerminalFailure() {
+    jdbcTemplate.update("""
+        INSERT INTO ai.report_job_failures
+          (id, report_id, job_id, failure_class, error_type, attempts, terminal, first_failed_at, last_failed_at)
+        VALUES (?, ?, ?, 'llm_unavailable', 'AiClientError', 3, true, ?, ?)
+        """,
+        UUID.randomUUID(), reportId, UUID.randomUUID(), FAILED_AT, FAILED_AT);
   }
 
   private List<Notification> notificationsOfOwner() {
@@ -129,6 +140,27 @@ class AnalysisFailedNotificationIntegrationTest {
     assertThat(notifications.get(0).getTitle()).isEqualTo("문서 분석에 실패했어요");
     verify(fcmPushSender, times(1)).send(anyList(), anyString(), anyString(), anyMap());
     // 통지 시각이 기록돼 다음 사이클의 조회 대상에서 빠진다.
+    assertThat(reportRepository.findById(reportId).orElseThrow())
+        .extracting(report -> ReflectionTestUtils.getField(report, "analysisFailureNotifiedAt"))
+        .isNotNull();
+  }
+
+  @Test
+  @DisplayName("리포트 생성 확정 실패(ai.report_job_failures)도 스윕 2회에 인앱 1건·푸시 1회로 통지되고 통지 시각이 커밋된다")
+  void reportJobFailureIsNotifiedOnceThroughCommitPath() {
+    // Given: OCR 저널에는 흔적이 없고 리포트 생성 저널에만 terminal 행이 있다
+    insertReportJobTerminalFailure();
+
+    // When: 리더(REQUIRES_NEW)를 거친 조회와 스윕 트랜잭션 커밋이 실제로 함께 돈다
+    sweeper.sweep();
+    sweeper.sweep();
+
+    // Then: 사유는 UNKNOWN이라 일반 실패 문안이 나간다
+    List<Notification> notifications = notificationsOfOwner();
+    assertThat(notifications).hasSize(1);
+    assertThat(notifications.get(0).getType()).isEqualTo(NotificationType.ANALYSIS_FAILED);
+    assertThat(notifications.get(0).getTitle()).isEqualTo("문서 분석에 실패했어요");
+    verify(fcmPushSender, times(1)).send(anyList(), anyString(), anyString(), anyMap());
     assertThat(reportRepository.findById(reportId).orElseThrow())
         .extracting(report -> ReflectionTestUtils.getField(report, "analysisFailureNotifiedAt"))
         .isNotNull();

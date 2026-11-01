@@ -11,6 +11,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.BeanUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -48,7 +50,7 @@ class ReportAnalysisTest {
     Report report = reportWithoutDraft();
 
     // When
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of());
 
     // Then
     assertThat(analysis.state()).isEqualTo(AnalysisState.PROCESSING);
@@ -71,7 +73,7 @@ class ReportAnalysisTest {
         OcrJobFailureViewFixture.terminal(reportId, attachmentId, "unreadable_file", FAILED_AT);
 
     // When
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(failure));
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(failure), List.of());
 
     // Then
     assertThat(analysis.state()).isEqualTo(AnalysisState.FAILED);
@@ -96,7 +98,7 @@ class ReportAnalysisTest {
         OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT);
 
     // When
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering));
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering), List.of());
 
     // Then
     assertThat(analysis.state()).isEqualTo(AnalysisState.COMPLETED);
@@ -110,7 +112,7 @@ class ReportAnalysisTest {
   void blockedStatusWinsOverJournal() {
     Report report = reportWithStatus(ReportStatus.BLOCKED);
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of());
 
     assertThat(analysis.state()).isEqualTo(AnalysisState.BLOCKED);
     assertThat(analysis.isFailed()).isFalse();
@@ -128,7 +130,7 @@ class ReportAnalysisTest {
     OcrJobFailureView lingering =
         OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT);
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering));
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering), List.of());
 
     assertThat(analysis.state()).isEqualTo(AnalysisState.BLOCKED);
     assertThat(analysis.documents()).isEmpty();
@@ -139,7 +141,7 @@ class ReportAnalysisTest {
   void needsReuploadStatusIsDerivedFromReportStatus() {
     Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of());
 
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
     assertThat(analysis.isFailed()).isFalse();
@@ -157,7 +159,7 @@ class ReportAnalysisTest {
     Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
     ReflectionTestUtils.setField(report, "applicableGuarantees", List.of("상해후유장해"));
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of());
 
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
   }
@@ -170,7 +172,7 @@ class ReportAnalysisTest {
     OcrJobFailureView lingering =
         OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT);
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering));
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(lingering), List.of());
 
     // Then: ReportAnalysisFailureNotificationSweeper는 isFailed()로 통지 대상을 고르므로 중복 알림이 나가지 않는다.
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
@@ -186,7 +188,7 @@ class ReportAnalysisTest {
     OcrJobFailureView fanInFailure =
         OcrJobFailureViewFixture.terminal(UUID.randomUUID(), attachmentId, "unreadable_file", FAILED_AT);
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(fanInFailure));
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(fanInFailure), List.of());
 
     // Then: 상태·문구·isFailed()는 그대로지만(모순 없음), 문서 목록은 저널에서 채워진다.
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
@@ -203,7 +205,7 @@ class ReportAnalysisTest {
   void needsReuploadFromQualityGateHasEmptyDocuments() {
     Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of());
 
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
     assertThat(analysis.documents()).isEmpty();
@@ -218,7 +220,7 @@ class ReportAnalysisTest {
     OcrResultView qualityGateDocument =
         OcrResultViewFixture.needsReupload(UUID.randomUUID(), attachmentId, "diagnosis");
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(qualityGateDocument));
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(), List.of(qualityGateDocument));
 
     assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
     assertThat(analysis.documents()).hasSize(1);
@@ -238,7 +240,7 @@ class ReportAnalysisTest {
         OcrResultViewFixture.needsReupload(UUID.randomUUID(), qualityGateAttachmentId, "diagnosis");
 
     ReportAnalysis analysis =
-        ReportAnalysis.of(report, List.of(fanInFailure), List.of(qualityGateDocument));
+        ReportAnalysis.of(report, List.of(fanInFailure), List.of(), List.of(qualityGateDocument));
 
     assertThat(analysis.documents()).hasSize(2);
     assertThat(analysis.documents()).extracting(ReportAnalysis.FailedDocument::attachmentId)
@@ -252,13 +254,103 @@ class ReportAnalysisTest {
     Report report = reportWithoutDraft();
     List<OcrJobFailureView> failures = new ArrayList<>();
     failures.add(OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT));
-    assertThat(ReportAnalysis.of(report, failures).state()).isEqualTo(AnalysisState.FAILED);
+    assertThat(ReportAnalysis.of(report, failures, List.of()).state()).isEqualTo(AnalysisState.FAILED);
 
     // When: AI 워커가 회복해 저널 행을 지웠다(상태를 저장하지 않기에 가능한 전이 — §8 E2)
     failures.clear();
 
     // Then
-    assertThat(ReportAnalysis.of(report, failures).state()).isEqualTo(AnalysisState.PROCESSING);
+    assertThat(ReportAnalysis.of(report, failures, List.of()).state()).isEqualTo(AnalysisState.PROCESSING);
+  }
+
+  @Test
+  @DisplayName("⑤ — 리포트 생성 확정 실패만 있으면 FAILED + UNKNOWN 사유·확인 중 안내이고 문서 목록은 비어 있다")
+  void reportJobTerminalFailureIsFailedWithoutDocuments() {
+    // Given: OCR은 통과했지만 리포트 생성이 재전달 한도를 다 써 poison으로 걷혔다(초안 없음)
+    Report report = reportWithoutDraft();
+    ReportJobFailureView failure =
+        ReportJobFailureViewFixture.terminal(UUID.randomUUID(), "llm_unavailable", FAILED_AT);
+
+    // When
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(failure));
+
+    // Then: 리포트 단위 실패라 특정 문서가 없다
+    assertThat(analysis.state()).isEqualTo(AnalysisState.FAILED);
+    assertThat(analysis.isFailed()).isTrue();
+    assertThat(analysis.reason()).isEqualTo(AnalysisFailureReason.UNKNOWN);
+    assertThat(analysis.failureMessage()).isEqualTo("처리에 실패했어요 — 확인 중입니다");
+    assertThat(analysis.reuploadGuidance()).isEqualTo(ReuploadGuidance.HOLD);
+    assertThat(analysis.failedAt()).isEqualTo(FAILED_AT);
+    assertThat(analysis.documents()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("④가 ⑤보다 앞 — 두 저널에 모두 행이 있으면 OCR 저널이 사유·문서·실패 시각을 정한다")
+  void ocrJournalWinsOverReportJobJournal() {
+    // Given
+    Report report = reportWithoutDraft();
+    UUID reportId = UUID.randomUUID();
+    UUID attachmentId = UUID.randomUUID();
+    OcrJobFailureView ocrFailure =
+        OcrJobFailureViewFixture.terminal(reportId, attachmentId, "masking_residual", FAILED_AT.plusHours(1));
+    ReportJobFailureView reportJobFailure =
+        ReportJobFailureViewFixture.terminal(reportId, "context_unavailable", FAILED_AT);
+
+    // When
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(ocrFailure), List.of(reportJobFailure));
+
+    // Then
+    assertThat(analysis.state()).isEqualTo(AnalysisState.FAILED);
+    assertThat(analysis.reason()).isEqualTo(AnalysisFailureReason.MASKING_RESIDUAL);
+    assertThat(analysis.failedAt()).isEqualTo(FAILED_AT.plusHours(1));
+    assertThat(analysis.documents()).singleElement()
+        .satisfies(document -> assertThat(document.attachmentId()).isEqualTo(attachmentId));
+  }
+
+  @ParameterizedTest(name = "status={0}")
+  @EnumSource(value = ReportStatus.class, names = {"BLOCKED", "NEEDS_REUPLOAD"})
+  @DisplayName("①·② — 종료 상태는 리포트 생성 확정 실패 행이 남아 있어도 저널보다 먼저 판정된다")
+  void terminalStatusesBeatReportJobFailure(ReportStatus status) {
+    Report report = reportWithStatus(status);
+    ReportJobFailureView lingering =
+        ReportJobFailureViewFixture.terminal(UUID.randomUUID(), "persist_failed", FAILED_AT);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(lingering));
+
+    assertThat(analysis.state().name()).isEqualTo(status.name());
+    assertThat(analysis.isFailed()).isFalse();
+    assertThat(analysis.reason()).isNull();
+    assertThat(analysis.documents()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("③ — AI 초안이 있으면 리포트 생성 확정 실패 행이 남아 있어도 COMPLETED다(경합으로 남은 행)")
+  void aiDraftBeatsLingeringReportJobFailure() {
+    Report report = reportWithAiDraft();
+    ReportJobFailureView lingering =
+        ReportJobFailureViewFixture.terminal(UUID.randomUUID(), "llm_unavailable", FAILED_AT);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(lingering));
+
+    assertThat(analysis.state()).isEqualTo(AnalysisState.COMPLETED);
+    assertThat(analysis.reason()).isNull();
+    assertThat(analysis.failedAt()).isNull();
+  }
+
+  @Test
+  @DisplayName("리포트 생성 확정 실패 행이 지워지면(같은 리포트의 다른 메시지 성공) 바로 PROCESSING으로 돌아온다")
+  void reportJobRecoveryReturnsToProcessing() {
+    // Given
+    Report report = reportWithoutDraft();
+    List<ReportJobFailureView> failures = new ArrayList<>();
+    failures.add(ReportJobFailureViewFixture.terminal(UUID.randomUUID(), "llm_unavailable", FAILED_AT));
+    assertThat(ReportAnalysis.of(report, List.of(), failures).state()).isEqualTo(AnalysisState.FAILED);
+
+    // When: 워커가 회복해 terminal 행까지 지웠다 — FAILED를 저장하지 않으니 다음 판정에서 바로 돌아온다
+    failures.clear();
+
+    // Then
+    assertThat(ReportAnalysis.of(report, List.of(), failures).state()).isEqualTo(AnalysisState.PROCESSING);
   }
 
   @Test
@@ -274,7 +366,7 @@ class ReportAnalysisTest {
         OcrJobFailureViewFixture.terminal(reportId, maskedDocument, "masking_residual", FAILED_AT));
 
     // When
-    ReportAnalysis analysis = ReportAnalysis.of(report, failures);
+    ReportAnalysis analysis = ReportAnalysis.of(report, failures, List.of());
 
     // Then: 리포트 대표는 재업로드로 해결되지 않는 사유이고, 문서별 사유는 그대로 보존된다
     assertThat(analysis.reason()).isEqualTo(AnalysisFailureReason.MASKING_RESIDUAL);
@@ -296,8 +388,8 @@ class ReportAnalysisTest {
         OcrJobFailureViewFixture.terminal(UUID.randomUUID(), null, "schema_invalid", FAILED_AT);
 
     // When & Then
-    assertThatCode(() -> ReportAnalysis.of(report, List.of(failure))).doesNotThrowAnyException();
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(failure));
+    assertThatCode(() -> ReportAnalysis.of(report, List.of(failure), List.of())).doesNotThrowAnyException();
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(failure), List.of());
     assertThat(analysis.state()).isEqualTo(AnalysisState.FAILED);
     assertThat(analysis.documents()).singleElement()
         .satisfies(document -> {
@@ -313,7 +405,7 @@ class ReportAnalysisTest {
     OcrJobFailureView failure =
         OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "brand_new_value", FAILED_AT);
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(failure));
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(failure), List.of());
 
     assertThat(analysis.state()).isEqualTo(AnalysisState.FAILED);
     assertThat(analysis.reason()).isEqualTo(AnalysisFailureReason.UNKNOWN);
@@ -330,7 +422,7 @@ class ReportAnalysisTest {
         OcrJobFailureViewFixture.terminal(reportId, UUID.randomUUID(), "ocr_error", FAILED_AT.plusHours(1)),
         OcrJobFailureViewFixture.terminal(reportId, UUID.randomUUID(), "ocr_error", FAILED_AT));
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, failures);
+    ReportAnalysis analysis = ReportAnalysis.of(report, failures, List.of());
 
     assertThat(analysis.failedAt()).isEqualTo(FAILED_AT);
   }
@@ -342,7 +434,7 @@ class ReportAnalysisTest {
     List<OcrJobFailureView> failures = new ArrayList<>();
     failures.add(OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT));
 
-    ReportAnalysis analysis = ReportAnalysis.of(report, failures);
+    ReportAnalysis analysis = ReportAnalysis.of(report, failures, List.of());
     failures.clear();
 
     assertThat(analysis.documents()).hasSize(1);

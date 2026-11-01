@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,7 +13,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,6 +28,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.InvalidDataAccessResourceUsageException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
@@ -32,6 +36,7 @@ import com.soma.backend.domain.report.entity.AnalysisFailureReason;
 import com.soma.backend.domain.report.entity.OcrJobFailureView;
 import com.soma.backend.domain.report.entity.OcrJobFailureViewFixture;
 import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportJobFailureViewFixture;
 import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
 import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
 import com.soma.backend.domain.report.repository.PendingAnalysisFailureRow;
@@ -52,6 +57,8 @@ class ReportAnalysisFailureNotificationSweeperTest {
   @Mock
   private OcrJobFailureViewRepository ocrJobFailureViewRepository;
   @Mock
+  private TerminalFailureJournalReader terminalFailureJournalReader;
+  @Mock
   private ReportRepository reportRepository;
   @Mock
   private ApplicationEventPublisher eventPublisher;
@@ -63,7 +70,7 @@ class ReportAnalysisFailureNotificationSweeperTest {
   void setUp() {
     meterRegistry = new SimpleMeterRegistry();
     sweeper = new ReportAnalysisFailureNotificationSweeper(
-        ocrJobFailureViewRepository, reportRepository, eventPublisher, meterRegistry);
+        ocrJobFailureViewRepository, terminalFailureJournalReader, reportRepository, eventPublisher, meterRegistry);
     // 운영 기본값과 동일하게 켠 상태로 검증한다(@Value 주입은 단위 테스트에서 일어나지 않는다).
     ReflectionTestUtils.setField(sweeper, "sweepEnabled", true);
   }
@@ -85,6 +92,10 @@ class ReportAnalysisFailureNotificationSweeperTest {
 
   private double notifiedCount(AnalysisFailureReason reason) {
     return meterRegistry.get("analysis.failure.notified").tag("reason", reason.name()).counter().count();
+  }
+
+  private double reportJobJournalDegradedCount() {
+    return meterRegistry.get("analysis.journal.degraded").tag("journal", "report_job").counter().count();
   }
 
   @Test
@@ -172,6 +183,8 @@ class ReportAnalysisFailureNotificationSweeperTest {
     verify(ocrJobFailureViewRepository).findPendingNotification(since.capture(), limit.capture());
     assertThat(since.getValue()).isBetween(before, after);
     assertThat(limit.getValue()).isEqualTo(100);
+    // OCR 대상이 없으면 배치 상한 전체가 리포트 생성 저널 몫이고, 조회 창도 같다.
+    verify(terminalFailureJournalReader).findReportJobFailuresPendingNotification(since.getValue(), 100);
   }
 
   @Test
@@ -181,7 +194,153 @@ class ReportAnalysisFailureNotificationSweeperTest {
 
     sweeper.sweep();
 
-    verifyNoInteractions(ocrJobFailureViewRepository, reportRepository, eventPublisher);
+    verifyNoInteractions(ocrJobFailureViewRepository, terminalFailureJournalReader, reportRepository, eventPublisher);
+  }
+
+  @Test
+  @DisplayName("리포트 생성 확정 실패만 있는 리포트도 UNKNOWN 사유로 1회 통지하고 통지 시각을 기록한다")
+  void notifiesReportJobFailureWithUnknownReason() {
+    // Given: OCR 저널에는 없고 리포트 생성 저널에만 terminal 행이 있다(재전달 한도 소진)
+    UUID userId = UUID.randomUUID();
+    Report target = report(userId);
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+        .willReturn(List.of(new PendingAnalysisFailureRow(target.getId(), userId)));
+    given(terminalFailureJournalReader.findTerminalReportJobFailures(anyList())).willReturn(Map.of(target.getId(),
+        List.of(ReportJobFailureViewFixture.terminal(target.getId(), "llm_unavailable", FAILED_AT))));
+    given(reportRepository.findAllByIdIn(anyList())).willReturn(List.of(target));
+
+    // When
+    sweeper.sweep();
+    sweeper.sweep();
+
+    // Then: 멱등 가드는 OCR 실패와 같은 컬럼이다 — 두 번 돌아도 1건
+    ArgumentCaptor<AnalysisFailedEvent> captor = ArgumentCaptor.forClass(AnalysisFailedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    assertThat(captor.getValue().reportId()).isEqualTo(target.getId());
+    assertThat(captor.getValue().userId()).isEqualTo(userId);
+    assertThat(captor.getValue().reason()).isEqualTo(AnalysisFailureReason.UNKNOWN);
+    assertThat(ReflectionTestUtils.getField(target, "analysisFailureNotifiedAt")).isNotNull();
+    assertThat(notifiedCount(AnalysisFailureReason.UNKNOWN)).isEqualTo(1.0);
+  }
+
+  @Test
+  @DisplayName("두 저널 모두에 걸린 리포트는 한 번만 통지하고 대표 사유는 OCR 저널이 정한다(판정 순서 ④ > ⑤)")
+  void reportInBothJournalsIsNotifiedOnceWithOcrReason() {
+    // Given: 같은 리포트가 두 통지 대상 조회에 모두 나온다
+    UUID userId = UUID.randomUUID();
+    Report target = report(userId);
+    PendingAnalysisFailureRow row = new PendingAnalysisFailureRow(target.getId(), userId);
+    given(ocrJobFailureViewRepository.findPendingNotification(any(), anyInt())).willReturn(List.of(row));
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+        .willReturn(List.of(row));
+    given(ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(anyList())).willReturn(List.of(
+        OcrJobFailureViewFixture.terminal(target.getId(), UUID.randomUUID(), "masking_residual", FAILED_AT)));
+    given(reportRepository.findAllByIdIn(anyList())).willReturn(List.of(target));
+
+    // When
+    sweeper.sweep();
+
+    // Then: OCR 저널에서 이미 뽑힌 리포트라 리포트 생성 저널 행은 다시 읽지 않는다(판정 순서상 OCR이 정한다)
+    ArgumentCaptor<AnalysisFailedEvent> captor = ArgumentCaptor.forClass(AnalysisFailedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    assertThat(captor.getValue().reason()).isEqualTo(AnalysisFailureReason.MASKING_RESIDUAL);
+    ArgumentCaptor<List<UUID>> reportIds = ArgumentCaptor.captor();
+    verify(reportRepository).findAllByIdIn(reportIds.capture());
+    assertThat(reportIds.getValue()).containsExactly(target.getId());
+    verify(terminalFailureJournalReader, never()).findTerminalReportJobFailures(anyList());
+  }
+
+  @Test
+  @DisplayName("리포트 생성 저널을 못 읽어도(012 미적용) OCR 실패 통지는 계속되고, 같은 사이클에 그 저널을 다시 두드리지 않는다")
+  void reportJobJournalFailureDoesNotStopOcrNotifications() {
+    // Given: 리포트 생성 저널 통지 대상 조회가 실패하고, OCR 저널에는 통지할 리포트가 있다
+    UUID userId = UUID.randomUUID();
+    Report target = report(userId);
+    givenPending(target, userId, List.of(
+        OcrJobFailureViewFixture.terminal(target.getId(), UUID.randomUUID(), "ocr_error", FAILED_AT)));
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+        .willThrow(new InvalidDataAccessResourceUsageException("relation \"ai.report_job_failures\" does not exist"));
+
+    // When
+    sweeper.sweep();
+
+    // Then: 사이클은 에러로 끝나지 않고 degrade만 센다
+    ArgumentCaptor<AnalysisFailedEvent> captor = ArgumentCaptor.forClass(AnalysisFailedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    assertThat(captor.getValue().reason()).isEqualTo(AnalysisFailureReason.OCR_ERROR);
+    assertThat(meterRegistry.get("analysis.failure.sweep.errors").counter().count()).isZero();
+    assertThat(reportJobJournalDegradedCount()).isEqualTo(1.0);
+    verify(terminalFailureJournalReader, never()).findTerminalReportJobFailures(anyList());
+  }
+
+  @Test
+  @DisplayName("리포트 생성 저널용 커넥션을 못 얻어도(TransactionException) OCR 실패 통지는 계속된다")
+  void reportJobConnectionFailureDoesNotStopOcrNotifications() {
+    // Given: REQUIRES_NEW 시작(커넥션 획득)이 실패한다
+    UUID userId = UUID.randomUUID();
+    Report target = report(userId);
+    givenPending(target, userId, List.of(
+        OcrJobFailureViewFixture.terminal(target.getId(), UUID.randomUUID(), "ocr_error", FAILED_AT)));
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+        .willThrow(new CannotCreateTransactionException("Could not open JPA EntityManager for transaction"));
+
+    // When
+    sweeper.sweep();
+
+    // Then
+    verify(eventPublisher).publishEvent(any(AnalysisFailedEvent.class));
+    assertThat(meterRegistry.get("analysis.failure.sweep.errors").counter().count()).isZero();
+    assertThat(reportJobJournalDegradedCount()).isEqualTo(1.0);
+  }
+
+  @Test
+  @DisplayName("리포트 생성 실패 행을 다시 읽다가 실패하면 그 리포트는 이번 사이클에 통지하지 않는다(다음 사이클에 다시 본다)")
+  void reportJobFailureReloadErrorSkipsThatReportOnly() {
+    // Given: 통지 대상 조회는 됐지만 실패 행 재조회가 실패했다
+    UUID userId = UUID.randomUUID();
+    Report target = report(userId);
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+        .willReturn(List.of(new PendingAnalysisFailureRow(target.getId(), userId)));
+    given(terminalFailureJournalReader.findTerminalReportJobFailures(anyList()))
+        .willThrow(new InvalidDataAccessResourceUsageException("permission denied for table report_job_failures"));
+    given(reportRepository.findAllByIdIn(anyList())).willReturn(List.of(target));
+
+    // When
+    sweeper.sweep();
+
+    // Then: 판정 근거가 없으니 PROCESSING — 통지하지 않고 통지 시각도 남기지 않는다
+    verify(eventPublisher, never()).publishEvent(any(AnalysisFailedEvent.class));
+    assertThat(ReflectionTestUtils.getField(target, "analysisFailureNotifiedAt")).isNull();
+    assertThat(reportJobJournalDegradedCount()).isEqualTo(1.0);
+  }
+
+  @Test
+  @DisplayName("배치 상한 100은 두 저널 합계다 — 리포트 생성 저널은 OCR 대상을 뽑고 남은 자리만큼만 조회한다")
+  void reportJobPendingUsesRemainingBatchSlots() {
+    // Given: OCR 저널에서 30건을 뽑았다
+    List<PendingAnalysisFailureRow> ocrPending = IntStream.range(0, 30)
+        .mapToObj(index -> new PendingAnalysisFailureRow(UUID.randomUUID(), UUID.randomUUID()))
+        .toList();
+    given(ocrJobFailureViewRepository.findPendingNotification(any(), anyInt())).willReturn(ocrPending);
+
+    // When
+    sweeper.sweep();
+
+    // Then
+    verify(terminalFailureJournalReader).findReportJobFailuresPendingNotification(any(), eq(70));
+  }
+
+  @Test
+  @DisplayName("OCR 대상만으로 배치가 차면 리포트 생성 저널 대상은 이번 사이클에 조회하지 않는다")
+  void fullOcrBatchSkipsReportJobPending() {
+    List<PendingAnalysisFailureRow> ocrPending = IntStream.range(0, 100)
+        .mapToObj(index -> new PendingAnalysisFailureRow(UUID.randomUUID(), UUID.randomUUID()))
+        .toList();
+    given(ocrJobFailureViewRepository.findPendingNotification(any(), anyInt())).willReturn(ocrPending);
+
+    sweeper.sweep();
+
+    verify(terminalFailureJournalReader, never()).findReportJobFailuresPendingNotification(any(), anyInt());
   }
 
   @Test

@@ -59,7 +59,8 @@ public record ReportCardListResponse(
       @Schema(nullable = true) Integer offeredAmount,
       @Schema(nullable = true) String treatment,
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
-          description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED | BLOCKED(AI 입력 가드레일 차단) "
+          description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED "
+              + "| BLOCKED(AI 입력 가드레일 차단·리포트 생성 LLM 거절) "
               + "| NEEDS_REUPLOAD(OCR 품질 미달 — 문서를 다시 올려야 진행된다)",
           allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED", "NEEDS_REUPLOAD"}) String analysisState,
       @Schema(nullable = true,

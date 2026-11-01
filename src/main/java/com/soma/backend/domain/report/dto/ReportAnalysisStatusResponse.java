@@ -28,14 +28,15 @@ public record ReportAnalysisStatusResponse(
 
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
         description = "분석 처리 상태. PROCESSING | COMPLETED | FAILED | BLOCKED | NEEDS_REUPLOAD"
-            + "(BLOCKED는 AI 입력 가드레일 차단 — OCR·AI 파이프라인이 시작되지 않는다. "
+            + "(FAILED는 OCR 단계 또는 리포트 생성 단계의 확정 실패 — 워커가 회복하면 다른 상태로 바뀔 수 있다. "
+            + "BLOCKED는 AI 입력 가드레일 차단 또는 리포트 생성 LLM 거절. "
             + "NEEDS_REUPLOAD는 OCR 품질 미달 — 문서를 다시 올려야 진행된다)",
         allowableValues = {"PROCESSING", "COMPLETED", "FAILED", "BLOCKED", "NEEDS_REUPLOAD"})
     String analysisState,
 
     @Schema(nullable = true,
         description = "대표 실패 사유. analysis_state가 FAILED일 때만 non-null"
-            + "(BLOCKED·NEEDS_REUPLOAD는 저널 기반 사유가 없어 null). "
+            + "(BLOCKED·NEEDS_REUPLOAD는 저널 기반 사유가 없어 null). 리포트 생성 단계 실패는 UNKNOWN이다. "
             + "MASKING_RESIDUAL | SCHEMA_INVALID | OCR_ERROR | UNKNOWN | UNREADABLE_FILE")
     String failureReason,
 
@@ -55,9 +56,11 @@ public record ReportAnalysisStatusResponse(
     LocalDateTime failedAt,
 
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
-        description = "실패·재업로드 필요 문서 목록. FAILED는 항상 채워진다. NEEDS_REUPLOAD는 청구 fan-in으로 "
-            + "걸린 경우(ai.ocr_job_failures에 흔적 있음)와 개별 문서 품질 게이트로 걸린 경우(ai.ocr_results, "
-            + "GRANT 배포 후)에 채워지고, 어느 쪽에도 흔적이 없으면 빈 배열이다. 그 외 상태는 빈 배열(null 아님)")
+        description = "실패·재업로드 필요 문서 목록. FAILED는 OCR 단계 실패(ai.ocr_job_failures)면 채워지고, "
+            + "리포트 생성 단계 실패(ai.report_job_failures)는 특정 문서가 없어 빈 배열이다. NEEDS_REUPLOAD는 청구 "
+            + "fan-in으로 걸린 경우(ai.ocr_job_failures에 흔적 있음)와 개별 문서 품질 게이트로 걸린 경우"
+            + "(ai.ocr_results, GRANT 배포 후)에 채워지고, 어느 쪽에도 흔적이 없으면 빈 배열이다. "
+            + "그 외 상태는 빈 배열(null 아님)")
     List<FailedDocument> failedDocuments) {
 
   /**

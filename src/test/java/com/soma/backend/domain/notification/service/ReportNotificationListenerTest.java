@@ -264,7 +264,7 @@ class ReportNotificationListenerTest {
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
     UUID attachmentId = UUID.randomUUID();
-    given(terminalFailureJournalReader.findTerminalFailures(List.of(reportId))).willReturn(
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId))).willReturn(
         Map.of(reportId, List.of(
             OcrJobFailureViewFixture.terminal(reportId, attachmentId, "unreadable_file", null))));
     ReportAttachment attachment = ReportAttachment.of(reportId, "보험증권.pdf", "https://example.test/doc",
@@ -293,7 +293,7 @@ class ReportNotificationListenerTest {
   void onReportNeedsReuploadFallsBackToGenericWhenJournalLookupFails() {
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
-    given(terminalFailureJournalReader.findTerminalFailures(List.of(reportId)))
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId)))
         .willThrow(new InvalidDataAccessResourceUsageException("GRANT 미적용"));
     given(notificationRecorder.record(
         eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
@@ -335,7 +335,7 @@ class ReportNotificationListenerTest {
   void onReportNeedsReuploadFallsBackToGenericWhenMultipleDocumentsCombined() {
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
-    given(terminalFailureJournalReader.findTerminalFailures(List.of(reportId))).willReturn(
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId))).willReturn(
         Map.of(reportId, List.of(
             OcrJobFailureViewFixture.terminal(reportId, UUID.randomUUID(), "unreadable_file", null))));
     given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(

@@ -17,6 +17,7 @@ import com.soma.backend.domain.report.entity.OcrResultView;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportAttachment;
+import com.soma.backend.domain.report.entity.ReportJobFailureView;
 import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
@@ -28,7 +29,8 @@ import com.soma.backend.global.exception.ErrorCode;
  * {@link ReportAnalysis}·{@code AnalysisFailureReason}(VO)이 소유한다 — 이 서비스는 조회를 조율하고
  * 결과를 옮기기만 한다(빈약한 도메인 방지).
  *
- * <p>상태는 저장하지 않고 매번 파생한다: AI 초안 존재 여부(reports) + 확정 실패 행({@code ai.ocr_job_failures}).
+ * <p>상태는 저장하지 않고 매번 파생한다: AI 초안 존재 여부(reports) + 확정 실패 행({@code ai.ocr_job_failures}·
+ * {@code ai.report_job_failures}).
  */
 @Slf4j
 @Service
@@ -56,11 +58,17 @@ public class ReportAnalysisStatusQueryService {
    * 이미 목록·상세에 실려 나간다. 즉 사정사에게 열어봐야 추가로 주는 것은 <b>타인의 파일명뿐</b>이라
    * 최소 권한 원칙상 닫는 게 맞다. (신규 엔드포인트라 기존 소비자가 없어 축소에 따른 회귀도 없다.)
    *
-   * <p>목록·상세와 달리 실패 저널({@code ai.ocr_job_failures}) 조회 오류를 <b>삼키지 않는다</b>. 이 엔드포인트의
-   * 유일한 책임이 분석 상태 전달이라, 조회에 실패했는데 PROCESSING을 내리면 "영원히 처리 중"이라는 거짓을 말하게
-   * 된다(design.md §8 E14). 반면 품질 미달 문서({@code ai.ocr_results}) 조회는 <b>삼킨다</b> — 이 값이 없어도
-   * 상태 판정({@code reports.status} 기반) 자체는 이미 정확하고, 이 조회는 "어느 문서인지"만 보강하기 때문이다
-   * (GRANT 미배포 상태에선 항상 실패하므로, 여기서도 실패했다고 500을 내면 이 엔드포인트 자체가 못 쓰이게 된다).
+   * <p>목록·상세와 달리 OCR 실패 저널({@code ai.ocr_job_failures}) 조회 오류를 <b>삼키지 않는다</b>. 이
+   * 엔드포인트의 유일한 책임이 분석 상태 전달이라, 조회에 실패했는데 PROCESSING을 내리면 "영원히 처리 중"이라는
+   * 거짓을 말하게 된다(design.md §8 E14). 반면 품질 미달 문서({@code ai.ocr_results}) 조회는 <b>삼킨다</b> — 이
+   * 값이 없어도 상태 판정({@code reports.status} 기반) 자체는 이미 정확하고, 이 조회는 "어느 문서인지"만 보강하기
+   * 때문이다(GRANT 미배포 상태에선 항상 실패하므로, 여기서도 실패했다고 500을 내면 이 엔드포인트 자체가 못 쓰이게
+   * 된다).
+   *
+   * <p>리포트 생성 실패 저널({@code ai.report_job_failures})은 <b>테이블이 아직 없을 때만</b> 삼킨다. 012는 AI
+   * report 워커가 기동할 때 환경별로 적용하므로 Backend가 먼저 배포된 환경에선 테이블이 없을 수 있는데, 거기서
+   * 500을 내면 그동안 모든 리포트의 폴링이 막힌다. 그때는 리포트 생성 단계 실패만 이 저널이 생기기 전처럼
+   * PROCESSING으로 보인다. 테이블이 있는데도 못 읽으면 OCR 저널과 같은 이유로 삼키지 않는다.
    */
   public ReportAnalysisStatusResponse getAnalysisStatus(UUID userId, UUID reportId) {
     Report report = reportRepository.findById(reportId)
@@ -69,11 +77,13 @@ public class ReportAnalysisStatusQueryService {
     if (!report.isOwnedBy(userId)) {
       throw new BusinessException(ErrorCode.FORBIDDEN);
     }
-    List<OcrJobFailureView> failures =
-        ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(List.of(reportId));
+    List<UUID> target = List.of(reportId);
+    List<OcrJobFailureView> ocrJobFailures = ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(target);
+    List<ReportJobFailureView> reportJobFailures =
+        reportAnalysisResolver.reportJobFailuresOrEmptyIfJournalMissing(target).getOrDefault(reportId, List.of());
     List<OcrResultView> needsReuploadDocuments =
-        reportAnalysisResolver.needsReuploadDocumentsOrEmpty(List.of(reportId)).getOrDefault(reportId, List.of());
-    ReportAnalysis analysis = ReportAnalysis.of(report, failures, needsReuploadDocuments);
+        reportAnalysisResolver.needsReuploadDocumentsOrEmpty(target).getOrDefault(reportId, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, ocrJobFailures, reportJobFailures, needsReuploadDocuments);
     return ReportAnalysisStatusResponse.of(reportId, analysis, attachmentNames(reportId, analysis));
   }
 

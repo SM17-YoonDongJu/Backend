@@ -26,11 +26,13 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
+import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
+import com.soma.backend.domain.report.repository.ReportJobFailureViewRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 
 /**
@@ -63,6 +65,8 @@ class ReportAnalysisAttachmentIntegrationTest {
   /** 배치 조회가 페이지당 1회만 도는지(N+1 부재) 세기 위한 스파이. 실제 쿼리는 그대로 실행된다. */
   @MockitoSpyBean
   private OcrJobFailureViewRepository ocrJobFailureViewRepository;
+  @MockitoSpyBean
+  private ReportJobFailureViewRepository reportJobFailureViewRepository;
 
   private UUID ownerId;
 
@@ -74,6 +78,7 @@ class ReportAnalysisAttachmentIntegrationTest {
   @AfterEach
   void cleanUp() {
     jdbcTemplate.update("DELETE FROM ai.ocr_job_failures");
+    jdbcTemplate.update("DELETE FROM ai.report_job_failures");
     jdbcTemplate.update("DELETE FROM ai.ocr_results");
     reportRepository.deleteAll();
   }
@@ -95,6 +100,19 @@ class ReportAnalysisAttachmentIntegrationTest {
         VALUES (?, ?, ?, ?, 'ValueError', 2, ?, ?, ?)
         """,
         UUID.randomUUID(), reportId, UUID.randomUUID(), failureClass, terminal, FAILED_AT, FAILED_AT);
+  }
+
+  /**
+   * 리포트 생성 실패 저널 행 삽입 — ai.report_job_failures(AI 012). 리더가 REQUIRES_NEW(별도 커넥션)라 커밋된
+   * 행만 보이므로, 이 저널을 읽는 폴링·목록·상세 경로는 이 클래스(커밋 경로)에서 검증한다.
+   */
+  private void insertReportJobFailure(UUID reportId, boolean terminal) {
+    jdbcTemplate.update("""
+        INSERT INTO ai.report_job_failures
+          (id, report_id, job_id, failure_class, error_type, attempts, terminal, first_failed_at, last_failed_at)
+        VALUES (?, ?, ?, 'llm_unavailable', 'AiClientError', 3, ?, ?, ?)
+        """,
+        UUID.randomUUID(), reportId, UUID.randomUUID(), terminal, FAILED_AT, FAILED_AT);
   }
 
   /** 품질 미달(needs_reupload) 판정 행 삽입 — ai.ocr_results, PR #66 GRANT 대상. */
@@ -130,15 +148,18 @@ class ReportAnalysisAttachmentIntegrationTest {
     insertFailure(first, "masking_residual", true);
     insertFailure(second, "ocr_error", true);
     insertFailure(third, "schema_invalid", true);
+    insertReportJobFailure(second, true);
+    insertReportJobFailure(third, true);
 
     // When
     ReportCardListResponse response = reportQueryService.getUserReports(ownerId, null, 1, 20);
 
-    // Then: 리포트 수만큼만 카드가 나오고(행 복제 없음), 저널 조회는 리포트 수와 무관하게 1회다
+    // Then: 리포트 수만큼만 카드가 나오고(행 복제 없음), 두 저널 조회 모두 리포트 수와 무관하게 1회다
     assertThat(response.list()).hasSize(3);
     assertThat(response.list()).extracting(ReportCardListResponse.Card::reportId)
         .containsExactlyInAnyOrder(first, second, third);
     verify(ocrJobFailureViewRepository, times(1)).findAllByReportIdInAndTerminalIsTrue(anyCollection());
+    verify(reportJobFailureViewRepository, times(1)).findAllByReportIdIn(anyCollection());
   }
 
   @Test
@@ -182,6 +203,68 @@ class ReportAnalysisAttachmentIntegrationTest {
     assertThat(detail.analysisState()).isEqualTo("FAILED");
     assertThat(detail.analysisFailureReason()).isEqualTo("UNREADABLE_FILE");
     assertThat(detail.analysisFailureMessage()).isEqualTo("파일을 읽을 수 없어요. 다시 업로드해주세요");
+  }
+
+  @Test
+  @DisplayName("⑤ — 리포트 생성 확정 실패는 폴링·목록·상세 모두 FAILED(UNKNOWN·HOLD)이고 실패 문서는 비어 있다")
+  void reportJobTerminalFailureIsFailedEverywhere() {
+    // Given: OCR은 통과했지만 리포트 생성이 재전달 한도를 다 써 초안 없이 저널에만 남았다
+    UUID reportId = saveReport(false);
+    insertReportJobFailure(reportId, true);
+
+    // When
+    ReportAnalysisStatusResponse status = reportAnalysisStatusQueryService.getAnalysisStatus(ownerId, reportId);
+    ReportCardListResponse.Card card = cardsByReportId().get(reportId);
+    CustomerReportDetailResponse detail = reportQueryService.getReportDetail(ownerId, "USER", reportId);
+
+    // Then: 리포트 단위 실패라 특정 문서가 없고, error_type은 응답 어디에도 실리지 않는다(필드 자체가 없음)
+    assertThat(status.analysisState()).isEqualTo("FAILED");
+    assertThat(status.failureReason()).isEqualTo("UNKNOWN");
+    assertThat(status.failureMessage()).isEqualTo("처리에 실패했어요 — 확인 중입니다");
+    assertThat(status.reuploadGuidance()).isEqualTo("HOLD");
+    assertThat(status.failedAt()).isEqualTo(FAILED_AT);
+    assertThat(status.failedDocuments()).isNotNull().isEmpty();
+    assertThat(card.analysisState()).isEqualTo("FAILED");
+    assertThat(card.analysisFailureReason()).isEqualTo("UNKNOWN");
+    assertThat(detail.analysisState()).isEqualTo("FAILED");
+    assertThat(detail.analysisFailureMessage()).isEqualTo("처리에 실패했어요 — 확인 중입니다");
+  }
+
+  @Test
+  @DisplayName("리포트 생성 저널의 재전달 중(terminal=false) 행은 무시되고, terminal 행이 지워지면 FAILED도 바로 풀린다")
+  void reportJobNonTerminalIsIgnoredAndRecoveryIsImmediate() {
+    // Given
+    UUID retrying = saveReport(false);
+    UUID recovered = saveReport(false);
+    insertReportJobFailure(retrying, false);
+    insertReportJobFailure(recovered, true);
+    assertThat(reportAnalysisStatusQueryService.getAnalysisStatus(ownerId, recovered).analysisState())
+        .isEqualTo("FAILED");
+
+    // When: 같은 리포트의 다른 메시지가 성공해 워커가 terminal 행을 지웠다(회복)
+    jdbcTemplate.update("DELETE FROM ai.report_job_failures WHERE report_id = ?", recovered);
+
+    // Then: FAILED를 저장하지 않으므로 다음 조회에서 바로 돌아온다
+    Map<UUID, ReportAnalysis> analyses = reportAnalysisResolver.resolveAll(List.of(retrying, recovered));
+    assertThat(analyses.get(retrying).state().name()).isEqualTo("PROCESSING");
+    assertThat(analyses.get(recovered).state().name()).isEqualTo("PROCESSING");
+  }
+
+  @Test
+  @DisplayName("① — LLM 거절로 BLOCKED가 된 리포트는 리포트 생성 저널 행이 남아 있어도 BLOCKED다")
+  void blockedBeatsLingeringReportJobFailure() {
+    // Given: 경합 등으로 저널 행이 남은 상태에서 워커가 거절을 BLOCKED로 기록했다
+    UUID reportId = saveReport(false);
+    insertReportJobFailure(reportId, true);
+    markStatus(reportId, "BLOCKED");
+
+    // When
+    ReportAnalysisStatusResponse status = reportAnalysisStatusQueryService.getAnalysisStatus(ownerId, reportId);
+
+    // Then: 사용자 문구는 입력 가드레일 차단과 같다
+    assertThat(status.analysisState()).isEqualTo("BLOCKED");
+    assertThat(status.failureReason()).isNull();
+    assertThat(status.failureMessage()).isEqualTo("처리할 수 없는 요청이에요. 고객센터로 문의해주세요.");
   }
 
   @Test

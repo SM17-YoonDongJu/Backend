@@ -74,7 +74,8 @@ public class ReportNotificationListener {
 
   /**
    * 분석(OCR·AI) 확정 실패 통지. 실패 사유에 따라 문안을 나눈다 — 마스킹 잔류는 사용자 과실이 아니라
-   * 시스템 한계라 "검토 중"으로 중립 서술하고 재업로드를 요구하지 않는다.
+   * 시스템 한계라 "검토 중"으로 중립 서술하고 재업로드를 요구하지 않는다. 리포트 생성 단계 실패는 사유가
+   * UNKNOWN으로 와서 전용 문안 없이 일반 실패 문안("문서 분석에 실패했어요" / "확인 중")을 그대로 쓴다.
    */
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onAnalysisFailed(AnalysisFailedEvent event) {
@@ -85,9 +86,9 @@ public class ReportNotificationListener {
   }
 
   /**
-   * AI 입력 가드레일 차단 통지. 사유(오프토픽·PII 복호화 실패 등)를 구분하지 않는다 — AI가 reports 테이블로
-   * 넘겨주지 않아 구분할 수단이 없다. 문구는 {@link ReportAnalysis#blocked()}의 것을 그대로 재사용해
-   * 조회 API 응답과 푸시가 같은 문구를 쓰게 한다(단일 진실).
+   * AI 차단(입력 가드레일 차단·리포트 생성 LLM 거절) 통지. 사유(오프토픽·PII 복호화 실패·LLM 거절 등)를
+   * 구분하지 않는다 — AI가 reports 테이블로 넘겨주지 않아 구분할 수단이 없다. 문구는
+   * {@link ReportAnalysis#blocked()}의 것을 그대로 재사용해 조회 API 응답과 푸시가 같은 문구를 쓰게 한다(단일 진실).
    */
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onReportBlocked(ReportBlockedEvent event) {
@@ -126,7 +127,7 @@ public class ReportNotificationListener {
   private ReportAttachment resolveSingleFailedDocument(UUID reportId) {
     List<UUID> attachmentIds = new ArrayList<>();
     try {
-      terminalFailureJournalReader.findTerminalFailures(List.of(reportId)).getOrDefault(reportId, List.of())
+      terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId)).getOrDefault(reportId, List.of())
           .stream().map(OcrJobFailureView::getAttachmentId).filter(Objects::nonNull).forEach(attachmentIds::add);
     } catch (DataAccessException ex) {
       log.debug("청구 fan-in 저널 조회 실패 — 문서 특정에서 제외한다. reportId={}", reportId);

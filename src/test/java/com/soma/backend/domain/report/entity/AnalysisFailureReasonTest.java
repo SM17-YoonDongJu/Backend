@@ -56,6 +56,36 @@ class AnalysisFailureReasonTest {
     assertThat(AnalysisFailureReason.from(null)).isEqualTo(AnalysisFailureReason.UNKNOWN);
   }
 
+  @ParameterizedTest(name = "리포트 생성 failure_class={0} → {1}")
+  @CsvSource({
+      "context_unavailable, UNKNOWN",
+      "llm_unavailable, UNKNOWN",
+      "persist_failed, UNKNOWN",
+      "unknown, UNKNOWN",
+      "schema_invalid, UNKNOWN"
+  })
+  @DisplayName("리포트 생성 저널 계약 5값(012 CHECK)은 사유를 나누지 않고 전부 UNKNOWN으로 모은다(FAILED 하나로 처리)")
+  void translatesReportJobFailureClasses(String failureClass, AnalysisFailureReason expected) {
+    assertThat(AnalysisFailureReason.fromReportJob(failureClass)).isEqualTo(expected);
+  }
+
+  @Test
+  @DisplayName("리포트 생성 저널의 미지·null failure_class도 예외 없이 UNKNOWN이다(AI 계약 확장 내성)")
+  void unknownReportJobFailureClassFallsBackWithoutException() {
+    assertThatCode(() -> AnalysisFailureReason.fromReportJob("brand_new_value")).doesNotThrowAnyException();
+    assertThat(AnalysisFailureReason.fromReportJob("brand_new_value")).isEqualTo(AnalysisFailureReason.UNKNOWN);
+    assertThat(AnalysisFailureReason.fromReportJob(null)).isEqualTo(AnalysisFailureReason.UNKNOWN);
+  }
+
+  @Test
+  @DisplayName("리포트 생성 실패는 '확인 중' 안내다 — 재업로드를 권하지 않는다(시스템 측 실패라 사용자 액션이 없다)")
+  void reportJobFailureDoesNotRecommendReupload() {
+    AnalysisFailureReason reason = AnalysisFailureReason.fromReportJob("llm_unavailable");
+
+    assertThat(reason.getUserMessage()).isEqualTo("처리에 실패했어요 — 확인 중입니다");
+    assertThat(reason.getReuploadGuidance()).isEqualTo(ReuploadGuidance.HOLD);
+  }
+
   @Test
   @DisplayName("Q5(최중요) — masking_residual + unreadable_file 혼재 시 대표 사유는 MASKING_RESIDUAL이다")
   void representativePrefersMaskingResidualOverUnreadableFile() {

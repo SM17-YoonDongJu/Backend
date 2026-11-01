@@ -132,14 +132,15 @@ public class Report extends BaseEntity {
   private Map<String, String> documents;
 
   /**
-   * 분석 실패 알림을 보낸 시각(멱등 가드). NULL이면 미통지다. 실패 <b>상태</b>는 저장하지 않는다 —
-   * {@code ai.ocr_job_failures} 파생값이라 저장하면 정상 회복 전이를 놓친다(design.md §8 E2).
+   * 분석 실패 알림을 보낸 시각(멱등 가드). NULL이면 미통지다. OCR 단계·리포트 생성 단계 실패가 이 가드를 함께 써서
+   * 리포트당 FAILED 알림은 1회다. 실패 <b>상태</b>는 저장하지 않는다 — {@code ai.ocr_job_failures}·
+   * {@code ai.report_job_failures} 파생값이라 저장하면 정상 회복 전이를 놓친다(design.md §8 E2).
    */
   @Column(name = "analysis_failure_notified_at")
   private LocalDateTime analysisFailureNotifiedAt;
 
   /**
-   * BLOCKED(AI 입력 가드레일 차단) 알림을 보낸 시각(멱등 가드). NULL이면 미통지다. {@code status}는
+   * BLOCKED(AI 입력 가드레일 차단·리포트 생성 LLM 거절) 알림을 보낸 시각(멱등 가드). NULL이면 미통지다. {@code status}는
    * AI 워커가 원시 SQL로 직접 세팅하므로(도메인 메서드를 거치지 않음) 이 컬럼만 Backend가 관리한다.
    */
   @Column(name = "blocked_notified_at")
