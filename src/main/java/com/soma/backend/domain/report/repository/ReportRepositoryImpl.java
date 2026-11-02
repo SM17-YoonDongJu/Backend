@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.repository;
 
+import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -7,9 +8,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import org.hibernate.Session;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.OrderSpecifier;
@@ -21,7 +24,9 @@ import com.querydsl.core.types.dsl.NumberExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.soma.backend.domain.adjuster.entity.QAdjusterProfile;
 import com.soma.backend.domain.report.entity.AccidentType;
@@ -37,15 +42,20 @@ import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.user.entity.QUser;
 
 /** Report 동적 조회 QueryDSL 구현. issueCount·held는 상관 서브쿼리, users 조인은 엔티티 조인(on)으로 처리한다. */
+@Slf4j
 @RequiredArgsConstructor
 public class ReportRepositoryImpl implements ReportRepositoryCustom {
 
+  private static final String FORCE_CUSTOM_PLAN = "SET LOCAL plan_cache_mode = force_custom_plan";
+
   private final JPAQueryFactory queryFactory;
+  private final EntityManager entityManager;
 
   @Override
   public List<PendingReviewRow> findPendingReviewRows(
       ReportStatus status, AccidentType accidentType, String region, UUID adjusterId,
       Set<AccidentType> specialtyTypes, Pageable pageable) {
+    useCustomPlanForThisTransaction();
     QReport rp = QReport.report;
     QUser us = QUser.user;
     QReportIssue ri = QReportIssue.reportIssue;
@@ -85,6 +95,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
   @Override
   public long countPendingReviewRows(
       ReportStatus status, AccidentType accidentType, String region, UUID adjusterId) {
+    useCustomPlanForThisTransaction();
     QReport rp = QReport.report;
     QUser us = QUser.user;
     // 목록과 같은 조인·조건이어야 페이지 수가 맞는다(users 조인은 region 필터와 고아 리포트 제외에 필요).
@@ -95,6 +106,32 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .where(pendingReviewCondition(rp, us, status, accidentType, region, adjusterId))
         .fetchOne();
     return total == null ? 0L : total;
+  }
+
+  /**
+   * 검수대기 목록·건수 쿼리가 이 트랜잭션에서 custom plan을 쓰게 한다(#378). 문서화된 native 예외 — 조회가 아니라
+   * 세션 설정이고, 조회 쿼리 자체는 QueryDSL 그대로다.
+   *
+   * <p>pgjdbc는 같은 SQL이 5번 넘게 실행되면 서버 측 prepared statement로 바꾸고, PostgreSQL은 그 뒤 바인딩 값을
+   * 모르는 generic plan을 고를 수 있다. 이 쿼리는 사정사 ID·지역 값에 따라 선택도가 크게 달라 generic plan이
+   * Nested Loop Anti Join으로 굳는데, dev 재현에서 generic 68.5ms(약 48,000블록) vs custom 8.7ms(Hash Right Anti
+   * Join)였다. 전역(prepareThreshold·JDBC URL)으로 바꾸면 다른 쿼리의 plan 캐시 이점까지 잃으니 이 경로에만 건다.
+   *
+   * <p>LOCAL인 이유: 커밋·롤백과 함께 원래 값(auto)으로 돌아가 커넥션 풀로 설정이 새지 않는다. 트랜잭션 밖에서는
+   * 경고만 나고 효과가 없으므로 왕복 자체를 생략한다. 목록·건수 중 무엇이 먼저 불려도 적용되도록 둘 다 부르며,
+   * 같은 트랜잭션에서 두 번 실행돼도 무해하다. JPA {@code executeUpdate} 대신 JDBC로 실행하는 건 native 변경
+   * 쿼리로 취급돼 Hibernate 쿼리 통계에 잡히고 2차 캐시 영역 무효화 대상이 되는 부수효과를 피하기 위해서다.
+   */
+  private void useCustomPlanForThisTransaction() {
+    if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+      log.debug("트랜잭션 밖 검수대기 조회라 plan_cache_mode 설정을 건너뜀");
+      return;
+    }
+    entityManager.unwrap(Session.class).doWork(connection -> {
+      try (Statement statement = connection.createStatement()) {
+        statement.execute(FORCE_CUSTOM_PLAN);
+      }
+    });
   }
 
   /** 검수대기 목록·건수 공용 조건. 두 쿼리가 어긋나지 않게 한 곳에서만 만든다. */
