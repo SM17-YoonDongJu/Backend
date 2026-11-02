@@ -7,8 +7,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.springframework.core.NestedRuntimeException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -113,10 +115,15 @@ public class ReportAnalysisResolver {
     return analyses;
   }
 
+  /**
+   * 목록·상세용 — OCR 확정 실패 저널 조회가 실패하면 빈 맵으로 degrade한다. 리더의 REQUIRES_NEW 시작(커넥션
+   * 획득)이 실패하는 {@link TransactionException}도 흡수한다 — 시작 실패는 이 메서드의 트랜잭션을 되살린 뒤
+   * 던져지므로 이어지는 리포트 조회에 영향이 없다.
+   */
   private Map<UUID, List<OcrJobFailureView>> ocrJobFailuresOrEmpty(List<UUID> targets) {
     try {
       return terminalFailureJournalReader.findTerminalOcrJobFailures(targets);
-    } catch (DataAccessException ex) {
+    } catch (DataAccessException | TransactionException ex) {
       ocrJobJournalDegraded.increment();
       log.warn("OCR 확정 실패 저널 조회 실패 — OCR 단계 FAILED 판정만 PROCESSING으로 degrade한다(대상 {}건). "
           + "BLOCKED·NEEDS_REUPLOAD는 reports.status만으로 판정되므로 영향 없다. cause={}",
@@ -126,13 +133,14 @@ public class ReportAnalysisResolver {
   }
 
   /**
-   * 목록·상세용 — 리포트 생성 확정 실패 저널 조회가 어떤 이유로 실패하든 빈 맵으로 degrade한다(목록·상세는
-   * 가용성이 우선이라 OCR 저널과 같은 원칙). 리포트 생성 단계 FAILED만 PROCESSING으로 보이고 나머지 판정은 그대로다.
+   * 목록·상세용 — 리포트 생성 확정 실패 저널 조회가 어떤 이유로 실패하든(REQUIRES_NEW 시작 실패 포함) 빈 맵으로
+   * degrade한다(목록·상세는 가용성이 우선이라 OCR 저널과 같은 원칙, 알림 스윕과도 같은 기준). 리포트 생성 단계
+   * FAILED만 PROCESSING으로 보이고 나머지 판정은 그대로다.
    */
   private Map<UUID, List<ReportJobFailureView>> reportJobFailuresOrEmpty(List<UUID> targets) {
     try {
       return terminalFailureJournalReader.findTerminalReportJobFailures(targets);
-    } catch (DataAccessException ex) {
+    } catch (DataAccessException | TransactionException ex) {
       onReportJobJournalUnavailable(ex, targets.size());
       return Map.of();
     }
@@ -143,6 +151,7 @@ public class ReportAnalysisResolver {
    * 실패는 그대로 던진다. 012는 AI report 워커가 기동할 때 환경별로 적용하므로 Backend가 먼저 나간 환경에서
    * 폴링 전체가 500이 되면 안 되지만, 테이블이 있는데도 못 읽는 상황(권한 회수·컬럼 변경 등)에 PROCESSING을
    * 내리면 OCR 저널과 같은 "영원히 처리 중" 거짓이 된다(design.md §8 E14) — 그건 OCR 저널처럼 500으로 드러낸다.
+   * 커넥션을 못 얻는 {@link TransactionException}도 같은 이유로 잡지 않는다.
    */
   public Map<UUID, List<ReportJobFailureView>> reportJobFailuresOrEmptyIfJournalMissing(List<UUID> targets) {
     try {
@@ -160,7 +169,7 @@ public class ReportAnalysisResolver {
    * degrade를 센다. 테이블이 아직 없는 과도기는 예상된 상태라 요청마다 경고를 쌓지 않고 DEBUG로만 남긴다 —
    * 카운터가 그 상태를 대신 드러낸다. 그 밖의 원인은 진짜 장애라 WARN이다.
    */
-  private void onReportJobJournalUnavailable(DataAccessException ex, int targetCount) {
+  private void onReportJobJournalUnavailable(NestedRuntimeException ex, int targetCount) {
     reportJobJournalDegraded.increment();
     if (TerminalFailureJournalReader.isJournalMissing(ex)) {
       log.debug("리포트 생성 실패 저널(ai.report_job_failures)이 아직 없다(AI 마이그레이션 012 미적용) — "

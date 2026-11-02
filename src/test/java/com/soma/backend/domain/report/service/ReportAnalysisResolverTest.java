@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.BeanUtils;
 import org.springframework.dao.InvalidDataAccessResourceUsageException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
@@ -101,6 +102,40 @@ class ReportAnalysisResolverTest {
     assertThat(analyses.get(reportId).state()).isEqualTo(AnalysisState.PROCESSING);
     assertThat(degraded("report_job")).isEqualTo(1.0);
     assertThat(degraded("ocr_job")).isZero();
+  }
+
+  @Test
+  @DisplayName("목록·상세 — 리더의 REQUIRES_NEW 시작(커넥션 획득)이 실패해도 500 없이 판정이 이어진다")
+  void resolveAllDegradesWhenJournalReaderCannotStartTransaction() {
+    // Given: 두 저널 리더 모두 커넥션을 못 얻는다(TransactionException — DataAccessException이 아니다)
+    UUID reportId = UUID.randomUUID();
+    Report report = BeanUtils.instantiateClass(Report.class);
+    ReflectionTestUtils.setField(report, "id", reportId);
+    CannotCreateTransactionException noConnection =
+        new CannotCreateTransactionException("Could not open JPA EntityManager for transaction");
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(anyList())).willThrow(noConnection);
+    given(terminalFailureJournalReader.findTerminalReportJobFailures(anyList())).willThrow(noConnection);
+    given(reportRepository.findAllByIdIn(anyList())).willReturn(List.of(report));
+
+    // When
+    Map<UUID, ReportAnalysis> analyses = resolver.resolveAll(List.of(reportId));
+
+    // Then
+    assertThat(analyses.get(reportId).state()).isEqualTo(AnalysisState.PROCESSING);
+    assertThat(degraded("ocr_job")).isEqualTo(1.0);
+    assertThat(degraded("report_job")).isEqualTo(1.0);
+  }
+
+  @Test
+  @DisplayName("폴링 — 커넥션을 못 얻으면(TransactionException) 삼키지 않고 던진다(테이블 부재만 degrade)")
+  void pollingRethrowsTransactionException() {
+    UUID reportId = UUID.randomUUID();
+    given(terminalFailureJournalReader.findTerminalReportJobFailures(anyList()))
+        .willThrow(new CannotCreateTransactionException("Could not open JPA EntityManager for transaction"));
+
+    assertThatThrownBy(() -> resolver.reportJobFailuresOrEmptyIfJournalMissing(List.of(reportId)))
+        .isInstanceOf(CannotCreateTransactionException.class);
+    assertThat(degraded("report_job")).isZero();
   }
 
   @Test

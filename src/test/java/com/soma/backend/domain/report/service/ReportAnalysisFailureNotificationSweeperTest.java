@@ -3,6 +3,7 @@ package com.soma.backend.domain.report.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -184,7 +185,7 @@ class ReportAnalysisFailureNotificationSweeperTest {
     assertThat(since.getValue()).isBetween(before, after);
     assertThat(limit.getValue()).isEqualTo(100);
     // OCR 대상이 없으면 배치 상한 전체가 리포트 생성 저널 몫이고, 조회 창도 같다.
-    verify(terminalFailureJournalReader).findReportJobFailuresPendingNotification(since.getValue(), 100);
+    verify(terminalFailureJournalReader).findReportJobFailuresPendingNotification(since.getValue(), 100, List.of());
   }
 
   @Test
@@ -203,7 +204,7 @@ class ReportAnalysisFailureNotificationSweeperTest {
     // Given: OCR 저널에는 없고 리포트 생성 저널에만 terminal 행이 있다(재전달 한도 소진)
     UUID userId = UUID.randomUUID();
     Report target = report(userId);
-    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt(), anyCollection()))
         .willReturn(List.of(new PendingAnalysisFailureRow(target.getId(), userId)));
     given(terminalFailureJournalReader.findTerminalReportJobFailures(anyList())).willReturn(Map.of(target.getId(),
         List.of(ReportJobFailureViewFixture.terminal(target.getId(), "llm_unavailable", FAILED_AT))));
@@ -226,12 +227,12 @@ class ReportAnalysisFailureNotificationSweeperTest {
   @Test
   @DisplayName("두 저널 모두에 걸린 리포트는 한 번만 통지하고 대표 사유는 OCR 저널이 정한다(판정 순서 ④ > ⑤)")
   void reportInBothJournalsIsNotifiedOnceWithOcrReason() {
-    // Given: 같은 리포트가 두 통지 대상 조회에 모두 나온다
+    // Given: 같은 리포트가 두 통지 대상 조회에 모두 나온다(조회 단계에서 빼지만 두 조회 사이 변경에 대비한 방어를 본다)
     UUID userId = UUID.randomUUID();
     Report target = report(userId);
     PendingAnalysisFailureRow row = new PendingAnalysisFailureRow(target.getId(), userId);
     given(ocrJobFailureViewRepository.findPendingNotification(any(), anyInt())).willReturn(List.of(row));
-    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt(), anyCollection()))
         .willReturn(List.of(row));
     given(ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(anyList())).willReturn(List.of(
         OcrJobFailureViewFixture.terminal(target.getId(), UUID.randomUUID(), "masking_residual", FAILED_AT)));
@@ -248,6 +249,8 @@ class ReportAnalysisFailureNotificationSweeperTest {
     verify(reportRepository).findAllByIdIn(reportIds.capture());
     assertThat(reportIds.getValue()).containsExactly(target.getId());
     verify(terminalFailureJournalReader, never()).findTerminalReportJobFailures(anyList());
+    verify(terminalFailureJournalReader)
+        .findReportJobFailuresPendingNotification(any(), eq(99), eq(List.of(target.getId())));
   }
 
   @Test
@@ -258,7 +261,7 @@ class ReportAnalysisFailureNotificationSweeperTest {
     Report target = report(userId);
     givenPending(target, userId, List.of(
         OcrJobFailureViewFixture.terminal(target.getId(), UUID.randomUUID(), "ocr_error", FAILED_AT)));
-    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt(), anyCollection()))
         .willThrow(new InvalidDataAccessResourceUsageException("relation \"ai.report_job_failures\" does not exist"));
 
     // When
@@ -281,7 +284,7 @@ class ReportAnalysisFailureNotificationSweeperTest {
     Report target = report(userId);
     givenPending(target, userId, List.of(
         OcrJobFailureViewFixture.terminal(target.getId(), UUID.randomUUID(), "ocr_error", FAILED_AT)));
-    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt(), anyCollection()))
         .willThrow(new CannotCreateTransactionException("Could not open JPA EntityManager for transaction"));
 
     // When
@@ -299,7 +302,7 @@ class ReportAnalysisFailureNotificationSweeperTest {
     // Given: 통지 대상 조회는 됐지만 실패 행 재조회가 실패했다
     UUID userId = UUID.randomUUID();
     Report target = report(userId);
-    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt()))
+    given(terminalFailureJournalReader.findReportJobFailuresPendingNotification(any(), anyInt(), anyCollection()))
         .willReturn(List.of(new PendingAnalysisFailureRow(target.getId(), userId)));
     given(terminalFailureJournalReader.findTerminalReportJobFailures(anyList()))
         .willThrow(new InvalidDataAccessResourceUsageException("permission denied for table report_job_failures"));
@@ -315,7 +318,7 @@ class ReportAnalysisFailureNotificationSweeperTest {
   }
 
   @Test
-  @DisplayName("배치 상한 100은 두 저널 합계다 — 리포트 생성 저널은 OCR 대상을 뽑고 남은 자리만큼만 조회한다")
+  @DisplayName("배치 상한 100은 두 저널 합계다 — 리포트 생성 저널은 OCR이 뽑은 리포트를 빼고 남은 자리만큼만 조회한다")
   void reportJobPendingUsesRemainingBatchSlots() {
     // Given: OCR 저널에서 30건을 뽑았다
     List<PendingAnalysisFailureRow> ocrPending = IntStream.range(0, 30)
@@ -326,8 +329,9 @@ class ReportAnalysisFailureNotificationSweeperTest {
     // When
     sweeper.sweep();
 
-    // Then
-    verify(terminalFailureJournalReader).findReportJobFailuresPendingNotification(any(), eq(70));
+    // Then: 남은 70자리를 겹치는 리포트가 차지하지 않도록 OCR이 뽑은 30건을 조회 단계에서 뺀다
+    List<UUID> ocrSelected = ocrPending.stream().map(PendingAnalysisFailureRow::reportId).toList();
+    verify(terminalFailureJournalReader).findReportJobFailuresPendingNotification(any(), eq(70), eq(ocrSelected));
   }
 
   @Test
@@ -340,7 +344,8 @@ class ReportAnalysisFailureNotificationSweeperTest {
 
     sweeper.sweep();
 
-    verify(terminalFailureJournalReader, never()).findReportJobFailuresPendingNotification(any(), anyInt());
+    verify(terminalFailureJournalReader, never())
+        .findReportJobFailuresPendingNotification(any(), anyInt(), anyCollection());
   }
 
   @Test

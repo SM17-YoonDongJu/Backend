@@ -1,7 +1,9 @@
 package com.soma.backend.domain.report.repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
 /** {@code ai.report_job_failures} 크로스-애그리거트 조회. native query 대신 QueryDSL로 작성한다(하네스 규칙). */
 public interface ReportJobFailureViewRepositoryCustom {
@@ -13,8 +15,11 @@ public interface ReportJobFailureViewRepositoryCustom {
    * NULL이고, AI 초안이 없고, 종료 상태(BLOCKED·NEEDS_REUPLOAD)가 아닌 리포트. 두 저널이 같은 멱등 가드를
    * 쓰므로 리포트당 FAILED 알림은 저널과 무관하게 1회다.
    *
-   * @param since {@code last_failed_at} 하한(lookback). 부분 인덱스 {@code (last_failed_at) WHERE terminal}을 탄다
-   * @param limit 한 사이클 처리 상한(리포트 수)
+   * @param since             {@code last_failed_at} 하한(lookback). 부분 인덱스 {@code (last_failed_at) WHERE terminal}을 탄다
+   * @param limit             한 사이클 처리 상한(리포트 수)
+   * @param excludedReportIds 같은 사이클에 OCR 저널에서 이미 뽑은 리포트. {@code limit}을 적용하기 전에 빼서, 두 저널에
+   *                          모두 걸린 리포트가 이 저널 몫의 배치 슬롯을 차지하지 않게 한다. 비어 있으면 거르지 않는다
    */
-  List<PendingAnalysisFailureRow> findPendingNotification(LocalDateTime since, int limit);
+  List<PendingAnalysisFailureRow> findPendingNotification(
+      LocalDateTime since, int limit, Collection<UUID> excludedReportIds);
 }

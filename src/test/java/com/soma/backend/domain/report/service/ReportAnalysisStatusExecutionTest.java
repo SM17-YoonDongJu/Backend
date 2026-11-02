@@ -429,7 +429,7 @@ class ReportAnalysisStatusExecutionTest {
 
     // When
     List<PendingAnalysisFailureRow> pending =
-        reportJobFailureViewRepository.findPendingNotification(FAILED_AT.minusDays(1), 100);
+        reportJobFailureViewRepository.findPendingNotification(FAILED_AT.minusDays(1), 100, List.of());
 
     // Then
     assertThat(pending).extracting(PendingAnalysisFailureRow::reportId)
@@ -440,6 +440,26 @@ class ReportAnalysisStatusExecutionTest {
         .singleElement()
         .extracting(PendingAnalysisFailureRow::userId)
         .isEqualTo(ownerId);
+  }
+
+  @Test
+  @DisplayName("리포트 생성 실패 통지 대상 — OCR 저널에서 이미 뽑은 리포트는 limit 적용 전에 빠져 슬롯을 차지하지 않는다")
+  void reportJobPendingNotificationExcludesOcrSelectedReportsBeforeLimit() {
+    // Given: 네 리포트 모두 통지 대상이지만 셋은 같은 사이클에 OCR 저널에서 이미 뽑혔다
+    List<UUID> ocrSelected = List.of(reportId, saveReport(ownerId), saveReport(ownerId));
+    UUID reportJobOnlyId = saveReport(ownerId);
+    for (UUID id : ocrSelected) {
+      insertReportJobFailure(id, "llm_unavailable", true, FAILED_AT);
+    }
+    insertReportJobFailure(reportJobOnlyId, "context_unavailable", true, FAILED_AT);
+    reportRepository.flush();
+
+    // When: 남은 슬롯이 1개뿐이다
+    List<PendingAnalysisFailureRow> pending =
+        reportJobFailureViewRepository.findPendingNotification(FAILED_AT.minusDays(1), 1, ocrSelected);
+
+    // Then: 겹치는 리포트가 그 1자리를 먹지 않고 리포트 생성 실패만 있는 리포트가 뽑힌다(정렬이 없어도 결정적)
+    assertThat(pending).extracting(PendingAnalysisFailureRow::reportId).containsExactly(reportJobOnlyId);
   }
 
   /** AI 워커의 원시 SQL 세팅을 모사한다 — 전이표를 거치지 않는 진입이라 도메인 메서드로는 만들 수 없다. */

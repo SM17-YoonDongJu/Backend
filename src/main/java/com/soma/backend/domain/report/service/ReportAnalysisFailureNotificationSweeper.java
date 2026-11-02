@@ -176,8 +176,10 @@ public class ReportAnalysisFailureNotificationSweeper {
 
   /**
    * 배치 상한에 남은 자리만큼 리포트 생성 저널의 통지 대상을 채우고, 그 저널에서 새로 들어온 리포트 id를 돌려준다.
-   * 사이클당 상한(동기 FCM 왕복)을 두 저널 합계로 지키며, OCR 저널이 먼저 채운다. 통지한 리포트는 다음 사이클
-   * 대상에서 빠지므로, OCR 실패가 사이클마다 상한을 넘게 쏟아지지 않는 한 리포트 생성 실패도 곧 차례가 온다.
+   * 사이클당 상한(동기 FCM 왕복)을 두 저널 합계로 지키며, OCR 저널이 먼저 채운다. 이미 OCR 저널에서 뽑은 리포트는
+   * 조회 단계에서 빼므로(limit 적용 전) 남은 자리를 리포트 생성 실패만 있는 리포트로 다 채울 수 있다. 통지한
+   * 리포트는 다음 사이클 대상에서 빠지므로, OCR 실패가 사이클마다 상한을 넘게 쏟아지지 않는 한 리포트 생성 실패도
+   * 곧 차례가 온다.
    */
   private List<UUID> addReportJobPending(Map<UUID, PendingAnalysisFailureRow> pending, LocalDateTime since) {
     int remaining = BATCH_SIZE - pending.size();
@@ -185,7 +187,8 @@ public class ReportAnalysisFailureNotificationSweeper {
       return List.of();
     }
     List<UUID> added = new ArrayList<>();
-    for (PendingAnalysisFailureRow row : reportJobPendingOrEmpty(since, remaining)) {
+    for (PendingAnalysisFailureRow row : reportJobPendingOrEmpty(since, remaining, List.copyOf(pending.keySet()))) {
+      // 조회에서 이미 뺐지만 두 조회 사이의 변경에 대비해 한 번 더 걸러 둔다.
       if (pending.putIfAbsent(row.reportId(), row) == null) {
         added.add(row.reportId());
       }
@@ -193,9 +196,11 @@ public class ReportAnalysisFailureNotificationSweeper {
     return added;
   }
 
-  private List<PendingAnalysisFailureRow> reportJobPendingOrEmpty(LocalDateTime since, int limit) {
+  private List<PendingAnalysisFailureRow> reportJobPendingOrEmpty(
+      LocalDateTime since, int limit, List<UUID> ocrSelectedReportIds) {
     try {
-      return terminalFailureJournalReader.findReportJobFailuresPendingNotification(since, limit);
+      return terminalFailureJournalReader.findReportJobFailuresPendingNotification(
+          since, limit, ocrSelectedReportIds);
     } catch (DataAccessException | TransactionException ex) {
       onReportJobJournalUnavailable(ex);
       return List.of();

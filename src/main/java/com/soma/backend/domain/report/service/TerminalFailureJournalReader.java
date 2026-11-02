@@ -2,6 +2,7 @@ package com.soma.backend.domain.report.service;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -81,9 +82,12 @@ public class TerminalFailureJournalReader {
   /**
    * 리포트 생성 확정 실패 중 아직 통지하지 않은 리포트(알림 스윕용). 스윕 트랜잭션과 떼어 두어야 012가 없는
    * 환경에서도 OCR 실패 통지가 계속 나간다. 조회 실패 시 예외를 그대로 던진다.
+   *
+   * @param excludedReportIds 같은 사이클에 OCR 저널에서 이미 뽑은 리포트(limit 적용 전에 뺀다)
    */
   @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
-  public List<PendingAnalysisFailureRow> findReportJobFailuresPendingNotification(LocalDateTime since, int limit) {
-    return reportJobFailureViewRepository.findPendingNotification(since, limit);
+  public List<PendingAnalysisFailureRow> findReportJobFailuresPendingNotification(
+      LocalDateTime since, int limit, Collection<UUID> excludedReportIds) {
+    return reportJobFailureViewRepository.findPendingNotification(since, limit, excludedReportIds);
   }
 }
