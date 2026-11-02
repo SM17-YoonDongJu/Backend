@@ -50,6 +50,23 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
     QUser us = QUser.user;
     QReportIssue ri = QReportIssue.reportIssue;
 
+    // 2단계 조회: 커버링 인덱스(V48)로 index-only scan이 되려면 select 컬럼이 전부 인덱스 안에 있어야 한다.
+    // 그래서 먼저 조건·정렬·offset/limit을 id만 꺼내는 쿼리로 끝내고, 상세 컬럼과 issueCount 서브쿼리는
+    // 그 페이지 id(최대 page size개)에만 붙인다. 두 쿼리 사이 동시 변경으로 한 행이 빠질 수 있으나 읽기 전용
+    // 목록이라 허용한다(채팅방 목록 #371과 같은 판단).
+    List<UUID> ids = queryFactory
+        .select(rp.id)
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .where(pendingReviewCondition(rp, us, status, accidentType, region, adjusterId))
+        .orderBy(pendingReviewOrder(rp, specialtyTypes))
+        .offset(pageable.getOffset())
+        .limit(pageable.getPageSize())
+        .fetch();
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+
     return queryFactory
         .select(Projections.constructor(PendingReviewRow.class,
             rp.id, rp.caseNo, rp.title, rp.accidentType, us.region, rp.status,
@@ -60,10 +77,8 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
             rp.createdAt))
         .from(rp)
         .join(us).on(us.id.eq(rp.userId))
-        .where(pendingReviewCondition(rp, us, status, accidentType, region, adjusterId))
+        .where(rp.id.in(ids))
         .orderBy(pendingReviewOrder(rp, specialtyTypes))
-        .offset(pageable.getOffset())
-        .limit(pageable.getPageSize())
         .fetch();
   }
 
@@ -116,6 +131,9 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
       orders.add(specialtyRank.asc());
     }
     orders.add(rp.createdAt.desc());
+    // created_at 동률이면 순서가 유일하지 않아 페이지 경계에서 중복·누락이 생기고, ID 단계와 상세 단계의 순서도
+    // 어긋날 수 있다. id(커버링 인덱스 INCLUDE 컬럼)를 타이브레이커로 둔다.
+    orders.add(rp.id.asc());
     return orders.toArray(new OrderSpecifier[0]);
   }
 

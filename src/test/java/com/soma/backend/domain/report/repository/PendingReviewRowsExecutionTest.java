@@ -3,6 +3,10 @@ package com.soma.backend.domain.report.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -112,6 +116,66 @@ class PendingReviewRowsExecutionTest {
     assertThat(reportRepository.countPendingReviewRows(null, null, region, adjuster)).isEqualTo(2L);
   }
 
+  @Test
+  @DisplayName("전문분야 정렬 + created_at 동률이 섞여도 페이지를 끝까지 넘기면 순서대로 누락·중복 없이 모인다")
+  void pagingThroughTiesHasNoGapOrDuplicate() {
+    LocalDateTime t1 = LocalDateTime.of(2026, 10, 1, 10, 0);
+    LocalDateTime t2 = t1.plusHours(1);
+    List<UUID> all = new ArrayList<>();
+    all.add(saveReportAt(AccidentType.FIRE, "RP-1", t1));
+    all.add(saveReportAt(AccidentType.FIRE, "RP-2", t2));
+    all.add(saveReportAt(AccidentType.FIRE, "RP-3", t2));
+    all.add(saveReportAt(AccidentType.TRAFFIC, "RP-4", t2));
+    all.add(saveReportAt(AccidentType.TRAFFIC, "RP-5", t2));
+    all.add(saveReportAt(AccidentType.OTHER, "RP-6", t2));
+    all.add(saveReportAt(AccidentType.TRAFFIC, "RP-7", t1));
+    flushAndClear();
+
+    List<PendingReviewRow> collected = new ArrayList<>();
+    for (int page = 0; page < 10; page++) {
+      List<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
+          null, null, region, adjuster, Set.of(AccidentType.FIRE), PageRequest.of(page, 2));
+      if (rows.isEmpty()) {
+        break;
+      }
+      collected.addAll(rows);
+    }
+    List<UUID> pagedIds = collected.stream().map(PendingReviewRow::reportId).toList();
+    List<UUID> singlePageIds = reportRepository.findPendingReviewRows(
+        null, null, region, adjuster, Set.of(AccidentType.FIRE), FIRST_PAGE).stream()
+        .map(PendingReviewRow::reportId).toList();
+
+    assertThat(pagedIds).doesNotHaveDuplicates().containsExactlyInAnyOrderElementsOf(all);
+    assertThat(pagedIds).containsExactlyElementsOf(singlePageIds);
+    // 기대 순서를 구현과 독립적으로 만든다: 전문분야 → created_at desc → id asc(동률 타이브레이커).
+    // PostgreSQL uuid 정렬은 부호 없는 바이트 순서라 Java UUID.compareTo(부호 있는 long 비교)가 아니라
+    // 소문자 16진 문자열 사전순과 같다.
+    List<UUID> expected = new ArrayList<>();
+    expected.addAll(sortedByText(all.get(1), all.get(2)));
+    expected.add(all.get(0));
+    expected.addAll(sortedByText(all.get(3), all.get(4), all.get(5)));
+    expected.add(all.get(6));
+    assertThat(pagedIds).containsExactlyElementsOf(expected);
+    // 전문분야(FIRE) 3건이 먼저, 각 묶음 안에서는 접수 최신순.
+    assertThat(collected.subList(0, 3)).allMatch(row -> row.accidentType() == AccidentType.FIRE);
+    assertThat(collected.subList(3, collected.size())).noneMatch(row -> row.accidentType() == AccidentType.FIRE);
+    assertThat(collected.subList(0, 3)).extracting(PendingReviewRow::createdAt).containsExactly(t2, t2, t1);
+    assertThat(collected.subList(3, collected.size())).extracting(PendingReviewRow::createdAt)
+        .containsExactly(t2, t2, t2, t1);
+  }
+
+  @Test
+  @DisplayName("ID 단계가 0건이면(마지막 페이지 너머·조건 불일치) 상세 조회 없이 빈 목록")
+  void emptyIdsReturnEmptyList() {
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE, "RE-1");
+    flushAndClear();
+
+    assertThat(reportRepository.findPendingReviewRows(
+        null, null, region, adjuster, Set.of(), PageRequest.of(1, 50))).isEmpty();
+    assertThat(reportRepository.findPendingReviewRows(
+        null, AccidentType.TRAFFIC, region, adjuster, Set.of(), FIRST_PAGE)).isEmpty();
+  }
+
   private void assertSameSize(ReportStatus status, AccidentType accidentType, int expected) {
     assertThat(listIds(status, accidentType)).hasSize(expected);
     assertThat(reportRepository.countPendingReviewRows(status, accidentType, region, adjuster))
@@ -127,6 +191,21 @@ class PendingReviewRowsExecutionTest {
     Report report = Report.createPending(customerId, null, null, accidentType, "질문", caseNo + "-" + region);
     ReflectionTestUtils.setField(report, "status", status);
     return reportRepository.save(report).getId();
+  }
+
+  /** created_at은 감사 컬럼(updatable=false)이라 flush 후 네이티브 UPDATE로 동률·순서를 고정한다(테스트 전용). */
+  private UUID saveReportAt(AccidentType accidentType, String caseNo, LocalDateTime createdAt) {
+    UUID id = saveReport(ReportStatus.AWAITING_INSPECTION, accidentType, caseNo);
+    entityManager.flush();
+    entityManager.createNativeQuery("UPDATE reports SET created_at = :createdAt WHERE id = :id")
+        .setParameter("createdAt", createdAt)
+        .setParameter("id", id)
+        .executeUpdate();
+    return id;
+  }
+
+  private static List<UUID> sortedByText(UUID... ids) {
+    return Arrays.stream(ids).sorted(Comparator.comparing(UUID::toString)).toList();
   }
 
   private void persistReview(UUID reportId, UUID adjusterId, ReviewStatus status) {
