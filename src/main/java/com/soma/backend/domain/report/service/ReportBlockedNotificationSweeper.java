@@ -19,10 +19,10 @@ import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
 import com.soma.backend.domain.report.repository.ReportRepository;
 
 /**
- * BLOCKED(AI 입력 가드레일 차단) 알림 스윕(design.md F1 후속). {@link ReportAnalysisFailureNotificationSweeper}와
- * 같은 "무음 실패는 폴링 스윕으로 잡는다" 원칙을 따르되, 대상 저널이 다르다 — BLOCKED는 가드레일이 OCR·초안
- * 생성 <b>이전</b>에 파이프라인을 끊어버려 {@code ai.ocr_job_failures}에 흔적이 안 남는다. 그래서 이 스윕은
- * 저널이 아니라 {@code reports.status}를 직접 스캔한다.
+ * BLOCKED(AI 입력 가드레일 차단·리포트 생성 LLM 거절) 알림 스윕(design.md F1 후속).
+ * {@link ReportAnalysisFailureNotificationSweeper}와 같은 "무음 실패는 폴링 스윕으로 잡는다" 원칙을 따르되, 대상
+ * 저널이 다르다 — 가드레일은 OCR·초안 생성 <b>이전</b>에 파이프라인을 끊고 LLM 거절은 실패 저널에 기록되지
+ * 않아, 어느 쪽도 저널에 흔적이 안 남는다. 그래서 이 스윕은 저널이 아니라 {@code reports.status}를 직접 스캔한다.
  *
  * <p><b>트랜잭션 경계:</b> 이 트랜잭션은 {@link Report} Aggregate 하나만 수정한다(통지 시각). 알림 행 생성
  * ({@code Notification} Aggregate)과 FCM 발송은 {@link ReportBlockedEvent}를 통해 커밋 후(AFTER_COMMIT)로
@@ -53,7 +53,7 @@ public class ReportBlockedNotificationSweeper {
     this.reportRepository = reportRepository;
     this.eventPublisher = eventPublisher;
     this.notifiedCounter = Counter.builder("report.blocked.notified")
-        .description("AI 입력 가드레일 차단으로 사용자에게 통지한 리포트 수")
+        .description("AI 차단(입력 가드레일 차단·리포트 생성 LLM 거절)으로 사용자에게 통지한 리포트 수")
         .register(meterRegistry);
     this.sweepErrorCounter = Counter.builder("report.blocked.sweep.errors")
         .description("BLOCKED 알림 스윕 사이클이 예외로 끝난 횟수")

@@ -24,11 +24,14 @@ import jakarta.persistence.PersistenceContext;
 
 import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.AnalysisFailureReason;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAttachment;
+import com.soma.backend.domain.report.entity.ReportJobFailureView;
 import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
 import com.soma.backend.domain.report.repository.PendingAnalysisFailureRow;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
+import com.soma.backend.domain.report.repository.ReportJobFailureViewRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -62,6 +65,8 @@ class ReportAnalysisStatusExecutionTest {
   private ReportAttachmentRepository reportAttachmentRepository;
   @Autowired
   private OcrJobFailureViewRepository ocrJobFailureViewRepository;
+  @Autowired
+  private ReportJobFailureViewRepository reportJobFailureViewRepository;
   @Autowired
   private JdbcTemplate jdbcTemplate;
   @PersistenceContext
@@ -363,6 +368,106 @@ class ReportAnalysisStatusExecutionTest {
     assertThat(pending).extracting(PendingAnalysisFailureRow::reportId)
         .contains(reportId)
         .doesNotContain(blockedReportId, needsReuploadReportId);
+  }
+
+  /** 리포트 생성 실패 저널 행 삽입 — 매핑하지 않는 운영 컬럼(error_type·message_id 등)도 채워 둔다. */
+  private void insertReportJobFailure(
+      UUID targetReportId, String failureClass, boolean terminal, LocalDateTime lastFailedAt) {
+    jdbcTemplate.update("""
+        INSERT INTO ai.report_job_failures
+          (id, report_id, message_id, claim_id, job_id, failure_class, error_type, attempts, terminal,
+           first_failed_at, last_failed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        UUID.randomUUID(), targetReportId, "sqs-message-id", "claim-1", UUID.randomUUID(), failureClass,
+        "AiClientError", 3, terminal, FAILED_AT, lastFailedAt);
+  }
+
+  @Test
+  @DisplayName("리포트 생성 저널 뷰는 terminal이고 report_id가 있는 행만 노출한다(계약 §4-1 — 재전달 중·역직렬화 실패 무시)")
+  void reportJobFailureViewExposesOnlyTerminalRowsWithReportId() {
+    // Given: 확정 실패 1건, 재전달 중 1건, report_id 없는 poison(schema_invalid) 1건
+    UUID retryingReportId = saveReport(ownerId);
+    insertReportJobFailure(reportId, "llm_unavailable", true, FAILED_AT);
+    insertReportJobFailure(retryingReportId, "llm_unavailable", false, FAILED_AT);
+    insertReportJobFailure(null, "schema_invalid", true, FAILED_AT);
+
+    // When
+    List<ReportJobFailureView> rows =
+        reportJobFailureViewRepository.findAllByReportIdIn(List.of(reportId, retryingReportId));
+    Long orphanRows = entityManager.createQuery(
+        "select count(v) from ReportJobFailureView v where v.reportId is null", Long.class).getSingleResult();
+
+    // Then
+    assertThat(rows).singleElement().satisfies(row -> {
+      assertThat(row.getReportId()).isEqualTo(reportId);
+      assertThat(row.reason()).isEqualTo(AnalysisFailureReason.UNKNOWN);
+      assertThat(row.getFirstFailedAt()).isEqualTo(FAILED_AT);
+    });
+    assertThat(orphanRows).isZero();
+  }
+
+  /**
+   * 통지 대상 조건을 실제 SQL로 고정한다. 저널 행은 모두 넣고 리포트 쪽 상태만 바꿔, 조건 하나가 빠지면 그 리포트가
+   * 결과에 끼어들어 깨지게 했다(정렬이 없는 조회라 포함·미포함으로만 본다).
+   */
+  @Test
+  @DisplayName("리포트 생성 실패 통지 대상 — 종료 상태·AI 초안·통지 완료·조회 창 밖·재전달 중 리포트는 뽑지 않는다")
+  void reportJobPendingNotificationExcludesSettledReports() {
+    // Given: 모두 리포트 생성 저널에 행이 있지만 통지 대상은 reportId 하나뿐이다
+    UUID blockedReportId = saveReport(ownerId);
+    UUID needsReuploadReportId = saveReport(ownerId);
+    UUID draftedReportId = saveReport(ownerId);
+    UUID notifiedReportId = saveReport(ownerId);
+    UUID staleReportId = saveReport(ownerId);
+    UUID retryingReportId = saveReport(ownerId);
+    for (UUID id : List.of(reportId, blockedReportId, needsReuploadReportId, draftedReportId, notifiedReportId)) {
+      insertReportJobFailure(id, "llm_unavailable", true, FAILED_AT);
+    }
+    insertReportJobFailure(staleReportId, "llm_unavailable", true, FAILED_AT.minusDays(30));
+    insertReportJobFailure(retryingReportId, "llm_unavailable", false, FAILED_AT);
+    markStatus(blockedReportId, "BLOCKED");
+    markStatus(needsReuploadReportId, "NEEDS_REUPLOAD");
+    jdbcTemplate.update("UPDATE reports SET applicable_guarantees = ARRAY['상해후유장해'] WHERE id = ?", draftedReportId);
+    jdbcTemplate.update("UPDATE reports SET analysis_failure_notified_at = now() WHERE id = ?", notifiedReportId);
+
+    // When
+    List<PendingAnalysisFailureRow> pending =
+        reportJobFailureViewRepository.findPendingNotification(FAILED_AT.minusDays(1), 100, List.of());
+
+    // Then
+    assertThat(pending).extracting(PendingAnalysisFailureRow::reportId)
+        .contains(reportId)
+        .doesNotContain(blockedReportId, needsReuploadReportId, draftedReportId, notifiedReportId,
+            staleReportId, retryingReportId);
+    assertThat(pending).filteredOn(row -> row.reportId().equals(reportId))
+        .singleElement()
+        .extracting(PendingAnalysisFailureRow::userId)
+        .isEqualTo(ownerId);
+  }
+
+  /**
+   * 제외 목록이 limit보다 먼저 걸리는지 본다. 겹치는 리포트를 셋 넣고 슬롯을 1개로 좁혀, 제외가 limit 뒤에 걸리면
+   * (또는 빠지면) 겹치는 리포트가 그 1자리를 차지해 깨진다 — 제외 조건을 지우는 뮤테이션에서 실패하는 것을 확인했다.
+   */
+  @Test
+  @DisplayName("리포트 생성 실패 통지 대상 — OCR 저널에서 이미 뽑은 리포트는 limit 적용 전에 빠져 슬롯을 차지하지 않는다")
+  void reportJobPendingNotificationExcludesOcrSelectedReportsBeforeLimit() {
+    // Given: 네 리포트 모두 통지 대상이지만 셋은 같은 사이클에 OCR 저널에서 이미 뽑혔다
+    List<UUID> ocrSelected = List.of(reportId, saveReport(ownerId), saveReport(ownerId));
+    UUID reportJobOnlyId = saveReport(ownerId);
+    for (UUID id : ocrSelected) {
+      insertReportJobFailure(id, "llm_unavailable", true, FAILED_AT);
+    }
+    insertReportJobFailure(reportJobOnlyId, "context_unavailable", true, FAILED_AT);
+    reportRepository.flush();
+
+    // When: 남은 슬롯이 1개뿐이다
+    List<PendingAnalysisFailureRow> pending =
+        reportJobFailureViewRepository.findPendingNotification(FAILED_AT.minusDays(1), 1, ocrSelected);
+
+    // Then: 겹치는 리포트가 그 1자리를 먹지 않고 리포트 생성 실패만 있는 리포트가 뽑힌다(정렬이 없어도 결정적)
+    assertThat(pending).extracting(PendingAnalysisFailureRow::reportId).containsExactly(reportJobOnlyId);
   }
 
   /** AI 워커의 원시 SQL 세팅을 모사한다 — 전이표를 거치지 않는 진입이라 도메인 메서드로는 만들 수 없다. */

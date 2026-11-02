@@ -96,8 +96,9 @@ public class ReportQueryService {
   }
 
   /**
-   * 분석 상태 배치 조회 + degrade. {@code ai.ocr_job_failures}는 AI 워커 소유라 GRANT 미적용·미배포 상태가
-   * 있을 수 있는데, 목록·상세는 서비스의 핵심 화면이라 그 이유로 통째로 500이 되면 안 된다.
+   * 분석 상태 배치 조회 + degrade. 실패 저널({@code ai.ocr_job_failures}·{@code ai.report_job_failures})은 AI
+   * 워커 소유라 GRANT 미적용·미배포 상태가 있을 수 있는데, 목록·상세는 서비스의 핵심 화면이라 그 이유로 통째로
+   * 500이 되면 안 된다.
    *
    * <p>저널(확정 실패) 조회 실패는 {@code resolveAll} 안에서 이미 리포트 단위로 흡수돼, {@code BLOCKED}·
    * {@code NEEDS_REUPLOAD}처럼 {@code reports.status}만으로 판정되는 상태는 살아남는다. 여기서 잡는

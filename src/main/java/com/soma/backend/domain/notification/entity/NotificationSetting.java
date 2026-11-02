@@ -87,7 +87,7 @@ public class NotificationSetting {
       // 마케팅이 아니라 사용자 액션(재업로드 등)이 필요할 수 있는 시스템 실패 통지다. 토글로 끌 수 있게 하면
       // 이 알림이 없애려는 무음 실패를 다시 만들므로 항상 발송한다(analysis_complete 토글과 분리).
       case ANALYSIS_FAILED -> true;
-      // AI 입력 가드레일 차단도 같은 이유로 항상 발송한다(§ANALYSIS_FAILED 주석 참고).
+      // AI 차단(입력 가드레일 차단·리포트 생성 LLM 거절)도 같은 이유로 항상 발송한다(§ANALYSIS_FAILED 주석 참고).
       case REPORT_BLOCKED -> true;
       // OCR 품질 미달은 재업로드라는 사용자 액션이 있어야 진행되는 통지라 더더욱 끌 수 없다.
       case REPORT_NEEDS_REUPLOAD -> true;
