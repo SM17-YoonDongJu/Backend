@@ -50,6 +50,7 @@ public class ReportAnalysisResolver {
   private final Counter ocrJobJournalDegraded;
   private final Counter reportJobJournalDegraded;
 
+  /** 저널별 degrade 카운터를 미리 등록해, 한 번도 degrade하지 않은 저널도 대시보드에 0으로 보이게 한다. */
   public ReportAnalysisResolver(
       ReportRepository reportRepository,
       TerminalFailureJournalReader terminalFailureJournalReader,

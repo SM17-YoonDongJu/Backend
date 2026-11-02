@@ -407,6 +407,10 @@ class ReportAnalysisStatusExecutionTest {
     assertThat(orphanRows).isZero();
   }
 
+  /**
+   * 통지 대상 조건을 실제 SQL로 고정한다. 저널 행은 모두 넣고 리포트 쪽 상태만 바꿔, 조건 하나가 빠지면 그 리포트가
+   * 결과에 끼어들어 깨지게 했다(정렬이 없는 조회라 포함·미포함으로만 본다).
+   */
   @Test
   @DisplayName("리포트 생성 실패 통지 대상 — 종료 상태·AI 초안·통지 완료·조회 창 밖·재전달 중 리포트는 뽑지 않는다")
   void reportJobPendingNotificationExcludesSettledReports() {
@@ -442,6 +446,10 @@ class ReportAnalysisStatusExecutionTest {
         .isEqualTo(ownerId);
   }
 
+  /**
+   * 제외 목록이 limit보다 먼저 걸리는지 본다. 겹치는 리포트를 셋 넣고 슬롯을 1개로 좁혀, 제외가 limit 뒤에 걸리면
+   * (또는 빠지면) 겹치는 리포트가 그 1자리를 차지해 깨진다 — 제외 조건을 지우는 뮤테이션에서 실패하는 것을 확인했다.
+   */
   @Test
   @DisplayName("리포트 생성 실패 통지 대상 — OCR 저널에서 이미 뽑은 리포트는 limit 적용 전에 빠져 슬롯을 차지하지 않는다")
   void reportJobPendingNotificationExcludesOcrSelectedReportsBeforeLimit() {

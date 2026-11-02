@@ -102,6 +102,10 @@ public class ReportAnalysisFailureNotificationSweeper {
   @Value("${app.report.analysis-failure-sweep-enabled:true}")
   private boolean sweepEnabled;
 
+  /**
+   * 카운터를 미리 등록한다 — 통지 카운터는 대표 사유 enum 값마다 하나씩(통지가 0건인 사유도 0으로 보이게),
+   * 리포트 생성 저널 degrade 카운터는 {@link ReportAnalysisResolver}와 같은 이름·태그라 값을 공유한다.
+   */
   public ReportAnalysisFailureNotificationSweeper(
       OcrJobFailureViewRepository ocrJobFailureViewRepository,
       TerminalFailureJournalReader terminalFailureJournalReader,
@@ -141,6 +145,10 @@ public class ReportAnalysisFailureNotificationSweeper {
     }
   }
 
+  /**
+   * 한 사이클 — 통지 대상 리포트를 두 저널에서 모으고(OCR 먼저, 남은 슬롯은 리포트 생성), 판정에 필요한 실패 행과
+   * 리포트를 배치로 한 번씩 읽은 뒤 리포트마다 다시 판정해 FAILED인 것만 통지한다. 대상이 없으면 바로 끝낸다.
+   */
   private void sweepOnce() {
     LocalDateTime since = LocalDateTime.now().minusDays(LOOKBACK_DAYS);
     Map<UUID, PendingAnalysisFailureRow> pending = new LinkedHashMap<>();
@@ -196,6 +204,7 @@ public class ReportAnalysisFailureNotificationSweeper {
     return added;
   }
 
+  /** 리포트 생성 저널 통지 대상 조회. 실패하면 이번 사이클은 빈 목록으로 넘어간다(OCR 통지는 그대로). */
   private List<PendingAnalysisFailureRow> reportJobPendingOrEmpty(
       LocalDateTime since, int limit, List<UUID> ocrSelectedReportIds) {
     try {
@@ -207,6 +216,10 @@ public class ReportAnalysisFailureNotificationSweeper {
     }
   }
 
+  /**
+   * 리포트 생성 저널에서 뽑힌 리포트의 실패 행 재조회. 실패하면 빈 맵이라 그 리포트들은 이번 사이클에 PROCESSING으로
+   * 판정돼 통지되지 않고, 통지 시각도 남지 않아 다음 사이클에 다시 뽑힌다.
+   */
   private Map<UUID, List<ReportJobFailureView>> reportJobFailuresOrEmpty(List<UUID> reportIds) {
     try {
       return terminalFailureJournalReader.findTerminalReportJobFailures(reportIds);

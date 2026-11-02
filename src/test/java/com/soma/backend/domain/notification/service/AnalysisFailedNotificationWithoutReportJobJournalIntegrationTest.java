@@ -104,6 +104,10 @@ class AnalysisFailedNotificationWithoutReportJobJournalIntegrationTest {
     reportRepository.deleteAll();
   }
 
+  /**
+   * 공유 컨텍스트의 누적 카운터 값. 같은 컨텍스트를 쓰는 다른 테스트가 먼저 올렸을 수 있어 절댓값이 아니라 전후
+   * 차이로 비교한다. 아직 한 번도 등록되지 않은 카운터는 0으로 본다.
+   */
   private double counter(String name, String... tags) {
     Counter counter = meterRegistry.find(name).tags(tags).counter();
     return counter == null ? 0.0 : counter.count();

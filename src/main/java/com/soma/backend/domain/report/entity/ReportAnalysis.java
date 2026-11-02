@@ -152,10 +152,15 @@ public record ReportAnalysis(
     return new ReportAnalysis(AnalysisState.FAILED, representative, failedAt, List.of());
   }
 
+  /** 대표 실패 시각 — 가장 이른 {@code first_failed_at}. NULL은 건너뛰고, 남는 값이 없으면 null이다. */
   private static @Nullable LocalDateTime earliest(Stream<LocalDateTime> timestamps) {
     return timestamps.filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(null);
   }
 
+  /**
+   * NEEDS_REUPLOAD 문서 목록 — 청구 fan-in으로 OCR 저널에 남은 문서(사유 있음)와 개별 품질 게이트로 걸린 문서
+   * (사유 없음)를 합친다. 리포트 생성 저널은 특정 문서가 없어 여기에 들어오지 않는다. 입력이 null이면 건너뛴다.
+   */
   private static List<FailedDocument> mergeFailedDocuments(
       List<OcrJobFailureView> ocrJobFailures, List<OcrResultView> needsReuploadDocuments) {
     List<FailedDocument> merged = new ArrayList<>();
@@ -169,6 +174,7 @@ public record ReportAnalysis(
     return merged;
   }
 
+  /** OCR 저널 행을 문서 단위 실패로 옮긴다. 사유는 행마다 ACL({@link OcrJobFailureView#reason()})로 번역한다. */
   private static List<FailedDocument> toFailedDocuments(List<OcrJobFailureView> ocrJobFailures) {
     return ocrJobFailures.stream()
         .map(failure -> new FailedDocument(failure.getAttachmentId(), failure.reason()))

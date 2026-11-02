@@ -26,6 +26,11 @@ public class ReportJobFailureViewRepositoryImpl implements ReportJobFailureViewR
 
   private final JPAQueryFactory queryFactory;
 
+  /**
+   * 리포트 생성 확정 실패 중 아직 통지하지 않은 리포트를 뽑는다(조건은 인터페이스 javadoc 참고). 제외 목록이 있으면
+   * {@code limit}보다 먼저 걸러야 하므로 where 절에 넣는다 — 결과를 받은 뒤 거르면 겹치는 리포트가 이미 슬롯을
+   * 차지한 뒤다.
+   */
   @Override
   public List<PendingAnalysisFailureRow> findPendingNotification(
       LocalDateTime since, int limit, Collection<UUID> excludedReportIds) {
