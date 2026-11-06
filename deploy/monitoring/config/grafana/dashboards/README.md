@@ -17,6 +17,7 @@
 | `rds-infra.json` | RDS 인프라 (커스텀, CloudWatch) | RDS CPU·커넥션·메모리·스토리지·IOPS·레이턴시·복제 지연 | ⚠️ **모니터링 인스턴스 IAM Role에 CloudWatch 조회 권한 필요**(아래 참고) — 없으면 패널 전부 에러 |
 | `websocket-chat.json` | 채팅 WebSocket (커스텀) | 핸드셰이크·구독 성공률, 활성 연결·구독 수, Redis relay 발행/전달 처리량 | 배포 즉시(커스텀 계측이라 별도 exporter·설정 불필요) + `application` 라벨 |
 | `insurance-chunker.json` | 약관 인덱싱 (커스텀, #259) | 마지막 성공 이후 경과·사이클 성패·상태별 문서·격리/경계 weak 문서·단계별 시간 비중 | ⚠️ brbs-etl stopped + `insurance-chunker` 잡 주석(#328)이라 현재 No data — 재기동 시 잡 주석 해제·IndexNeverSucceeded unpause와 함께 복원. 복원 후에도 **7일 주기 배치라 카운터가 안 움직이는 게 정상** — 주 신호는 '마지막 실행 상태' 게이지다. 첫 사이클이 성공하기 전에는 신선도 패널이 `성공 기록 없음`으로 뜬다(지표 자체가 없음) |
+| `ocr-worker.json` | OCR 워커 (커스텀) | 청구 서류 OCR 큐 적체(가장 오래된 메시지·대기·처리 중·DLQ·발행/처리량)·워커 파드(가용·재시작·종료 사유·메모리·CPU)·작업 결과와 VLM 대체(로그 집계)·경고/오류 로그 | 큐 행은 CloudWatch(AWS/SQS) — 아래 IAM 권한 필요(모니터링 롤에 `CloudWatchReadOnlyAccess`가 붙어 있다). 파드 행은 soma-k8s remote_write, 작업 행은 Loki `service=brbs-ocr-worker`(Alloy가 컨테이너 이름으로 붙인다). 워커에 /metrics가 없어 처리 시간 패널은 없다 — 로그에 시간 필드도 없다 |
 | `15757.json` | Kubernetes / Views / Global | soma-k8s 클러스터 전체 — 실사용(usage)과 예약(requests/limits vs allocatable) 요약 | ⚠️ **soma-k8s remote_write(#328) 필요** — 아래 참고 |
 | `15758.json` | Kubernetes / Views / Namespaces | 네임스페이스별 리소스 | 〃 |
 | `15759.json` | Kubernetes / Views / Nodes | 클러스터 노드(=EC2)별 시스템 | 〃 |
