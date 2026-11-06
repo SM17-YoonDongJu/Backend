@@ -701,7 +701,7 @@
       "id": 12,
       "type": "stat",
       "title": "메모리 limit 대비",
-      "description": "working set ÷ limit. 1에 가까우면 OOMKilled 직전이다 — 페이지가 많은 서류일수록 높다.",
+      "description": "파드마다 working set ÷ 그 파드의 limit을 구한 뒤 가장 큰 값. 1에 가까우면 OOMKilled 직전이다 — 쪽이 많은 서류일수록 높다.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -757,7 +757,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(container_memory_working_set_bytes{cluster=\"soma-k8s\", namespace=\"default\", container=\"ocr-worker\"}) / max(kube_pod_container_resource_limits{cluster=\"soma-k8s\", namespace=\"default\", container=\"ocr-worker\", resource=\"memory\"})",
+          "expr": "max(max by (pod) (container_memory_working_set_bytes{cluster=\"soma-k8s\", namespace=\"default\", container=\"ocr-worker\"}) / max by (pod) (kube_pod_container_resource_limits{cluster=\"soma-k8s\", namespace=\"default\", container=\"ocr-worker\", resource=\"memory\"}))",
           "instant": true,
           "range": false
         }
