@@ -42,7 +42,7 @@
       "id": 2,
       "type": "stat",
       "title": "가장 오래된 메시지",
-      "description": "brbs-ocr-job-queue-dev에서 가장 오래 지워지지 않은 메시지의 나이다. 처리 중인 메시지도 들어간다. 워커가 없거나 멈추면 계속 자란다 — OcrQueueStale 알림이 2시간에서 발화한다(surya가 CPU라 여러 장짜리 청구는 1시간을 넘길 수 있다). 메시지는 4일 뒤 SQS가 지운다.",
+      "description": "brbs-ocr-job-queue-dev에서 가장 오래 지워지지 않은 메시지의 나이다. 처리 중인 메시지도 들어간다. 워커가 없거나 멈추면 계속 자란다 — OcrQueueStale 알림이 1시간에서 발화한다. 메시지는 4일 뒤 SQS가 지운다.",
       "datasource": {
         "type": "cloudwatch",
         "uid": "cloudwatch"
@@ -66,11 +66,11 @@
               },
               {
                 "color": "orange",
-                "value": 3600
+                "value": 1800
               },
               {
                 "color": "red",
-                "value": 7200
+                "value": 3600
               }
             ]
           },
@@ -516,7 +516,7 @@
       "id": 9,
       "type": "stat",
       "title": "가용 파드",
-      "description": "ocr-worker Deployment의 가용 레플리카. 0이면 OcrWorkerDown이 발화한다. brbs-etl 노드에만 뜨므로 노드가 꺼져도 0이다.",
+      "description": "ocr-worker Deployment의 가용 레플리카. 0이면 OcrWorkerDown이 발화한다. 일반 워커(8GB) 메모리가 모자라 축출된 뒤 다시 뜨지 못해도 0이다.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -767,7 +767,7 @@
       "id": 13,
       "type": "timeseries",
       "title": "메모리",
-      "description": "working set과 limit. surya 모델은 첫 작업에서 올라와 그 뒤로 상주한다.",
+      "description": "working set과 limit. 모델은 첫 작업에서 올라와 상주한다(작업 사이 1.5~1.8GB). 쪽 하나를 OCR하는 동안 잠깐 3.8GB 안팎까지 오른다.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -825,7 +825,7 @@
       "id": 14,
       "type": "timeseries",
       "title": "CPU (코어)",
-      "description": "surya는 torch 스레드 수(OMP_NUM_THREADS)만큼 쓴다. 같은 노드의 chunker와 코어 4개를 나눠 쓴다.",
+      "description": "PaddleOCR·NER은 스레드 수(OCR_CPU_THREADS·OMP_NUM_THREADS, 2)만큼 쓴다. 일반 워커(t3.large)의 vCPU 2개를 backend 등과 나눠 쓴다.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -957,7 +957,7 @@
       "id": 17,
       "type": "timeseries",
       "title": "VLM 대체·마스킹 검증",
-      "description": "vlm_table_extraction_failed = 표 전사 VLM이 실패해 그 쪽을 surya 텍스트로 처리했다(지금은 VLM이 붙어 있지 않아 표 서류마다 나온다). masked_image_verification_failed = 마스킹본을 다시 OCR했더니 PII가 남았다.",
+      "description": "VLM(etl-vllm, PaddleOCR-VL) 쪽 전사가 실패했거나(vlm_table_extraction_failed — reason: http·timeout·malformed·truncated·loop) 쪽 예산 210초를 넘겨(vlm_page_budget_exceeded) 그 쪽을 OCR 엔진 결과로 처리한 수. brbs-etl이 꺼져 있으면 표 서류마다 나온다. masked_image_verification_failed = 마스킹본을 다시 OCR했더니 PII가 남았다.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -999,10 +999,20 @@
           },
           "expr": "sum(count_over_time({service=\"brbs-ocr-worker\"} |= \"vlm_table_extraction_failed\" [$__interval]))",
           "queryType": "range",
-          "legendFormat": "VLM 대체"
+          "legendFormat": "VLM 실패 → 엔진"
         },
         {
           "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({service=\"brbs-ocr-worker\"} |= \"vlm_page_budget_exceeded\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "VLM 예산 초과 → 엔진"
+        },
+        {
+          "refId": "C",
           "datasource": {
             "type": "loki",
             "uid": "loki"

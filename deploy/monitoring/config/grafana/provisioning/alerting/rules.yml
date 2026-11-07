@@ -321,7 +321,7 @@ groups:
           severity: critical
         annotations:
           summary: "OCR 워커(ocr-worker) 가용 파드가 없음"
-          description: "5분 이상 ocr-worker Deployment의 가용 레플리카가 0이다 — 파드가 죽었거나 스케줄되지 못하고 있다. 워커는 brbs-etl 노드에만 뜨므로 그 노드가 꺼져 있어도 이 상태다. 청구 서류 OCR이 멈추고 그 뒤 리포트도 나오지 않는다(메시지는 큐에 4일 보관). kubectl -n default get pods -l app.kubernetes.io/name=ocr-worker · kubectl -n default logs deploy/ocr-worker 확인."
+          description: "5분 이상 ocr-worker Deployment의 가용 레플리카가 0이다 — 파드가 죽었거나 스케줄되지 못하고 있다. 워커는 메모리가 빠듯한 일반 워커(t3.large)에 뜨므로, OOMKilled·축출 뒤 자리가 없어 다시 뜨지 못해도(Pending) 이 상태다. 청구 서류 OCR이 멈추고 그 뒤 리포트도 나오지 않는다(메시지는 큐에 4일 보관). kubectl -n default get pods -l app.kubernetes.io/name=ocr-worker · kubectl -n default logs deploy/ocr-worker 확인."
         # NoData=Alerting 예외: 구 absent() 의미 승계 — Deployment가 삭제되거나 kube-state-metrics/remote_write가
         # 끊겨 시계열 자체가 사라져도 알린다(원칙 NoData→OK의 의도적 예외, TargetDown execErr 예외와 같은 결).
         noDataState: Alerting
@@ -523,9 +523,9 @@ groups:
       # 없었다(그때 OCR 룰은 report를 보고 있었다). 로그 룰은 워커가 없으면 조용하고, OcrWorkerDown은 파드가 살아
       # 있는 채 매달린 작업을 못 잡는다. 데이터는 CloudWatch AWS/SQS — 모니터링
       # 인스턴스 롤(CloudWatchReadOnlyAccess)로 읽는다. 처리 중인(invisible) 메시지도 나이에 들어가고 워커는 한 번에
-      # 하나씩 처리하므로, 임계값은 정상 처리로도 생기는 대기보다 길어야 한다. 지금 surya가 CPU라(2026-11-06 실측
-      # 쪽당 OCR 한 번 246초, 쪽마다 두 번) 서류 여러 장짜리 청구는 마지막 장이 한 시간 넘게 기다릴 수 있다 — 2시간으로
-      # 둔다. surya를 GPU로 옮기면 낮춘다.
+      # 하나씩 처리하므로, 임계값은 정상 처리로도 생기는 대기보다 길어야 한다. OCR 엔진은 PaddleOCR(CPU)이고 일반
+      # 워커(t3.large) 실측으로 쪽당 OCR 한 번이 32~39초다(2026-11-08, 쪽마다 두 번 돈다). 여기에 VLM 예산(쪽 210초 +
+      # 재판독 90초)이 붙어도 서류 한 장은 수 분이라, 여러 장짜리 청구의 마지막 장도 1시간이면 충분하다.
       - uid: brbs-ocr-queue-stale
         title: "OcrQueueStale - OCR 큐 메시지가 오래 처리되지 않음"
         condition: C
@@ -533,8 +533,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "OCR 큐(brbs-ocr-job-queue-dev)의 가장 오래된 메시지가 2시간을 넘김"
-          description: "가장 오래된 메시지가 2시간 넘게 큐에 있다 — 청구 서류가 OCR되지 않고 있다. OcrWorkerDown이 같이 울리면 파드부터 보고, 아니면 kubectl -n default logs deploy/ocr-worker로 매달린 작업을 본다. 메시지는 4일 뒤 SQS가 지우고, 그러면 그 청구는 리포트가 나오지 않는다."
+          summary: "OCR 큐(brbs-ocr-job-queue-dev)의 가장 오래된 메시지가 1시간을 넘김"
+          description: "가장 오래된 메시지가 1시간 넘게 큐에 있다 — 청구 서류가 OCR되지 않고 있다. OcrWorkerDown이 같이 울리면 파드부터 보고, 아니면 kubectl -n default logs deploy/ocr-worker로 매달린 작업을 본다. 메시지는 4일 뒤 SQS가 지우고, 그러면 그 청구는 리포트가 나오지 않는다."
         noDataState: OK
         execErrState: OK
         isPaused: false
@@ -592,7 +592,7 @@ groups:
               conditions:
                 - evaluator:
                     type: gt
-                    params: [7200]
+                    params: [3600]
                   operator:
                     type: and
                   query:
