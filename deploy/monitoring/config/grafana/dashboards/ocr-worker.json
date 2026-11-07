@@ -42,7 +42,7 @@
       "id": 2,
       "type": "stat",
       "title": "가장 오래된 메시지",
-      "description": "brbs-ocr-job-queue-dev에서 가장 오래 지워지지 않은 메시지의 나이다. 처리 중인 메시지도 들어간다. 워커가 없거나 멈추면 계속 자란다 — OcrQueueStale 알림이 1시간에서 발화한다. 메시지는 4일 뒤 SQS가 지운다.",
+      "description": "brbs-ocr-job-queue-dev에서 가장 오래 지워지지 않은 메시지의 나이다. 처리 중인 메시지도 들어간다. 워커가 없거나 멈추면 계속 자란다 — 1시간을 넘긴 상태가 10분 이어지면 OcrQueueStale 알림이 발화한다. 메시지는 4일 뒤 SQS가 지운다.",
       "datasource": {
         "type": "cloudwatch",
         "uid": "cloudwatch"
