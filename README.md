@@ -6,6 +6,10 @@
 
 Java 21 · Spring Boot 4.0 · PostgreSQL 16 · Redis 7 · WebSocket(STOMP) · JWT · OAuth2 · AWS S3 · Firebase FCM
 
+## Architecture
+<img width="4081" height="2386" alt="brbs_architecture" src="https://github.com/user-attachments/assets/d39af957-fbe5-4197-9761-76592e96abd9" />
+
+
 ## 로컬 실행
 
 ```bash
