@@ -54,6 +54,11 @@ class PendingReviewCountExecutionTest {
     saveReport(ReportStatus.COUNSELING, AccidentType.OTHER, "PC-6");   // 제외
     saveReport(ReportStatus.CLOSED, AccidentType.OTHER, "PC-7");       // 제외
     saveReport(ReportStatus.NOT_SELECTED, AccidentType.OTHER, "PC-8"); // 제외
+    // AI 워커가 원시 SQL로 세팅하는 종료 상태 둘. 사정사가 손댈 수 없는 리포트라 검수 풀에서 빠져야 한다
+    // (design.md §10 E5). 특히 NEEDS_REUPLOAD는 AI 초안이 영영 안 생기므로, 풀에 남으면 사정사가 검수할
+    // 내용이 없는 리포트를 계속 보게 된다.
+    saveReport(ReportStatus.BLOCKED, AccidentType.OTHER, "PC-9");        // 제외
+    saveReport(ReportStatus.NEEDS_REUPLOAD, AccidentType.OTHER, "PC-10"); // 제외
     flushAndClear();
 
     // 보류가 없으면 전역 풀 그대로 5건.
@@ -67,7 +72,7 @@ class PendingReviewCountExecutionTest {
     UUID held = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-1");
     saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-2");
     saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "HP-3");
-    entityManager.persist(new ReportHold(held, adjuster, HoldReason.SCHEDULE_CONFLICT, null));
+    entityManager.persist(ReportHold.create(held, adjuster, HoldReason.SCHEDULE_CONFLICT, null));
     flushAndClear();
 
     // 내 보류 1건 제외 → 2건. 보류는 사정사별이라 다른 사정사에겐 3건 그대로.
@@ -82,8 +87,8 @@ class PendingReviewCountExecutionTest {
     UUID sent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-1");
     UUID rejected = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-2");
     saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "IR-3");
-    entityManager.persist(new ReportReview(sent, adjuster));   // 기본 status = SENT
-    ReportReview rejectedReview = new ReportReview(rejected, adjuster);
+    entityManager.persist(ReportReview.create(sent, adjuster));   // 기본 status = SENT
+    ReportReview rejectedReview = ReportReview.create(rejected, adjuster);
     ReflectionTestUtils.setField(rejectedReview, "status", ReviewStatus.REJECTED);
     entityManager.persist(rejectedReview);
     flushAndClear();

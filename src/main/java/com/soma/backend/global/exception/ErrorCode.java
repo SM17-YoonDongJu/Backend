@@ -50,6 +50,9 @@ public enum ErrorCode {
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
   DATABASE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "데이터베이스 오류가 발생했습니다."),
   EXTERNAL_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "외부 API 연동에 실패했습니다."),
+  // PII_CRYPTO_ERROR: 민감정보 컬럼 암복호화 실패(키 불일치·봉투 변조·AAD 불일치·포맷 오류).
+  //   원인값(키·평문·암호문)은 절대 응답·로그에 싣지 않는다.
+  PII_CRYPTO_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "민감정보 처리 중 오류가 발생했습니다."),
 
   // 503 Service Unavailable — 일시적 서비스 불가
   SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "서비스를 일시적으로 이용할 수 없습니다."),
@@ -69,6 +72,7 @@ public enum ErrorCode {
   PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "제안을 찾을 수 없습니다."),
   REPORT_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종결된 리포트입니다."),
   CLAIM_DETAILS_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "청구 상세 유형이 사고 유형과 일치하지 않습니다."),
+  REPORT_TOO_MANY_DOCUMENTS(HttpStatus.BAD_REQUEST, "첨부 문서 개수가 허용 범위를 초과했습니다."),
 
   // Matching (도메인 특화)
   MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),

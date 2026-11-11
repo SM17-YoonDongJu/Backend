@@ -16,7 +16,6 @@ import com.soma.backend.domain.chat.entity.ChatAttachment;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 import com.soma.backend.domain.chat.entity.ChatRoom;
-import com.soma.backend.domain.chat.entity.ChatRoomStatus;
 import com.soma.backend.domain.chat.repository.ChatMessageRepository;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -47,12 +46,7 @@ public class ChatMessageCommandService {
   public ChatMessageResponse send(UUID me, UUID roomId, SendMessageRequest request) {
     ChatRoom room = chatRoomRepository.findById(roomId)
         .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_ROOM_NOT_FOUND));
-    if (!room.isMember(me)) {
-      throw new BusinessException(ErrorCode.CHAT_NOT_A_MEMBER);
-    }
-    if (room.getStatus() == ChatRoomStatus.CLOSED) {
-      throw new BusinessException(ErrorCode.CHAT_ROOM_CLOSED);
-    }
+    room.ensureWritableBy(me);
 
     boolean hasAttachment = request.attachments() != null && !request.attachments().isEmpty();
     boolean hasContent = StringUtils.hasText(request.content());

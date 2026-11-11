@@ -116,21 +116,35 @@ class MatchingControllerTest {
 
 ## Spring Security 테스트
 
+이 프로젝트엔 **`UserDetailsService` 빈이 없다**(JWT 클레임만으로 주체를 세운다) — `@WithUserDetails`는 쓸 수 없다.
+`@WithMockUser`도 principal이 스프링 기본 `User` 타입이라, 컨트롤러의 `@AuthenticationPrincipal CustomUserDetails`에
+null이 꽂혀 NPE가 난다. **컨트롤러가 실제로 받는 principal을 직접 심어야 한다.**
+
 ```java
-// 커스텀 UserDetails가 있는 경우
-@WithUserDetails(value = "user@test.com", userDetailsServiceBeanName = "customUserDetailsService")
+// PendingReviewControllerAuthTest가 쓰는 방식
+private static RequestPostProcessor as(String role) {
+  CustomUserDetails principal = new CustomUserDetails(UUID.randomUUID(), role);
+  Authentication auth = new UsernamePasswordAuthenticationToken(
+      principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+  return authentication(auth);   // SecurityMockMvcRequestPostProcessors.authentication
+}
 
-// 특정 권한 직접 지정 — ERD role Enum 그대로 사용
-@WithMockUser(username = "adjuster", roles = {"CERTIFICATED_ADJUSTER"})
+mockMvc.perform(get("/reports/pending-review").with(as("CERTIFICATED_ADJUSTER")))
+    .andExpect(status().isOk());
+```
 
-// JWT 토큰 헤더 직접 설정
-mockMvc.perform(get("/api/adjuster/matching")
-    .header("Authorization", "Bearer " + testJwtToken))
+`ROLE_` 접두어는 `CustomUserDetails.getAuthorities()`가 붙이는 규칙 그대로 맞춰야 `hasRole(...)`이 매칭된다.
+
+인증은 **`access_token` 쿠키 전용**이다(PR #169에서 Bearer 헤더 제거). `JwtFilter`를 실제로 태우는 통합
+테스트라면 헤더가 아니라 쿠키를 실어야 하며, `.header("Authorization", "Bearer " + token)`은 인증되지 않는다.
+
+```java
+mockMvc.perform(get("/reports").cookie(new Cookie(CookieProvider.ACCESS_TOKEN_COOKIE, token)))
 ```
 
 ## 테스트 DB 설정
 
-이 프로젝트는 TestContainers를 쓰지 않는다(의존성 미포함). 테스트는 `application-test.yml`이 가리키는 **외부 PostgreSQL `test_db`**(localhost:5432, user/pw `test`)에 붙고, `ddl-auto: create-drop`으로 스키마를 만들며 Flyway는 끈다. Redis·Kafka도 로컬 인스턴스(docker compose)를 그대로 쓴다. 로컬에서 처음 돌릴 때 `test_db`/`test` 롤을 한 번 만들어 둔다:
+이 프로젝트는 TestContainers를 쓰지 않는다(의존성 미포함). 테스트는 `application-test.yml`이 가리키는 **외부 PostgreSQL `test_db`**(localhost:5432, user/pw `test`)에 붙고, `ddl-auto: create-drop`으로 스키마를 만들며 Flyway는 끈다. Redis·SQS(LocalStack)도 로컬 인스턴스(docker compose)를 그대로 쓴다. 로컬에서 처음 돌릴 때 `test_db`/`test` 롤을 한 번 만들어 둔다:
 
 ```sql
 CREATE ROLE test LOGIN PASSWORD 'test' CREATEDB;
@@ -138,6 +152,15 @@ CREATE DATABASE test_db OWNER test;
 ```
 
 격리된 일회성 컨테이너 DB가 필요해지면 그때 TestContainers 의존성(`org.testcontainers:postgresql` 등)을 추가하고 `@Testcontainers` + `@DynamicPropertySource`로 배선한다(현재 미도입).
+
+## QA E2E (Playwright) — 별도 스위트
+
+`qa-e2e/`는 Gradle 빌드와 무관한 별도 npm 프로젝트다. JUnit5/MockMvc가 커버하지 못하는, QA 체크리스트의 "결과 = 미확인" 항목(주로 에러 응답·상태전이 확인)을 Playwright의 API 테스트 모드(`request`, 브라우저 UI 클릭 아님)로 백엔드에 직접 검증한다. 통합 UI·WebSocket 소수만 별도 처리한다.
+
+- 1단계(`npm run test:unauth`)는 로그인 불필요 — 미인증 401, 위조 쿠키, CORS, 응답 포맷 검증.
+- 2단계(`npm run test:auth`)는 `spring-security-impl`의 Dev 로그인 백도어(`app.dev-login.enabled=true`)로 세션을 받아 인가 케이스를 검증한다.
+- Java 단위/통합 테스트와 역할을 나눈다 — 이 스위트는 배포된 백엔드를 블랙박스로 때리는 계약 검증, `@SpringBootTest`/MockMvc는 화이트박스 로직 검증. 신규 API를 만들 때 두 쪽 다 채울 필요는 없고, 겹치지 않게 커버리지를 조율한다.
+- 상세 실행법·커버리지 표·확장 가이드는 `qa-e2e/README.md` 참고.
 
 ## 테스트 우선순위
 

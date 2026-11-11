@@ -9,9 +9,12 @@ import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.adjuster.dto.CreateAdjusterApplicationRequest;
 import com.soma.backend.domain.adjuster.dto.CreateAdjusterApplicationResponse;
+import com.soma.backend.domain.adjuster.entity.ActivityScope;
 import com.soma.backend.domain.adjuster.entity.AdjusterApplication;
 import com.soma.backend.domain.adjuster.entity.Affiliation;
+import com.soma.backend.domain.adjuster.entity.ApplicantProfile;
 import com.soma.backend.domain.adjuster.entity.ApplicationStatus;
+import com.soma.backend.domain.adjuster.entity.LicenseProof;
 import com.soma.backend.domain.adjuster.repository.AdjusterApplicationRepository;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
@@ -27,38 +30,36 @@ public class AdjusterApplicationCommandService {
   private final UserRepository userRepository;
 
   /**
-   * 자격 신청 접수. 자격증 번호·파일이 모두 없으면 {@code MISSING_REQUIRED_FIELD}(400), 진행 중(PENDING)
-   * 신청이 있으면 {@code DUPLICATE_RESOURCE}(409). 신청인의 역할을 USER→UNCERTIFICATED_ADJUSTER로
-   * 전이하며(이미 사정사/관리자면 역할 전이에서 409), 신청서와 증빙 문서 2종을 함께 저장한다.
+   * 자격 신청 접수. 자격증 번호·파일이 모두 없으면 {@code MISSING_REQUIRED_FIELD}(400),
+   * 진행 중(PENDING) 신청이 있으면 {@code DUPLICATE_RESOURCE}(409).
+   * 신청인의 역할을 USER→UNCERTIFICATED_ADJUSTER로 전이하며(이미 사정사/관리자면 역할 전이에서 409),
+   * 신청서와 증빙 문서 2종을 함께 저장한다.
    */
   @Transactional
   public CreateAdjusterApplicationResponse apply(UUID userId, CreateAdjusterApplicationRequest request) {
-    if (!request.hasLicenseProof()) {
-      throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
-    }
+
+    // 자격증 증빙 검증 — 번호·파일이 둘 다 비면 LicenseProof 생성자가 MISSING_REQUIRED_FIELD를 던진다.
+    // 중복 신청 검사보다 앞에 두어 기존 에러 코드 순서를 유지한다.
+    LicenseProof licenseProof = new LicenseProof(request.licenseNo(), request.licenseImageUrl());
+
     if (adjusterApplicationRepository.existsByUserIdAndStatus(userId, ApplicationStatus.PENDING)) {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
 
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
     user.applyForAdjuster();
 
     AdjusterApplication application = AdjusterApplication.create(
-        userId, request.name(), request.phone(), request.specialties(), request.licenseNo(),
-        request.licenseImageUrl(), request.career(), request.introduction(),
-        parseAffiliation(request.affiliation()), request.region(), request.registrationImageUrl());
+        userId,
+        new ApplicantProfile(request.name(), request.phone(), request.career(), request.introduction()),
+        licenseProof,
+        new ActivityScope(request.specialties(), request.region(), Affiliation.from(request.affiliation())),
+        request.registrationImageUrl());
+
     adjusterApplicationRepository.save(application);
 
     return CreateAdjusterApplicationResponse.from(application);
-  }
-
-  /** 소속 코드 문자열을 {@link Affiliation}으로 변환한다. 정의되지 않은 값이면 {@code VALIDATION_ERROR}. */
-  private Affiliation parseAffiliation(String affiliation) {
-    try {
-      return Affiliation.valueOf(affiliation);
-    } catch (IllegalArgumentException ex) {
-      throw new BusinessException(ErrorCode.VALIDATION_ERROR);
-    }
   }
 }

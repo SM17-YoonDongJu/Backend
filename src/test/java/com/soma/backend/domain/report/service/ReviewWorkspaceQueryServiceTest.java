@@ -39,7 +39,7 @@ import com.soma.backend.domain.report.repository.ReviewContextRow;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /** 검수 화면 워크스페이스 집계 조회 단위 테스트: 작업본 유무에 따른 resolved 전환과 쟁점 병합을 검증한다. */
 @ExtendWith(MockitoExtension.class)
@@ -56,7 +56,7 @@ class ReviewWorkspaceQueryServiceTest {
   @Mock
   private UserClaimRepository userClaimRepository;
   @Mock
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
 
   @InjectMocks
   private ReviewWorkspaceQueryService service;
@@ -187,7 +187,7 @@ class ReviewWorkspaceQueryServiceTest {
   }
 
   private ReportReview review() {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", UUID.randomUUID());
     ReflectionTestUtils.setField(review, "estimateMinAmount", 14_000_000);
     ReflectionTestUtils.setField(review, "estimateMaxAmount", 17_500_000);
@@ -197,61 +197,14 @@ class ReviewWorkspaceQueryServiceTest {
 
   private ReportReviewIssue reviewIssue(
       UUID reportIssueId, IssueReviewStatus status, String title, String opinion, Integer impactAmount) {
-    return new ReportReviewIssue(reportIssueId, title, null, impactAmount, status, opinion, null, null);
+    // 추가(ADDED) 쟁점은 설명이 필수라(ReportReviewIssue.create) 해당 상태일 때만 채운다
+    String description = status == IssueReviewStatus.ADDED ? "쟁점 설명" : null;
+    return ReportReviewIssue.create(reportIssueId, title, description, impactAmount, status, opinion, null, null);
   }
 
   private ReviewContextRow context() {
-    return new ReviewContextRow() {
-      @Override
-      public String getNickname() {
-        return "운수";
-      }
-
-      @Override
-      public String getGender() {
-        return "M";
-      }
-
-      @Override
-      public LocalDate getBirthDate() {
-        return LocalDate.of(1990, 3, 1);
-      }
-
-      @Override
-      public LocalDateTime getJoinedAt() {
-        return LocalDateTime.of(2024, 3, 1, 0, 0);
-      }
-
-      @Override
-      public String getClaimAccidentType() {
-        return "traffic";
-      }
-
-      @Override
-      public LocalDate getAccidentDate() {
-        return LocalDate.of(2026, 5, 1);
-      }
-
-      @Override
-      public String getClaimDescription() {
-        return "사고 경위";
-      }
-
-      @Override
-      public String getAdditionalInformation() {
-        return null;
-      }
-
-      @Override
-      public String getProductName() {
-        return "행복드림";
-      }
-
-      @Override
-      public String getInsurerName() {
-        return "OO손해보험";
-      }
-    };
+    return new ReviewContextRow("운수", "M", LocalDate.of(1990, 3, 1), LocalDateTime.of(2024, 3, 1, 0, 0),
+        AccidentType.TRAFFIC, LocalDate.of(2026, 5, 1), "행복드림", "OO손해보험");
   }
 
   private UserClaim claim() {

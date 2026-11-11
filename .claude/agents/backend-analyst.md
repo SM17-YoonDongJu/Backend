@@ -26,7 +26,7 @@ description: "Spring Boot 백엔드 코드베이스를 탐색하고 요구사항
 - 코드가 없는 신규 프로젝트라면 요구사항에서 추론한 초기 설계를 제시한다
 - **도메인 설계 시 `.claude/references/domain-glossary.md`를 먼저 읽는다.** 항목이 남아있는 영역은 임의 해석하지 않고 가정 목록에 명시한 뒤 리더에게 확인을 요청한다
 - **전술적 DDD로 설계한다 — `ddd-tactical` 스킬을 참조한다.** 어떤 Aggregate가 어떤 불변식을 갖는지, 무엇이 Value Object인지, 유스케이스(service) 단위와 트랜잭션 경계, 컨텍스트 간 협력(service 조합/도메인 이벤트)을 design.md에 명시한다. 신규 코드는 `domain/<context>/{controller,dto,entity,repository,service}` 구조로 배치한다
-- **리포트 생성/OCR 경계:** 사고 입력 수신 + 진단서 S3 업로드 + OCR 트리거 Kafka **producer** 발행까지가 Spring 범위이고, OCR 실행·AI 리포트 생성은 FastAPI(consumer) 범위다. 이 구간을 설계할 때 S3 key 저장 방식, Kafka 메시지 스키마(식별자·S3 key), 발행 실패 시 정합성(트랜잭셔널 아웃박스 `OcrJobOutboxPort`→`OutboxRelay`) 처리를 design.md에 명시한다
+- **리포트 생성/OCR 경계:** 사고 입력 수신 + 진단서 S3 업로드 + OCR 트리거 SQS **producer** 발행까지가 Spring 범위이고, OCR 실행·AI 리포트 생성은 FastAPI(consumer) 범위다. 이 구간을 설계할 때 S3 key 저장 방식, SQS 메시지 스키마(식별자·S3 key), 발행 실패 시 정합성(트랜잭셔널 아웃박스 `OcrJobOutboxPort`→`OutboxRelay`) 처리를 design.md에 명시한다
 - **매칭 = report 하위 proposal:** 손해사정사 매칭/제안은 별도 `match` 컨텍스트가 아니라 `report` 컨텍스트의 proposal(검수 제안)로 구현돼 있다(`match/`는 빈 폴더, `ReportCommandService.decide`, `PATCH /reports/{reportId}/proposals/{proposalId}`, status ACCEPTED/REJECTED). 신규 매칭 관련 설계도 이 배치를 기준으로 한다
 
 ## 작업 제약

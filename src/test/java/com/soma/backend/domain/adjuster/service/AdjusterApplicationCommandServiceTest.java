@@ -52,7 +52,7 @@ class AdjusterApplicationCommandServiceTest {
   }
 
   private User userWithRole(Role role) {
-    return User.create("홍길동", LocalDate.of(1990, 1, 1), "MALE", "010-1234-5678", role, null);
+    return User.create("홍길동", LocalDate.of(1990, 1, 1), "MALE", "010-1234-5678", null, role, null);
   }
 
   @Test

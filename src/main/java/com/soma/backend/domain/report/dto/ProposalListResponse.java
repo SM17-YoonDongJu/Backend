@@ -20,7 +20,10 @@ public record ProposalListResponse(
     return new ProposalListResponse(proposals, Pagination.from(page));
   }
 
-  /** rating은 사정사의 사건 평점 평균(adjuster_reviews 없으면 null), proposalSummary는 review 원문(미작성 시 null)이다. */
+  /**
+   * rating은 사정사 프로필의 평점(adjuster_profiles.rating_mean, scale 2 — 평가가 없거나 프로필 행이 없으면 null),
+   * proposalSummary는 review 원문(미작성 시 null)이다.
+   */
   public record Proposal(
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID proposalId,
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED) UUID adjusterId,
@@ -32,8 +35,9 @@ public record ProposalListResponse(
 
     public static Proposal from(ProposalRow row) {
       return new Proposal(
-          row.getProposalId(), row.getAdjusterId(), row.getNickname(), row.getRating(),
-          row.getProposalSummary(), row.getStatus(), row.getSubmittedAt());
+          row.proposalId(), row.adjusterId(), row.nickname(),
+          row.rating() == null ? null : row.rating().doubleValue(),
+          row.proposalSummary(), row.status().name(), row.submittedAt());
     }
   }
 }

@@ -45,7 +45,7 @@ public class DevLoginService {
     String nickname = resolveNickname(request);
     User user = userRepository.findByNickname(nickname)
         .orElseGet(() -> userRepository.save(
-            User.create(nickname, DEFAULT_BIRTH_DATE, DEFAULT_GENDER, null, Role.USER, null)));
+            User.create(nickname, DEFAULT_BIRTH_DATE, DEFAULT_GENDER, null, null, Role.USER, null)));
 
     String accessToken = jwtProvider.generateAccessToken(user.getId(), user.getRole().name());
     response.addHeader(

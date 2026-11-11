@@ -15,7 +15,7 @@ import com.google.firebase.FirebaseOptions;
 /**
 * Firebase Admin SDK 초기화.
 * fcm.service-account-path 프로퍼티가 설정된 경우에만 FirebaseApp Bean을 생성한다.
-* 미설정 시 FcmService는 stub 모드로 동작한다(@ConditionalOnProperty).
+* 미설정 시 FcmPushSender는 stub 모드로 동작한다(@ConditionalOnProperty).
 */
 @Configuration
 public class FcmConfig {

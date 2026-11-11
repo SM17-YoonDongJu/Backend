@@ -1,7 +1,13 @@
 package com.soma.backend.domain.chat.controller;
 
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -17,12 +23,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import tools.jackson.databind.PropertyNamingStrategies;
+import tools.jackson.databind.json.JsonMapper;
 
 import com.soma.backend.domain.chat.dto.ChatRoomListResponse;
 import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
@@ -65,6 +75,9 @@ class ChatRoomControllerTest {
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
         .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
         .setControllerAdvice(new GlobalExceptionHandler())
+        // 운영 전역 설정(spring.jackson.property-naming-strategy: SNAKE_CASE)과 같은 키로 응답을 검증한다
+        .setMessageConverters(new JacksonJsonHttpMessageConverter(
+            JsonMapper.builder().propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE).build()))
         .build();
   }
 
@@ -91,10 +104,58 @@ class ChatRoomControllerTest {
   @Test
   @DisplayName("GET /chats — 로그인하면 200")
   void listMyRooms_authenticated_returns200() throws Exception {
-    authenticateAs(UUID.randomUUID(), "USER");
-    given(chatRoomQueryService.listMyRooms(any())).willReturn(new ChatRoomListResponse(List.of()));
+    UUID me = UUID.randomUUID();
+    authenticateAs(me, "USER");
+    given(chatRoomQueryService.listMyRooms(any(), any(), anyInt()))
+        .willReturn(new ChatRoomListResponse(List.of(), null, false));
 
     mockMvc.perform(get("/chats")).andExpect(status().isOk());
+
+    // 파라미터 없이 호출하면 첫 페이지·기본 size 20
+    verify(chatRoomQueryService).listMyRooms(eq(me), isNull(), eq(20));
+  }
+
+  @Test
+  @DisplayName("GET /chats?cursor=x&size=10 — cursor·size가 서비스로 그대로 전달된다")
+  void listMyRooms_passesCursorAndSize() throws Exception {
+    UUID me = UUID.randomUUID();
+    authenticateAs(me, "USER");
+    given(chatRoomQueryService.listMyRooms(me, "x", 10)).willReturn(new ChatRoomListResponse(List.of(), null, false));
+
+    mockMvc.perform(get("/chats").param("cursor", "x").param("size", "10")).andExpect(status().isOk());
+
+    verify(chatRoomQueryService).listMyRooms(me, "x", 10);
+  }
+
+  @Test
+  @DisplayName("GET /chats — 응답에 rooms·next_cursor·has_next가 snake_case 키로 있다")
+  void listMyRooms_responseHasSnakeCasePaginationKeys() throws Exception {
+    UUID me = UUID.randomUUID();
+    authenticateAs(me, "USER");
+    given(chatRoomQueryService.listMyRooms(me, null, 20))
+        .willReturn(new ChatRoomListResponse(List.of(), "bmV4dA", true));
+
+    mockMvc.perform(get("/chats"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.rooms").isArray())
+        .andExpect(jsonPath("$.data.next_cursor").value("bmV4dA"))
+        .andExpect(jsonPath("$.data.has_next").value(true));
+  }
+
+  @Test
+  @DisplayName("GET /chats — 마지막 페이지면 next_cursor 키가 null로 내려간다")
+  void listMyRooms_lastPage_nextCursorIsNull() throws Exception {
+    UUID me = UUID.randomUUID();
+    authenticateAs(me, "USER");
+    given(chatRoomQueryService.listMyRooms(me, null, 20))
+        .willReturn(new ChatRoomListResponse(List.of(), null, false));
+
+    mockMvc.perform(get("/chats"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.has_next").value(false))
+        // 키가 존재하고(누락이 아니라) 값이 JSON null이어야 한다 — isEmpty()는 ""·누락 키도 통과시킬 수 있다
+        .andExpect(jsonPath("$.data", hasKey("next_cursor")))
+        .andExpect(jsonPath("$.data.next_cursor").value(nullValue()));
   }
 
   @Test

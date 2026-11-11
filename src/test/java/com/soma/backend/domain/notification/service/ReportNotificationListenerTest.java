@@ -10,7 +10,9 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -20,9 +22,22 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.InvalidDataAccessResourceUsageException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.soma.backend.domain.notification.entity.NotificationType;
+import com.soma.backend.domain.report.entity.AnalysisFailureReason;
+import com.soma.backend.domain.report.entity.OcrJobFailureViewFixture;
+import com.soma.backend.domain.report.entity.OcrResultViewFixture;
+import com.soma.backend.domain.report.entity.ReportAnalysis;
+import com.soma.backend.domain.report.entity.ReportAttachment;
+import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
+import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
+import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
+import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
+import com.soma.backend.domain.report.service.NeedsReuploadDocumentReader;
+import com.soma.backend.domain.report.service.TerminalFailureJournalReader;
 
 /**
  * ReportNotificationListener 단위 테스트.
@@ -39,9 +54,15 @@ class ReportNotificationListenerTest {
   @InjectMocks
   private ReportNotificationListener listener;
   @Mock
-  private NotificationDispatchService notificationDispatchService;
+  private NotificationRecorder notificationRecorder;
   @Mock
-  private PushNotificationService pushNotificationService;
+  private PushNotifier pushNotifier;
+  @Mock
+  private TerminalFailureJournalReader terminalFailureJournalReader;
+  @Mock
+  private NeedsReuploadDocumentReader needsReuploadDocumentReader;
+  @Mock
+  private ReportAttachmentRepository reportAttachmentRepository;
 
   @Test
   @DisplayName("record가 true면 sendToUser로 푸시하며 data{type,reportId}를 담아 보낸다")
@@ -50,7 +71,7 @@ class ReportNotificationListenerTest {
     UUID userId = UUID.randomUUID();
     UUID reportId = UUID.randomUUID();
     UUID adjusterId = UUID.randomUUID();
-    given(notificationDispatchService.record(
+    given(notificationRecorder.record(
         eq(userId), eq(NotificationType.RECEIVED_PROPOSAL), anyString(), anyString())).willReturn(true);
 
     // When
@@ -58,7 +79,7 @@ class ReportNotificationListenerTest {
 
     // Then
     ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
-    verify(pushNotificationService).sendToUser(
+    verify(pushNotifier).sendToUser(
         eq(userId), eq(EXPECTED_TITLE), eq(EXPECTED_BODY), dataCaptor.capture());
     assertThat(dataCaptor.getValue())
         .containsEntry("type", "RECEIVED_PROPOSAL")
@@ -70,13 +91,13 @@ class ReportNotificationListenerTest {
   void onProposalReceivedSkipsPushWhenNotAllowed() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(false);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(false);
 
     // When
     listener.onProposalReceived(new ReviewProposalReceivedEvent(userId, UUID.randomUUID(), UUID.randomUUID()));
 
     // Then
-    verify(pushNotificationService, never()).sendToUser(any(), any(), any(), any());
+    verify(pushNotifier, never()).sendToUser(any(), any(), any(), any());
   }
 
   @Test
@@ -84,13 +105,85 @@ class ReportNotificationListenerTest {
   void onProposalReceivedSwallowsPushException() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString())).willReturn(true);
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
     willThrow(new RuntimeException("FCM down"))
-        .given(pushNotificationService).sendToUser(any(), any(), any(), any());
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
 
     // When & Then
     assertThatCode(() -> listener.onProposalReceived(
         new ReviewProposalReceivedEvent(userId, UUID.randomUUID(), UUID.randomUUID())))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("ANALYSIS_FAILED — unreadable_file은 재업로드를 안내하는 문안으로 발송된다")
+  void onAnalysisFailedUsesReuploadCopyForUnreadableFile() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.ANALYSIS_FAILED), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onAnalysisFailed(
+        new AnalysisFailedEvent(userId, reportId, AnalysisFailureReason.UNREADABLE_FILE));
+
+    // Then
+    ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서 분석에 실패했어요"), eq("파일을 읽을 수 없어요. 다시 업로드해주세요."), dataCaptor.capture());
+    assertThat(dataCaptor.getValue())
+        .containsEntry("type", "ANALYSIS_FAILED")
+        .containsEntry("reportId", reportId.toString());
+  }
+
+  @Test
+  @DisplayName("ANALYSIS_FAILED — masking_residual은 재업로드를 요구하지 않는 중립 문안으로 발송된다(사용자 과실 아님)")
+  void onAnalysisFailedUsesNeutralCopyForMaskingResidual() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onAnalysisFailed(
+        new AnalysisFailedEvent(userId, UUID.randomUUID(), AnalysisFailureReason.MASKING_RESIDUAL));
+
+    // Then
+    ArgumentCaptor<String> title = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+    verify(pushNotifier).sendToUser(eq(userId), title.capture(), body.capture(), any());
+    assertThat(title.getValue()).isEqualTo("문서를 검토 중입니다");
+    assertThat(body.getValue()).isEqualTo("업로드하신 문서를 추가로 확인하고 있어요. 확인되면 알려드릴게요.");
+    assertThat(body.getValue()).doesNotContain("다시 업로드");
+  }
+
+  @Test
+  @DisplayName("ANALYSIS_FAILED — 그 외 사유는 확인 중 문안이며 컴플라이언스 금칙 표현이 없다")
+  void onAnalysisFailedUsesHoldCopyForOtherReasons() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onAnalysisFailed(new AnalysisFailedEvent(userId, UUID.randomUUID(), AnalysisFailureReason.OCR_ERROR));
+
+    // Then
+    ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+    verify(pushNotifier).sendToUser(eq(userId), eq("문서 분석에 실패했어요"), body.capture(), any());
+    assertThat(body.getValue()).isEqualTo("처리에 실패했어요. 확인 중이니 조금만 기다려주세요.");
+    // 보상금액·법률 자문 성격 표현은 알림 문안에도 들어가면 안 된다.
+    assertThat(body.getValue()).doesNotContain("보상", "보험금", "법적", "청구");
+  }
+
+  @Test
+  @DisplayName("ANALYSIS_FAILED — FCM이 실패해도 예외가 전파되지 않는다(스윕 커밋에 영향 없음)")
+  void onAnalysisFailedSwallowsPushException() {
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
+    willThrow(new RuntimeException("FCM down"))
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
+
+    assertThatCode(() -> listener.onAnalysisFailed(new AnalysisFailedEvent(
+        UUID.randomUUID(), UUID.randomUUID(), AnalysisFailureReason.UNKNOWN)))
         .doesNotThrowAnyException();
   }
 
@@ -99,13 +192,182 @@ class ReportNotificationListenerTest {
   void onProposalReceivedSwallowsRecordException() {
     // Given
     UUID userId = UUID.randomUUID();
-    given(notificationDispatchService.record(any(), any(), anyString(), anyString()))
+    given(notificationRecorder.record(any(), any(), anyString(), anyString()))
         .willThrow(new RuntimeException("DB down"));
 
     // When & Then
     assertThatCode(() -> listener.onProposalReceived(
         new ReviewProposalReceivedEvent(userId, UUID.randomUUID(), UUID.randomUUID())))
         .doesNotThrowAnyException();
-    verify(pushNotificationService, never()).sendToUser(any(), any(), any(), any());
+    verify(pushNotifier, never()).sendToUser(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("REPORT_BLOCKED — ReportAnalysis.blocked()와 동일한 문구로 발송된다(조회 API·푸시 단일 진실)")
+  void onReportBlockedUsesSameCopyAsAnalysisStatus() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_BLOCKED), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportBlocked(new ReportBlockedEvent(userId, reportId));
+
+    // Then
+    ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("처리할 수 없는 요청이에요"),
+        eq(ReportAnalysis.blocked().failureMessage()), dataCaptor.capture());
+    assertThat(dataCaptor.getValue())
+        .containsEntry("type", "REPORT_BLOCKED")
+        .containsEntry("reportId", reportId.toString());
+  }
+
+  @Test
+  @DisplayName("REPORT_BLOCKED — FCM이 실패해도 예외가 전파되지 않는다(스윕 커밋에 영향 없음)")
+  void onReportBlockedSwallowsPushException() {
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
+    willThrow(new RuntimeException("FCM down"))
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
+
+    assertThatCode(() -> listener.onReportBlocked(new ReportBlockedEvent(UUID.randomUUID(), UUID.randomUUID())))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — ReportAnalysis.needsReupload()와 동일한 문구로 발송된다(조회 API·푸시 단일 진실)")
+  void onReportNeedsReuploadUsesSameCopyAsAnalysisStatus() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    // Then
+    ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"),
+        eq(ReportAnalysis.needsReupload().failureMessage()), dataCaptor.capture());
+    assertThat(dataCaptor.getValue())
+        .containsEntry("type", "REPORT_NEEDS_REUPLOAD")
+        .containsEntry("reportId", reportId.toString());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 청구 fan-in으로 문서가 한 건 특정되면 문서명을 담은 문구로 발송된다")
+  void onReportNeedsReuploadNamesSingleFailedDocument() {
+    // Given: PR #67 — 저널에 흔적이 남는 케이스라 attachment_id로 특정 문서를 좁힐 수 있다.
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    UUID attachmentId = UUID.randomUUID();
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(
+            OcrJobFailureViewFixture.terminal(reportId, attachmentId, "unreadable_file", null))));
+    ReportAttachment attachment = ReportAttachment.of(reportId, "보험증권.pdf", "https://example.test/doc",
+        "pdf", "policy");
+    ReflectionTestUtils.setField(attachment, "id", attachmentId);
+    given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    // Then
+    ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"),
+        eq("업로드하신 [보험증권.pdf] 문서를 알아보기 어려워요. 다시 촬영해서 올려주세요."), dataCaptor.capture());
+    assertThat(dataCaptor.getValue())
+        .containsEntry("type", "REPORT_NEEDS_REUPLOAD")
+        .containsEntry("reportId", reportId.toString())
+        .containsEntry("attachmentId", attachmentId.toString());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 저널 조회가 실패하면 일반 문구로 degrade한다(예외 전파 없음)")
+  void onReportNeedsReuploadFallsBackToGenericWhenJournalLookupFails() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId)))
+        .willThrow(new InvalidDataAccessResourceUsageException("GRANT 미적용"));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    assertThatCode(() -> listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId)))
+        .doesNotThrowAnyException();
+
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 개별 문서 품질 게이트(ai.ocr_results)로 문서가 한 건 특정되면 문서명을 담은 문구로 발송된다")
+  void onReportNeedsReuploadNamesSingleQualityGateDocument() {
+    // Given: 저널(fan-in)엔 흔적이 없고 품질 게이트(ai.ocr_results)에만 흔적이 있는 경우(A1 정상 케이스).
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    UUID attachmentId = UUID.randomUUID();
+    given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(OcrResultViewFixture.needsReupload(reportId, attachmentId, "diagnosis"))));
+    ReportAttachment attachment = ReportAttachment.of(reportId, "진단서.pdf", "https://example.test/doc",
+        "pdf", "diagnosis");
+    ReflectionTestUtils.setField(attachment, "id", attachmentId);
+    given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    // Then
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"),
+        eq("업로드하신 [진단서.pdf] 문서를 알아보기 어려워요. 다시 촬영해서 올려주세요."), any());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 저널·품질 게이트를 합쳐 문서가 2건 이상이면 대표를 못 골라 일반 문구로 degrade한다")
+  void onReportNeedsReuploadFallsBackToGenericWhenMultipleDocumentsCombined() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(
+            OcrJobFailureViewFixture.terminal(reportId, UUID.randomUUID(), "unreadable_file", null))));
+    given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(OcrResultViewFixture.needsReupload(reportId, UUID.randomUUID(), "diagnosis"))));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — 토글이 꺼져 record()가 false면 푸시하지 않는다")
+  void onReportNeedsReuploadSkipsPushWhenNotAllowed() {
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(false);
+
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(UUID.randomUUID(), UUID.randomUUID()));
+
+    verify(pushNotifier, never()).sendToUser(any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD — FCM이 실패해도 예외가 전파되지 않는다(스윕 커밋에 영향 없음)")
+  void onReportNeedsReuploadSwallowsPushException() {
+    given(notificationRecorder.record(any(), any(), anyString(), anyString())).willReturn(true);
+    willThrow(new RuntimeException("FCM down"))
+        .given(pushNotifier).sendToUser(any(), any(), any(), any());
+
+    assertThatCode(() ->
+        listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(UUID.randomUUID(), UUID.randomUUID())))
+        .doesNotThrowAnyException();
   }
 }

@@ -12,6 +12,9 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
+
 /**
  * REPORT_ATTACHMENTS — Report Aggregate에 속한 첨부 진단서 메타데이터(design.md §3). 바이너리는 S3에 저장하고
  * 이 엔티티는 key/URL만 보관한다. pageCount·issuedBy·issuedAt·aiSummary·ocrResultId는 OCR 처리(FastAPI consumer)
@@ -22,6 +25,8 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ReportAttachment extends CreatedAtEntity {
+
+  public static final int MAX_PER_REPORT = 20;
 
   @Id
   @GeneratedValue
@@ -57,14 +62,39 @@ public class ReportAttachment extends CreatedAtEntity {
   @Column(name = "ocr_result_id")
   private UUID ocrResultId;
 
-  /** 리포트 생성 시 문서 1건당 호출되는 정적 팩토리(design.md §3). */
-  public static ReportAttachment of(UUID reportId, String name, String url, String mimeType, String reportType) {
+  /** 리포트 생성 시 문서 1건당 호출되는 정적 팩토리(design.md §3). fileType(확장자)을 MIME으로 정규화 */
+  public static ReportAttachment of(UUID reportId, String name, String url, String fileType, String reportType) {
     ReportAttachment attachment = new ReportAttachment();
     attachment.reportId = reportId;
     attachment.name = name;
     attachment.url = url;
-    attachment.mimeType = mimeType;
+    attachment.mimeType = toMimeType(fileType);
     attachment.reportType = reportType;
     return attachment;
+  }
+
+  /** 첨부 문서 수 상한 검증(불변식). DB 쓰기 전에 호출해 fail-fast */
+  public static void validateCount(int count) {
+
+    if (count > MAX_PER_REPORT) {
+      throw new BusinessException(ErrorCode.REPORT_TOO_MANY_DOCUMENTS);
+    }
+  }
+
+  private static String toMimeType(String fileType) {
+
+    if (fileType == null || fileType.isBlank()) {
+      return null;
+    }
+
+    String normalized = fileType.toLowerCase().replaceFirst("^\\.", "");
+
+    return switch (normalized) {
+      case "pdf" -> "application/pdf";
+      case "jpg", "jpeg" -> "image/jpeg";
+      case "png" -> "image/png";
+      case "tiff", "tif" -> "image/tiff";
+      default -> null;
+    };
   }
 }

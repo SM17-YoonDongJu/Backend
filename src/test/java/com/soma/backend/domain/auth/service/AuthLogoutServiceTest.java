@@ -17,7 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.CookieProvider;
 import com.soma.backend.global.security.JwtProvider;
 
@@ -29,7 +29,7 @@ class AuthLogoutServiceTest {
   private AuthLogoutService authLogoutService;
 
   @Mock
-  private AuthTokenService authTokenService;
+  private AuthTokenManager authTokenManager;
 
   @Mock
   private CookieProvider cookieProvider;
@@ -53,7 +53,7 @@ class AuthLogoutServiceTest {
     authLogoutService.logout(request, response, userId);
 
     // Then
-    then(authTokenService).should().clearTokens(response, userId);
+    then(authTokenManager).should().clearTokens(response, userId);
   }
 
   @Test
@@ -69,7 +69,7 @@ class AuthLogoutServiceTest {
     authLogoutService.logout(request, response, null);
 
     // Then
-    then(authTokenService).should().clearTokens(response, userId);
+    then(authTokenManager).should().clearTokens(response, userId);
   }
 
   @Test
@@ -83,6 +83,6 @@ class AuthLogoutServiceTest {
     authLogoutService.logout(request, response, null);
 
     // Then
-    then(authTokenService).should().clearTokens(eq(response), eq(null));
+    then(authTokenManager).should().clearTokens(eq(response), eq(null));
   }
 }

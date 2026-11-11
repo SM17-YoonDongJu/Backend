@@ -1,0 +1,1441 @@
+# 알림 룰 27종 (#88 보너스 6종 + OCR·리포트 파이프라인 8종 + GPU 3종 + 약관 인덱싱 5종 + k8s 3종 #328 + Cilium 2종) — 1분 평가, BRBS 폴더.
+# 설계 원칙:
+#  - NoData → OK: dev 무트래픽·미배포 exporter(brbs-etl #257, brbs-ai) 침묵(오발화 방지)
+#  - Error → OK, 단 TargetDown만 Error → Alerting: Prometheus(데이터소스) 자체 장애를 대표 1건으로 감지
+#  - TargetDown은 job 무관 up 전체 커버 → brbs-etl·brbs-ai 타깃이 추가되는 순간 자동 커버(후속 룰 불필요)
+#  - k8s 룰(#328)은 remote_write된 kube_*·up 시계열로 중앙에서 평가한다 — in-cluster Alertmanager는 켜지
+#    않는다(알림 발송 경로를 기존 Discord 웹훅 하나로 일원화, 실험 클러스터에 별도 발송 경로를 두지 않는 결정)
+#  - 임계값은 보수적 초기값 — 운영하며 튜닝
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: brbs-alerts
+    folder: BRBS
+    interval: 1m
+    rules:
+      - uid: brbs-target-down
+        title: "TargetDown - 스크랩 타깃 다운"
+        condition: C
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "타깃 다운: {{ $labels.job }} / {{ $labels.instance }}"
+          description: "2분 이상 스크랩 실패(up==0). 컨테이너 상태(docker ps)·네트워크를 확인. 이 룰만 Error=Alerting이라 Prometheus 장애 시에도 발화한다."
+        noDataState: OK
+        execErrState: Alerting
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'up'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{job}}/{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-high-5xx
+        title: "High5xxRate - HTTP 5xx 에러율 5% 초과"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "backend 5xx 에러율이 5%를 초과"
+          description: "5분 지속. 최소 트래픽 가드(>0.1 req/s)가 있어 저트래픽 오발화는 걸러진다. 앱 로그·최근 배포를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count[5m]))) and (sum(rate(http_server_requests_seconds_count[5m])) > 0.1)'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "5xx ratio"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-high-cpu
+        title: "HighCpu - CPU 85% 초과"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 과부하: {{ $labels.instance }}"
+          description: "10분 지속 85% 초과. t3는 콜로케이트(앱+인프라+모니터링)라 원인 컨테이너를 cost-optimization 대시보드 Top10에서 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-high-memory
+        title: "HighMemory - 메모리 90% 초과"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "메모리 압박: {{ $labels.instance }}"
+          description: "10분 지속 90% 초과 — OOM 전조. 컨테이너별 소비는 cost-optimization 대시보드에서 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-disk-filling
+        title: "DiskFilling - 디스크 80% 초과"
+        condition: C
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "디스크 사용률 80% 초과: {{ $labels.instance }}"
+          description: "TSDB(retention 15d)·로그·kafka 데이터 축적 확인. 7일 예측은 cost-optimization 대시보드 참조."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"})) * 100'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [80]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-hikari-saturated
+        title: "HikariSaturated - DB 커넥션 풀 대기 발생"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HikariCP 대기 스레드 발생(풀 포화)"
+          description: "5분 지속 pending>0 — 커넥션을 못 받은 요청이 대기 중. 느린 쿼리·풀 크기(maximum-pool-size)·커넥션 누수를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'hikaricp_connections_pending'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{pool}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── OCR·리포트 파이프라인(발행=backend → ocr-job-queue → ocr-worker → report-job-queue → report) ──
+      # 두 워커 모두 AI 레포 소유이고 HTTP 서버가 없어 /metrics 스크랩이 불가하다(TargetDown 룰이 못 잡는다).
+      # "떠 있는가"는 kube-state-metrics의 가용 레플리카로, "일을 하고 있는가"는 로그와 SQS 지표(CloudWatch)로 본다.
+      # #328 이주 때 OCR 룰 두 개가 report를 OCR 워커로 보고 있었다 — OCR 워커(ocr-worker, K8s-manifests
+      # charts/ocr-worker)가 클러스터에 생기면서 OCR 룰은 ocr-worker로 돌리고, report는 Report* 룰로 옮겼다.
+      # 워커가 /metrics를 노출하면 K8s-manifests에 ServiceMonitor를 추가하고 여기에 처리량·실패율 룰을 추가한다.
+      - uid: brbs-ocr-worker-down
+        title: "OcrWorkerDown - OCR 워커 파드 없음"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OCR 워커(ocr-worker) 가용 파드가 없음"
+          description: "5분 이상 ocr-worker Deployment의 가용 레플리카가 0이다 — 파드가 죽었거나 스케줄되지 못하고 있다. 워커는 메모리가 빠듯한 일반 워커(t3.large)에 뜨므로, OOMKilled·축출 뒤 자리가 없어 다시 뜨지 못해도(Pending) 이 상태다. 청구 서류 OCR이 멈추고 그 뒤 리포트도 나오지 않는다(메시지는 큐에 4일 보관). kubectl -n default get pods -l app.kubernetes.io/name=ocr-worker · kubectl -n default logs deploy/ocr-worker 확인."
+        # NoData=Alerting 예외: 구 absent() 의미 승계 — Deployment가 삭제되거나 kube-state-metrics/remote_write가
+        # 끊겨 시계열 자체가 사라져도 알린다(원칙 NoData→OK의 의도적 예외, TargetDown execErr 예외와 같은 결).
+        noDataState: Alerting
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'kube_deployment_status_replicas_available{cluster="soma-k8s", namespace="default", deployment="ocr-worker"}'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # 원래 OcrWorkerDown이 보던 대상(report)을 그대로 옮겼다 — 가용 레플리카 0을 critical로 보는 감시는 그대로다.
+      - uid: brbs-report-worker-down
+        title: "ReportWorkerDown - 리포트 워커 파드 없음"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "리포트 워커(report) 가용 파드가 없음"
+          description: "5분 이상 report Deployment의 가용 레플리카가 0이다 — 파드가 죽었거나 스케줄되지 못하고 있다. OCR이 끝난 청구의 리포트 작업(brbs-report-job-queue-dev)을 아무도 소비하지 않으므로 리포트 생성이 멈춘다(메시지는 큐에 4일 보관). kubectl -n default get pods · kubectl -n default logs deploy/report 확인."
+        # NoData=Alerting — OcrWorkerDown과 같은 이유
+        noDataState: Alerting
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'kube_deployment_status_replicas_available{cluster="soma-k8s", namespace="default", deployment="report"}'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-ocr-worker-not-consuming
+        title: "OcrWorkerNotConsuming - OCR 워커가 큐를 읽지 못함"
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OCR 워커가 SQS 수신에 반복 실패 중"
+          description: "10분 넘게 'sqs receive failed'가 쏟아진다 — 컨테이너는 살아 있지만 큐를 못 읽는 상태다. SQS_OCR_JOB_QUEUE_URL 주입 여부(2026-08-13 실제 원인)·노드 롤 IAM(Receive/Delete)·IMDS 예외 라벨(aws-metadata=allow)·큐 이름을 확인. 발행은 정상인데 소비만 끊기면 이 룰만 발화한다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            # ⚠️ 워커(AI 레포 core/sqs/consumer.py)의 로그 문구에 의존한다 — 문구가 바뀌면 이 룰은 조용히 죽는다.
+            # 정상 시 0건이라 NoData=OK로 침묵하고, 초당 1회 재시도가 5분 이어지면 ~300건이 된다.
+            # service 라벨은 Alloy가 컨테이너 이름으로 붙인다(brbs-<컨테이너명>, K8s-manifests platform/alloy).
+            model:
+              refId: A
+              expr: 'sum(count_over_time({service="brbs-ocr-worker"} |= "sqs receive failed" [5m]))'
+              queryType: instant
+              datasource:
+                type: loki
+                uid: loki
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # report도 같은 소비 루프(core.sqs.consumer)라 같은 문구를 남긴다 — 원래 OcrWorkerNotConsuming이 보던 대상이다.
+      - uid: brbs-report-worker-not-consuming
+        title: "ReportWorkerNotConsuming - 리포트 워커가 큐를 읽지 못함"
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "리포트 워커가 SQS 수신에 반복 실패 중"
+          description: "10분 넘게 'sqs receive failed'가 쏟아진다 — 컨테이너는 살아 있지만 큐를 못 읽는 상태다. SQS_REPORT_JOB_QUEUE_URL 주입 여부·노드 롤 IAM(Receive/Delete)·IMDS 예외 라벨(aws-metadata=allow)·큐 이름을 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            # ⚠️ OcrWorkerNotConsuming과 같은 문구 의존
+            model:
+              refId: A
+              expr: 'sum(count_over_time({service="brbs-report"} |= "sqs receive failed" [5m]))'
+              queryType: instant
+              datasource:
+                type: loki
+                uid: loki
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # 원인과 상관없이 "청구 서류가 처리되지 않는다"는 증상을 본다 — 워커가 없거나(미배포·brbs-etl 정지), 죽었거나,
+      # 한 작업에 매달려 있으면 모두 여기 걸린다. 2026-11-05~06에 워커 없이 4건이 하루 넘게 쌓였는데 아무 알림도
+      # 없었다(그때 OCR 룰은 report를 보고 있었다). 로그 룰은 워커가 없으면 조용하고, OcrWorkerDown은 파드가 살아
+      # 있는 채 매달린 작업을 못 잡는다. 데이터는 CloudWatch AWS/SQS — 모니터링
+      # 인스턴스 롤(CloudWatchReadOnlyAccess)로 읽는다. 처리 중인(invisible) 메시지도 나이에 들어가고 워커는 한 번에
+      # 하나씩 처리하므로, 임계값은 정상 처리로도 생기는 대기보다 길어야 한다. OCR 엔진은 PaddleOCR(CPU)이고 일반
+      # 워커(t3.large) 실측으로 쪽당 OCR 한 번이 32~39초다(2026-11-08, 쪽마다 두 번 돈다). VLM 예산(전사 210초 +
+      # 재판독 90초)은 쪽마다가 아니라 서류마다 한 번이다(AI 레포 ocr_worker/pipeline.py — 전사 단계 전체에 마감 하나).
+      # 그래서 12쪽 서류도 OCR 14분 + VLM 5분, 20분 안팎이고, 여러 장짜리 청구의 마지막 장도 1시간이면 충분하다.
+      # 1시간을 넘긴 상태가 10분 이어져야 발화한다(for).
+      - uid: brbs-ocr-queue-stale
+        title: "OcrQueueStale - OCR 큐 메시지가 오래 처리되지 않음"
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OCR 큐(brbs-ocr-job-queue-dev)의 가장 오래된 메시지가 1시간을 넘김"
+          description: "가장 오래된 메시지가 1시간 넘게 큐에 있다 — 청구 서류가 OCR되지 않고 있다. OcrWorkerDown이 같이 울리면 파드부터 보고, 아니면 kubectl -n default logs deploy/ocr-worker로 매달린 작업을 본다. 메시지는 4일 뒤 SQS가 지우고, 그러면 그 청구는 리포트가 나오지 않는다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: cloudwatch
+            model:
+              refId: A
+              queryMode: Metrics
+              metricQueryType: 0
+              metricEditorMode: 0
+              region: default
+              namespace: AWS/SQS
+              metricName: ApproximateAgeOfOldestMessage
+              dimensions:
+                QueueName:
+                  - brbs-ocr-job-queue-dev
+              matchExact: true
+              statistic: Maximum
+              period: "300"
+              datasource:
+                type: cloudwatch
+                uid: cloudwatch
+          # CloudWatch는 시계열로 돌려주므로 마지막 값 하나로 접은 뒤 비교한다
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              datasource:
+                type: __expr__
+                uid: __expr__
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [3600]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # 두 워커는 수신 횟수가 SQS_MAX_RECEIVE_COUNT(3)를 넘은 메시지를 실패 저널에 적고 지운다. 큐의 redrive 상한(5)이
+      # 그보다 먼저 걸리면 SQS가 기록 없이 DLQ로 옮기고, 그 청구는 pending에 멈춘다 — 정상이면 DLQ는 늘 비어 있다.
+      - uid: brbs-sqs-dlq-not-empty
+        title: "SqsDlqNotEmpty - OCR·리포트 DLQ에 메시지"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ에 메시지가 있음: {{ $labels.QueueName }}"
+          description: "워커가 실패를 기록하지 못한 채 SQS가 옮긴 메시지다. 워커의 SQS_MAX_RECEIVE_COUNT가 큐의 maxReceiveCount(5) 이상으로 바뀌지 않았는지 확인하고, 메시지 본문(job_id·claim_id)으로 원인을 본 뒤 원 큐로 redrive하거나 수동 처리한다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: cloudwatch
+            model:
+              refId: A
+              queryMode: Metrics
+              metricQueryType: 0
+              metricEditorMode: 0
+              region: default
+              namespace: AWS/SQS
+              metricName: ApproximateNumberOfMessagesVisible
+              dimensions:
+                QueueName:
+                  - brbs-ocr-job-queue-dev-dlq
+                  - brbs-report-job-queue-dev-dlq
+              matchExact: true
+              statistic: Maximum
+              period: "300"
+              datasource:
+                type: cloudwatch
+                uid: cloudwatch
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              datasource:
+                type: __expr__
+                uid: __expr__
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-ocr-job-failed
+        title: "OcrJobFailed - OCR 작업 확정 실패"
+        condition: C
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OCR 작업이 확정 실패함(재처리하지 않음)"
+          description: "10분 안에 OCR 작업이 확정 실패했다 — 재시도를 다 쓴 실패(ocr_job_failure_terminal)거나, 다시 해도 소용없는 실패(마스킹 잔류·읽을 수 없는 파일, sqs handler terminal failure)다. 그 서류는 ai.ocr_job_failures에 확정 실패로 남는다. job_id·failure_class는 {service=\"brbs-ocr-worker\"} |= \"ocr_job_failure_recorded\" 로 본다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            # ⚠️ 워커의 이벤트 이름(AI 레포 ocr_worker/__main__.py·core/sqs/consumer.py)에 의존한다.
+            model:
+              refId: A
+              expr: 'sum(count_over_time({service="brbs-ocr-worker"} |~ "ocr_job_failure_terminal|sqs handler terminal failure" [10m]))'
+              queryType: instant
+              datasource:
+                type: loki
+                uid: loki
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-outbox-relay-failing
+        title: "OutboxRelayFailing - OCR 트리거 발행 실패"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "아웃박스 릴레이가 SQS 발행에 실패 중"
+          description: "10분 내 발행 실패가 있었다. 5회를 넘기면 FAILED로 파킹돼 자동 재시도가 끝나므로(수동 복구 필요) 큐 이름(SQS_OCR_QUEUE_NAME)·IAM(SendMessage/GetQueueUrl)을 확인. 로그: {service=\"brbs-backend\"} |= \"아웃박스 이벤트 발행 실패\""
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # OutboxRelay가 발행 결과를 카운터로 남긴다(outbox.relay.failed → outbox_relay_failed_total).
+            # 이 메트릭이 배포되기 전에는 시계열이 없어 NoData=OK로 침묵한다.
+            model:
+              expr: 'sum(increase(outbox_relay_failed_total[10m]))'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── GPU(g6=brbs-ai, 10.0.11.93) — dcgm-exporter/cAdvisor 기반. dcgm-gpu·cadvisor-gpu 타깃 UP 시부터 평가 ──
+      # 타깃 자체 다운은 기존 TargetDown(critical, 2m)이 커버하므로 여기선 GPU 고유 신호만 다룬다.
+      - uid: brbs-gpu-vram-high
+        title: "GpuVramHigh - GPU VRAM 95% 초과(포화·OOM 전조)"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU VRAM 포화: {{ $labels.instance }} gpu{{ $labels.gpu }}"
+          description: "10분 지속 VRAM 95% 초과. 모델이 VRAM을 채우는 건 정상이나, ~100% 고정은 추가 로드 실패·언로드/재로드 스래싱(수십초 지연)·OOM 전조다(70b OOM 이력). ollama 로그의 unload/OOM과 gpu-dcgm 대시보드를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'max by(instance, gpu) (DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE))'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}} gpu{{gpu}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.95]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-gpu-temp-high
+        title: "GpuTempHigh - GPU 온도 85도 초과(스로틀링)"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU 온도 과열: {{ $labels.instance }} gpu{{ $labels.gpu }}"
+          description: "5분 지속 85℃ 초과 — 조용한 성능 저하(클럭 스로틀링) 구간. gpu-dcgm 대시보드에서 전력·SM clock 동반 하락을 확인. 지속되면 워크로드/냉각을 점검."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'max by(instance, gpu) (DCGM_FI_DEV_GPU_TEMP)'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}} gpu{{gpu}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ollama는 HTTP 스크랩 대상이 아니라(무인증 서버) 컨테이너 생존을 cAdvisor(g6)로 본다 — OcrWorkerDown과 동형.
+      - uid: brbs-ollama-down
+        title: "OllamaDown - ollama 컨테이너 없음"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ollama(brbs-ollama) 컨테이너가 보이지 않음"
+          description: "5분 이상 cAdvisor(g6)에 brbs-ollama가 없다 — 컨테이너가 죽었거나 이름이 바뀌었다. ollama가 없으면 report·chatbot의 LLM/임베딩과 ocr-worker 임베딩이 전부 실패한다. g6에서 docker ps·docker logs brbs-ollama 확인."
+        noDataState: OK
+        execErrState: OK
+        # ⚠️ g6(brbs-ai)가 stopped인 동안 absent()가 상시 1이라 영구 발화한다 — 인스턴스 재기동 +
+        # prometheus.yml의 cadvisor-gpu 잡 주석 해제와 함께 unpause할 것(#328 시점 pause).
+        isPaused: true
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
+            model:
+              expr: 'absent(container_last_seen{name="brbs-ollama"})'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── 약관 인덱싱(insurance-chunker, brbs-etl) ──
+      # 배치 잡이라 알림 규칙이 다르다. 주기가 7일(INGEST_INTERVAL_SECONDS=604800)이므로 7일 중 6일 23시간 동안
+      # 처리량 0이 정상이다 — "5분간 처리 0건" 같은 활동 기반 룰은 상시 발화하므로 두지 않는다.
+      # 주 신호는 rate가 아니라 신선도 게이지이고, 컨테이너 자체가 죽는 건 기존 TargetDown이 커버한다.
+
+      - uid: brbs-index-stale
+        title: "IndexStale - 약관 인덱싱이 한 주기 반 넘게 성공하지 못함"
+        condition: C
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "약관 인덱싱 신선도 초과 — 마지막 성공이 10.5일을 넘겼다"
+          description: "이 서비스의 유일한 진짜 SLI다. 임계 907200s는 컨테이너 healthcheck.py와 같은 식(주기 604800 x HEALTH_GRACE_FACTOR 1.5)이라 앱 쪽 grace factor를 바꾸면 이 룰도 같이 바꿔야 한다. 데몬은 사이클이 실패해도 예외를 삼키고 다음 주기를 기다리므로 컨테이너는 running인 채로 몇 주째 인덱싱이 안 될 수 있다. brbs-etl에서 docker logs brbs-insurance-chunker 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 604800(7d) x 1.5 = 907200s. 아래 threshold의 숫자가 이 식의 결과다.
+            model:
+              expr: 'time() - insurance_chunker_last_success_timestamp_seconds'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [907200]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-cycle-failed
+        title: "IndexCycleFailed - 마지막 인덱싱 사이클 실패"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "약관 인덱싱 사이클이 실패로 끝났다"
+          description: "IndexStale은 마지막 성공이 10.5일을 넘겨야 울리므로, 사이클이 실패해도 그때까지는 아무 신호가 없다. 이 룰이 그 간극을 메운다 — 실패를 몇 분 안에 알린다. 데몬은 사이클이 죽어도 다음 주기를 기다리며 살아 있으므로 컨테이너 상태로는 구분되지 않는다. brbs-etl에서 docker logs brbs-insurance-chunker 확인. 상태 파일이 빈 새 볼륨에서는 첫 사이클이 끝나기 전까지 0이라 IndexNeverSucceeded와 같이 울린다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 재시작으로는 오발화하지 않는다 — record_start()가 기존 상태에 기동 시각만 덧쓰고
+            # last_run_ok는 그대로 두므로, 직전 사이클 결과가 볼륨에 남아 있다.
+            model:
+              expr: 'insurance_chunker_last_cycle_success'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-never-succeeded
+        title: "IndexNeverSucceeded - 약관 인덱싱 성공 기록이 아예 없음"
+        condition: C
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "insurance_chunker_last_success_timestamp_seconds 시계열이 없다"
+          description: "함정 대응 룰이다. exporter는 last_success_at이 있을 때만 이 지표를 내보내므로, 한 번도 성공한 적이 없으면 시계열 자체가 없고 IndexStale의 뺄셈은 빈 결과가 된다(NoData=OK로 조용히 침묵). 즉 '한 번도 성공 못 한' 최악의 상태를 신선도 룰이 못 잡는다. 스크랩 타깃이 통째로 죽어도 같이 발화하지만 그건 TargetDown(2m)이 먼저 알려준다. 첫 사이클이 성공하면 자동으로 해제되고 이후로는 IndexStale이 이어받는다."
+        noDataState: OK
+        execErrState: OK
+        # ⚠️ brbs-etl이 stopped인 동안 absent()가 상시 1이라 영구 발화한다 — 인스턴스 재기동 +
+        # prometheus.yml의 insurance-chunker 잡 주석 해제와 함께 unpause할 것(#328 시점 pause).
+        isPaused: true
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
+            model:
+              expr: 'absent(insurance_chunker_last_success_timestamp_seconds)'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-quarantined
+        title: "DocumentsQuarantined - 재시도 상한에 걸린 문서 발생"
+        condition: C
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "격리된 약관 문서 {{ $values.A }}건 — 이번 주기에 손도 대지 않았다"
+          description: "재시도 상한(INGEST_MAX_RETRY, 기본 3)에 걸려 사이클이 건너뛴 문서다. 사이클 자체는 성공으로 찍히기 때문에 이 룰이 없으면 특정 문서만 조용히 진도가 안 나가는 상태를 못 본다. 해당 문서가 다시 성공하면 시도 횟수가 리셋돼 자동 해제된다. 어떤 문서인지는 brbs-etl의 /data/state/attempts.json에 남는다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'insurance_chunker_quarantined_documents'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-index-weak-boundary
+        title: "WeakBoundaryDocuments - 경계 검출이 약한 문서 발생"
+        condition: C
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "경계 신뢰도 weak 문서 {{ $values.A }}건 — 적재는 됐지만 조번호가 어긋난다"
+          description: "섹션 경계를 못 잡아 조번호가 어긋난 채로 적재된 문서다. status는 OK로 남기 때문에 이 지표가 없으면 품질 저하가 성공으로 집계된다. ⚠️ items.jsonl(append-only) 누적이라 값이 내려가지 않는다 — 한 번 발화하면 원인 문서를 다시 인덱싱해도 해제되지 않으므로, 확인 후 Grafana에서 silence를 걸고 다음 증가를 보는 식으로 운영해야 한다. 증가분만 보려면 delta(...[7d]) > 0 으로 바꿔야 하는데, 우선 절대량으로 존재 자체를 드러낸다."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'insurance_chunker_weak_boundary_documents'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── k8s 클러스터 상태(soma-k8s, #328) — remote_write된 kube_*·up 시계열 기반, 중앙에서 평가 ──
+      # 노드 CPU·메모리·디스크는 기존 HighCpu·HighMemory·DiskFilling이 node-exporter DaemonSet 시계열로
+      # 이미 커버한다(instance 라벨 기준이라 클러스터 노드가 자동 포함). 여기는 k8s 고유 신호만 다룬다.
+
+      - uid: brbs-k8s-collect-stopped
+        title: "K8sCollectStopped - soma-k8s 수집 파이프라인 중단"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "soma-k8s 메트릭이 중앙에 더 이상 도착하지 않음"
+          description: "클러스터발 up 시계열이 전부 사라졌다(staleness 5분 경과 후 absent가 1이 된다). TargetDown은 up==0만 보므로 시계열 소멸 — 클러스터 Prometheus 다운·remote_write 단절·SG 변경 — 은 이 룰만 잡는다. CP에서 kubectl -n monitoring get pods 와 prometheus 파드 로그의 remote_write 에러를 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # absent()는 시계열이 있으면 빈 결과(→NoData=OK로 침묵), 없으면 1을 낸다.
+            model:
+              expr: 'absent(up{cluster="soma-k8s"})'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-k8s-pod-crashloop
+        title: "K8sPodCrashLooping - 파드 크래시루프"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크래시루프: {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "10분 넘게 CrashLoopBackOff 대기 상태가 관측됐다. 백오프 사이에 잠깐 Running으로 돌아오는 플랩은 max_over_time(10m)으로 눌렀다. kubectl -n <ns> logs <pod> --previous 또는 Loki {namespace=\"<ns>\", pod=\"<pod>\"}로 마지막 스택을 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'max by (namespace, pod) (max_over_time(kube_pod_container_status_waiting_reason{cluster="soma-k8s", reason="CrashLoopBackOff"}[10m]))'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{namespace}}/{{pod}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-k8s-deploy-unavailable
+        title: "K8sDeploymentUnavailable - 디플로이 가용 레플리카 부족"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "가용 레플리카 부족: {{ $labels.namespace }}/{{ $labels.deployment }}"
+          description: "10분 넘게 spec 대비 available이 모자라다 — 크래시루프·스케줄 불가·이미지 풀 실패 등 원인과 무관한 공통 증상이다. report·ocr-worker는 ReportWorkerDown·OcrWorkerDown(critical)이 따로 보고 이 룰은 backend를 포함한 전 디플로이를 warning으로 커버한다. kubectl -n <ns> describe deploy <이름>으로 원인을 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'sum by (namespace, deployment) (kube_deployment_spec_replicas{cluster="soma-k8s"} - kube_deployment_status_replicas_available{cluster="soma-k8s"})'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{namespace}}/{{deployment}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      # ── Cilium CNI·Hubble (soma-k8s, #328) — CNI를 Calico eBPF→Cilium으로 전환(2026-10-04)하며 추가.
+      # 에이전트 크래시루프는 K8sPodCrashLooping이 이미 잡으므로 여기는 스크랩 생존(up)과
+      # 데이터플레인 증상(드롭률)만 본다. 메트릭 경로: cilium ServiceMonitor(release=kps) → KPS → remote_write.
+
+      - uid: brbs-cilium-agent-down
+        title: "CiliumAgentDown - Cilium 에이전트 스크랩 실패"
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cilium 에이전트 다운: {{ $labels.instance }}"
+          description: "해당 노드의 cilium-agent 메트릭 스크랩이 5분째 실패했다(up==0). 에이전트가 죽어도 커널에 로드된 BPF로 기존 연결은 계속 흐르지만, 새 파드 네트워킹·NetworkPolicy 갱신·서비스 변경 반영은 전부 멈춘다. CP에서 cilium status 와 kubectl -n kube-system get pods -l k8s-app=cilium 으로 확인. 워커 쪽만 다운이면 메트릭 포트 SG(9962-9965) 변경 여부도 의심."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 1-up: 다운이면 1, 정상이면 0 — up==0 필터식은 남는 값이 0이라 threshold(gt 0)에 안 걸린다.
+            model:
+              expr: 'sum by (instance) (1 - up{cluster="soma-k8s", job="cilium-agent"})'
+              instant: true
+              range: false
+              refId: A
+              legendFormat: "{{instance}}"
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+
+      - uid: brbs-hubble-drops-high
+        title: "HubbleDropsHigh - 패킷 드롭 지속 발생"
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "soma-k8s 패킷 드롭이 10분 넘게 지속"
+          description: "Hubble 집계 드롭률(hubble_drop_total)이 초당 1개를 10분 넘게 유지 — NetworkPolicy 오적용·대상 포트 불일치·서비스 셀렉터 미스(백엔드 부재)가 흔한 원인이다. CP에서 cilium hubble port-forward 후 hubble observe --verdict DROPPED --last 50 으로 어떤 플로우가 어떤 사유로 떨어지는지 바로 보인다. 정책 변경 직후라면 해당 네임스페이스 정책 누락부터 확인."
+        noDataState: OK
+        execErrState: OK
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            # 드롭이 한 번도 없으면 시계열 자체가 없어 NoData=OK로 침묵한다(정상).
+            model:
+              expr: 'sum(rate(hubble_drop_total{cluster="soma-k8s"}[5m]))'
+              instant: true
+              range: false
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource:
+                type: __expr__
+                uid: __expr__
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query

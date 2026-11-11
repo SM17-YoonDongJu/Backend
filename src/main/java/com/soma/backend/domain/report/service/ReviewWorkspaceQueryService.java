@@ -23,7 +23,7 @@ import com.soma.backend.domain.report.repository.ReviewContextRow;
 import com.soma.backend.domain.report.repository.UserClaimRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * 검수 화면(편집 워크스페이스) 집계 조회 유스케이스(CQRS). AI 초안(REPORTS/REPORT_ISSUES)·사정사 작업본
@@ -40,7 +40,7 @@ public class ReviewWorkspaceQueryService {
   private final ReportReviewRepository reportReviewRepository;
   private final ReportAttachmentRepository reportAttachmentRepository;
   private final UserClaimRepository userClaimRepository;
-  private final S3UploadService s3UploadService;
+  private final S3ObjectStorage s3ObjectStorage;
 
   public ReviewWorkspaceResponse getReviewWorkspace(UUID reportId, UUID adjusterId) {
     Report report = reportRepository.findById(reportId)
@@ -51,13 +51,18 @@ public class ReviewWorkspaceQueryService {
     }
     ReviewContextRow context = reportRepository.findReviewContext(reportId);
     List<String> region = reportRepository.findRegionByReportId(reportId);
-    ClaimDetails claimDetails = report.getClaimId() == null ? null
-        : userClaimRepository.findById(report.getClaimId()).map(UserClaim::getDetails).orElse(null);
+    // additional_information·description은 암호화(bytea) 컬럼이라 native 프로젝션이 아니라 컨버터가 적용되는
+    // UserClaim 엔티티에서 읽는다. details와 함께 쓰므로 claim 자체를 들고 온다.
+    UserClaim claim = report.getClaimId() == null ? null
+        : userClaimRepository.findById(report.getClaimId()).orElse(null);
+    ClaimDetails claimDetails = claim == null ? null : claim.getDetails();
+    String additionalInformation = claim == null ? null : claim.getAdditionalInformation();
+    String description = claim == null ? null : claim.getDescription();
     List<ReportIssue> aiIssues = reportIssueRepository.findAllByReportId(reportId);
     ReportReview review = reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId).orElse(null);
     List<ReportAttachment> attachments = reportAttachmentRepository.findAllByReportId(reportId);
     return ReviewWorkspaceResponse.from(
-        report, context, region, claimDetails, aiIssues, review, attachments,
-        s3UploadService::presignedGetUrl);
+        report, context, region, claimDetails, additionalInformation, description, aiIssues, review, attachments,
+        s3ObjectStorage::presignedGetUrl);
   }
 }

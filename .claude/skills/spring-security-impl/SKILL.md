@@ -33,8 +33,8 @@ String getRole(String token)                           // "role" 클레임
 
 ### JwtFilter (`global/security/JwtFilter.java`)
 - `OncePerRequestFilter` 확장, `@Component`
-- 토큰 조회: **`Authorization: Bearer` 헤더 우선**, 없으면 `access_token` 쿠키로 폴백(`resolveToken`)
-- `shouldNotFilter`: `/auth/**`는 access 검증을 건너뛴다 — 재발급·로그아웃에 만료된 access 쿠키가 딸려와도 막히면 안 되기 때문(해당 경로는 refresh 쿠키로 동작)
+- 토큰 조회: **`access_token` 쿠키 전용**(`resolveToken`) — `Authorization: Bearer` 헤더는 읽지 않는다(PR #169에서 제거)
+- `shouldNotFilter`: `/auth/**`·`/api/v1/auth/oauth2/**`는 access 검증을 건너뛴다 — 재발급·로그아웃에 만료된 access 쿠키가 딸려와도 막히면 안 되기 때문(해당 경로는 refresh 쿠키로 동작)
 - 유효 토큰 → `CustomUserDetails(userId, role)` 생성 → `SecurityContextHolder` 저장
 - `BusinessException` 발생 시 필터 내에서 `ErrorResponse` JSON 직접 응답 후 체인 중단
 - 토큰 없는 요청은 통과(익명) → 이후 인가 단계에서 `RestAuthenticationEntryPoint`(401)
@@ -50,7 +50,7 @@ Spring `oauth2Login` 필터를 쓰지 않는다. 프론트가 인가코드를 �
    - code → access_token 교환(POST form) → user-info 조회(Bearer)
    - scope는 id만 — OAuthProfile(provider, providerUserId)로 정규화 (이메일·프로필 미수집)
 2. SocialAccount 조회 (provider + providerUserId)
-   - 기존 회원 → AuthTokenService.issueTokens(쿠키 발급) → OAuthCallbackResponse.existingUser(userId) (isNewUser=false)
+   - 기존 회원 → AuthTokenManager.issueTokens(쿠키 발급) → OAuthCallbackResponse.existingUser(userId) (isNewUser=false)
    - 신규 회원 → SignupTicket 발급(쿠키 없음)          → OAuthCallbackResponse.newUser(ticket)   (isNewUser=true)
 ```
 
@@ -60,12 +60,22 @@ Spring `oauth2Login` 필터를 쓰지 않는다. 프론트가 인가코드를 �
 1. SignupTicketProvider.parse(socialToken)   // 서명·만료(5분)·purpose="signup" 검증
 2. provider 일치 + SocialAccount/전화번호 중복 검사
 3. User + SocialAccount 한 트랜잭션 생성
-4. AuthTokenService.issueTokens(쿠키 발급) → RegisterResponse
+4. AuthTokenManager.issueTokens(쿠키 발급) → RegisterResponse
 ```
 
 > **SignupTicket**(`SignupTicketProvider`): `jwt.secret`으로 서명한 단기(5분) JWT. `purpose="signup"` 클레임으로 액세스 토큰과 구분하고, subject=providerUserId·provider 클레임을 담는다. 토큰을 쿼리 파라미터로 프론트에 리다이렉트하지 않는다(쿠키 인증이라 리다이렉트-토큰 패턴 불필요).
 
 > Provider별 응답 파싱·엔드포인트 상세: `references/oauth2-providers.md`
+
+## Dev 로그인 백도어 (`POST /auth/dev/login`)
+
+로컬·k6 부하테스트용으로 소셜 OAuth 없이 닉네임만으로 `access_token` 쿠키를 발급하는 엔드포인트(`DevAuthController`/`DevLoginService`). `app.dev-login.enabled=true`일 때만 빈으로 등록되고(꺼져 있으면 경로 자체가 없음), 다층 방어로 운영 노출을 막는다.
+
+- **prod 하드 블록:** `DevLoginGuard`(`@PostConstruct`)가 `app.dev-login.enabled=true` + `prod` 프로파일이면 기동 자체를 막는다.
+- **dev는 fail-closed:** dev 프로파일에서 `app.dev-login.secret`이 비어 있으면(시크릿 없이 백도어가 열리는 상태) 역시 기동을 막는다 — dev는 CORS로 외부(Vercel 프론트)에서 닿을 수 있는 서버라 설정 실수 하나가 인증 우회로 직결되기 때문. 시크릿이 설정된 경우 `X-Dev-Login-Key` 헤더를 상수 시간 비교(`MessageDigest.isEqual`)로 검증하고, 누락·불일치를 같은 403으로 응답해 오라클을 주지 않는다.
+- **local은 시크릿 미설정이 기본** — `app.dev-login.secret`이 비어 있으면 헤더 검증 자체를 건너뛴다(로컬 개발 편의).
+- k6 부하테스트(`scripts/adjuster-loadtest.k6.js`)가 dev 배포에서 이 경로로 토큰을 받는다 — 자세한 배선은 `spring-infra` 스킬 참고.
+- 이 백도어를 다루는 코드를 수정할 때는 위 세 방어선(prod 하드 블록·dev fail-closed·상수시간 비교)을 모두 유지해야 한다 — 하나라도 빠지면 인증 우회 경로가 된다.
 
 ## RBAC 구현
 
@@ -180,7 +190,7 @@ public class RefreshTokenRepository {
 }
 ```
 
-> 발급·회전·쿠키 부착 오케스트레이션은 `AuthTokenService`(`issueTokens`/`validateRefreshCookie`+`reissueTokens`/`clearTokens`)가 담당한다.
+> 발급·회전·쿠키 부착 오케스트레이션은 `AuthTokenManager`(`issueTokens`/`validateRefreshCookie`+`reissueTokens`/`clearTokens`)가 담당한다.
 
 ## 보안 체크리스트
 - [ ] 토큰은 HttpOnly 쿠키로만 전달, 응답 바디·쿼리 파라미터에 노출 금지

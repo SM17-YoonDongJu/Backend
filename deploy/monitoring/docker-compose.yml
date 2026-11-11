@@ -1,0 +1,170 @@
+# 모니터링 전용 EC2(brbs-monitoring) 배포용 compose (단일 진실원, #214).
+# 서버에서 직접 편집하지 않는다 — 이 compose와 config/ 설정은 리포를 PR로 고치고
+# deploy-dev.yml의 deploy-monitoring job이 SSM으로 동기화한다.
+#
+# prometheus·grafana·loki·tempo는 "저장·조회 백엔드"라 호스트에 매이지 않아 이 인스턴스에 모아 둔다.
+# 수집은 클러스터가 맡는다 — soma-k8s의 kube-prometheus-stack이 이 인스턴스 prometheus로
+# remote_write하고(#328), 그 수집기 설정은 이 리포가 아니라 K8s-manifests platform/ 아래에 있다.
+# config/prometheus.yml의 "원격" 섹션에 남은 호스트 타깃(GPU 노드)은 private IP를 PR로 채운다.
+#
+# 사용: 이 디렉터리를 서버 ~/monitoring/ 에 풀고 docker compose --env-file .env.dev up -d
+name: brbs-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: brbs-prometheus
+    restart: unless-stopped
+    # soma-k8s 클러스터 Prometheus의 remote_write(원격 push, brbs-net 밖)를 받아야 해서 호스트 전체에 게시한다
+    # (#328, 보안그룹으로 클러스터 노드 private IP만 허용 — loki 3100과 같은 패턴). 127.0.0.1 바인딩을 따로 더
+    # 두면 0.0.0.0이 loopback을 포함해 같은 포트를 두 번 바인딩하게 돼 충돌한다. 수신 기능 자체는 아래
+    # --web.enable-remote-write-receiver가 담당하고, 이 게시는 도달 경로만 연다.
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=3d"
+      # 시간 보존과 별개의 크기 상한(하드 실링) — 스크레이프가 튀어도 TSDB가 볼륨을 못 채우게 방어.
+      # 예: 40GiB 볼륨이면 Prometheus 8GB + Loki/Tempo 3일 + 이미지로 여유. 시간·크기 중 먼저 걸리는 쪽 적용.
+      - "--storage.tsdb.retention.size=8GB"
+      - "--web.enable-lifecycle"
+      # Tempo metrics_generator가 span 메트릭(서비스 그래프)을 remote_write로 밀어넣게 수신 활성.
+      - "--web.enable-remote-write-receiver"
+      # exemplar 저장 — 메트릭 → 트레이스 점프(metric-to-trace)용.
+      - "--enable-feature=exemplar-storage"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    mem_limit: 512m
+    mem_reservation: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: brbs-grafana
+    restart: unless-stopped
+    ports:
+      # Grafana 기본 포트(EC2 loopback, 프론트 :3000과 무관). 외부 미노출 → SSM 포워드로 접근.
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # 알림(Discord) 웹훅 2개 — severity 라우팅(critical/warning 채널). provisioning/alerting 이 참조(시크릿).
+      # 미설정 시 기동 실패: "알림 없는 줄 모르고 운영"을 막는 의도된 가드(GRAFANA_ADMIN_PASSWORD와 동일 철학).
+      ALERT_WEBHOOK_URL_CRITICAL: ${ALERT_WEBHOOK_URL_CRITICAL:?set ALERT_WEBHOOK_URL_CRITICAL}
+      ALERT_WEBHOOK_URL_WARNING: ${ALERT_WEBHOOK_URL_WARNING:?set ALERT_WEBHOOK_URL_WARNING}
+      TZ: Asia/Seoul
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    mem_limit: 384m
+    mem_reservation: 128m
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q ok || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Loki: 로그 저장·검색. 앱 인스턴스 alloy의 원격 push(brbs-net 밖)를 받아야 해서 호스트 전체에 게시한다
+  # (보안그룹으로 앱 인스턴스 private IP만 허용). 127.0.0.1 바인딩을 별도로 더 추가하면 이미 0.0.0.0이
+  # loopback도 포함해서 같은 포트를 두 번 바인딩하게 돼 충돌한다 — 조회는 이 하나로도 SSM 포워드 가능.
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: brbs-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command:
+      - "-config.file=/etc/loki/loki-config.yml"
+    volumes:
+      - ./config/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    mem_limit: 256m
+    mem_reservation: 128m
+    healthcheck:
+      # grafana/loki 이미지는 alpine 기반(busybox wget). 이 스택은 아무도 service_healthy로 의존하지 않으므로
+      # 헬스체크 오탐이 나도 컨테이너는 계속 뜬다(비차단).
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # Tempo: 트레이스 저장·조회. 조회 포트(3200)는 loopback. OTLP 리시버(4318)는 앱 인스턴스 backend가
+  # 원격으로 push해야 하므로 호스트 전체 게시(보안그룹으로 앱 인스턴스 private IP만 허용). gRPC(4317)는 미사용.
+  tempo:
+    image: grafana/tempo:2.7.1
+    container_name: brbs-tempo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3200:3200"
+      - "4318:4318"
+    command:
+      - "-config.file=/etc/tempo/tempo-config.yml"
+    volumes:
+      - ./config/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - tempo-data:/var/tempo
+    # 메모리 한계 상향 이력: 256m→512m(anon-rss가 문턱 초과, cgroup OOM)→1g. 512m에서도 시작 시
+    # metrics_generator(span-metrics)+WAL 재생이 겹쳐 cgroup OOM으로 반복 크래시했다(OOMKilled=true,
+    # 재시작 7118회, 2026-09-16 확인). 호스트가 3.7Gi라 1g는 충분히 여유. 트래픽이 계속 늘면
+    # app 샘플링(TRACING_SAMPLE_PROBABILITY)·metrics_generator 축소를 병행한다.
+    mem_limit: 1g
+    mem_reservation: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  tempo-data:
+
+networks:
+  brbs-net:
+    driver: bridge

@@ -1,6 +1,6 @@
 ---
 name: spring-infra
-description: "Spring Boot 인프라·관측성·배포 하드닝 구현 가이드. Actuator 헬스체크·liveness/readiness 프로브, JVM 메모리 제한(MaxRAMPercentage)·GC 로그·OOM 힙덤프, HikariCP 커넥션 풀 제한, Kafka producer 안전설정(acks·idempotence)과 로컬 KRaft 브로커 docker compose, Dockerfile·docker-compose 하드닝(restart·healthcheck·mem_limit), PII-안전 로깅(logback), curl·k6 smoke test 작성 시 반드시 이 스킬을 참조. '헬스체크 열기', 'JVM 메모리 제한', 'GC 로그', 'DB 풀 제한', 'Kafka producer 설정', 'docker healthcheck', '프로덕션 하드닝', '관측성 세팅', 'smoke test' 요청과 이들의 '다시/수정/보완/추가' 후속 요청 시 사용. 비즈니스 로직 구현은 제외(springboot-dev 사용)."
+description: "Spring Boot 인프라·관측성·배포 하드닝 구현 가이드. Actuator 헬스체크·liveness/readiness 프로브, JVM 메모리 제한(MaxRAMPercentage)·GC 로그·OOM 힙덤프, HikariCP 커넥션 풀 제한, SQS producer 배선(SqsClient·아웃박스 릴레이)과 로컬 LocalStack docker compose, Dockerfile·docker-compose 하드닝(restart·healthcheck·mem_limit), PII-안전 로깅(logback), curl·k6 smoke test 작성 시 반드시 이 스킬을 참조. '헬스체크 열기', 'JVM 메모리 제한', 'GC 로그', 'DB 풀 제한', 'SQS producer 설정', 'docker healthcheck', '프로덕션 하드닝', '관측성 세팅', 'smoke test' 요청과 이들의 '다시/수정/보완/추가' 후속 요청 시 사용. 비즈니스 로직 구현은 제외(springboot-dev 사용)."
 ---
 
 # Spring Boot 인프라·관측성·배포 하드닝 가이드
@@ -19,7 +19,9 @@ infra-developer 에이전트가 참조하는 운영 준비(production readiness)
 | 의존성 | `build.gradle` |
 | 환경 문서 | `.env.example` |
 | 정책 문서 | `docs/logging-pii-policy.md` *(생성 예정 — 아직 부재)* |
-| 검증 | `scripts/smoke-test.sh`, `scripts/smoke-test.k6.js` |
+| 검증 | `scripts/smoke-test.sh`, `scripts/smoke-test.k6.js`, `scripts/adjuster-loadtest.k6.js` |
+| 관측성 스택(LGTM) | `deploy/monitoring/docker-compose.yml` + `deploy/monitoring/config/{prometheus.yml,loki/,tempo/,grafana/}` |
+| k6 부하테스트 데이터 시더 | `src/main/java/.../devtools/K6ScenarioSeedRunner.java`, `K6AdjusterSeedRunner.java` |
 
 ## 1. Actuator 헬스체크 / 프로브
 
@@ -69,10 +71,12 @@ ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
 spring:
   datasource:
     hikari:
-      maximum-pool-size: 10
+      maximum-pool-size: 15
       minimum-idle: 5
       connection-timeout: 30000   # 커넥션 대기 30초 초과 시 예외
 ```
+
+- **10 → 15로 올린 이유(실제 사례):** `ReportAnalysisResolver.resolveAll`이 `REQUIRES_NEW`로 별도 트랜잭션을 쓴다 — 호출자(목록/상세 조회)의 트랜잭션 안에서 예외를 잡으면 Hibernate가 세션을 rollback-only로 표시해 커밋 시 `UnexpectedRollbackException`이 다시 터지기 때문에(degrade 로직이 성립하려면 REQUIRES_NEW가 필수) 격리를 택했다. 그런데 Spring이 `REQUIRES_NEW` 진입 시 바깥 트랜잭션의 커넥션을 반납하지 않고 그대로 쥔 채 새 커넥션을 하나 더 받으므로, **요청 하나가 순간적으로 커넥션 2개를 점유**한다. 동시 요청이 몰리면 실효 동시성이 절반으로 줄어 10에서는 `connection-timeout`이 날 수 있어 여유를 뒀다(design.md `feat/ocr-failure-status` §14 I4). **같은 함정을 피하려면:** `REQUIRES_NEW`를 캐치-앤-디그레이드 용도로 쓸 때마다 풀 크기를 이 배율만큼 다시 계산할 것 — 무조건 늘리기보다, 가능하면 그 조회를 호출자의 트랜잭션 밖(비-트랜잭션 컨텍스트)에서 실행해 애초에 이중 점유를 피하는 구조도 함께 검토한다(이번엔 `open-in-view: false`상 DTO 조립이 트랜잭션 안에서 끝나야 해서 구조 변경 대신 풀 크기 증설을 택했다).
 
 **하드닝 TODO(아직 미적용 — 권장 추가값):**
 ```yaml
@@ -86,68 +90,62 @@ spring:
 
 - **풀 크기 근거:** 무한정 늘리면 DB가 죽는다. `maximum-pool-size`는 DB `max_connections`와 인스턴스 수를 역산해서 정한다(기본 10은 단일 인스턴스 보수값). 하드닝 시 env로 환경별 오버라이드를 배선한다.
 - **`max-lifetime`은 DB/LB 유휴 종료 시간보다 짧게** — 그래야 죽은 커넥션을 쥐고 있다가 터지는 걸 막는다. 현재는 미설정(Hikari 기본 30분)이라 명시 설정을 권장한다.
+- **현재 배포 토폴로지: 인스턴스 1개, 단 dev는 배포 중 잠깐 2개.** prod는 `deploy/prod/docker-compose.yml`의 `backend` 컨테이너 1개다(재생성 방식이라 구·신이 겹치지 않는다). dev는 soma-k8s의 Deployment `replicas: 1`(차트는 K8s-manifests `charts/backend`)인데, 롤링 업데이트 기본값(maxSurge 1·maxUnavailable 0)이라 새 파드가 Ready가 될 때까지 구·신 파드가 함께 뜬다 — 스케줄러는 컨텍스트 리프레시 직후(readiness 이전)부터 돌기 때문에 매 배포마다 수십 초, 시드 러너를 켠 배포는 시딩 내내 겹친다. `@Scheduled` 스윕러(`ReportBlockedNotificationSweeper` 등)가 행 잠금·`@Version` 없이 "동시 실행 시 중복 처리" 위험을 감수하는 근거가 단일 인스턴스였으므로, dev에서는 이 겹침 구간에 중복 알림이 날 수 있다. replica를 늘리거나 prod를 k8s로 옮기기 전에 스윕러 전반에 분산 락(ShedLock 등) 또는 `@Version` 낙관적 잠금을 재검토해야 한다(PR #251 CodeRabbit 리뷰에서 지적됨).
 
-## 4. Kafka producer 안전설정 + 로컬 브로커
+## 4. SQS producer 배선 + 로컬 브로커(LocalStack)
 
-의존성: `implementation 'org.springframework.kafka:spring-kafka'`. **consumer는 FastAPI 담당이라 producer만 설정.**
+의존성: `implementation 'software.amazon.awssdk:sqs:2.26.0'`(S3와 같은 AWS SDK v2 라인, spring-cloud-aws 미사용). **consumer는 report 워커(Python) 담당이라 producer만 설정.**
 
-> **실제 배선:** 이 프로젝트는 producer 안전설정을 yaml이 아니라 **Java `@Configuration KafkaProducerConfig`
-> (`infra/kafka/KafkaProducerConfig.java`)** 로 구현한다 — `ocrProducerFactory`(ProducerFactory) + `KafkaTemplate`
-> 빈을 노출하고, `OutboxRelay`가 이 템플릿으로 OCR 트리거를 발행한다. `bootstrap-servers`/`security.protocol`만
-> `application.yml`의 `spring.kafka.*`에서 읽는다(로컬 KRaft ↔ 운영 MSK 전환 시 이 클래스는 불변, 환경변수만 교체).
-> 아래 값은 그 빈이 `ProducerConfig`로 설정하는 값과 동일하다(등가 yaml 참고용).
+> **실제 배선:** OCR 트리거는 트랜잭셔널 아웃박스로 적재하고(`OcrJobOutboxPortImpl` → `kafka_outbox_events`),
+> `OutboxRelay`가 폴링해 **`SqsClient.sendMessage`** 로 발행한다. `SqsClient` 빈은 `infra/sqs/SqsConfig`가
+> **S3Config와 동일 패턴**으로 구성한다 — `aws.region` + `DefaultCredentialsProvider`(IAM Role 위임, 정적 키 미주입).
+> `aws.sqs.endpoint`가 있으면(로컬 LocalStack) `endpointOverride` + 더미 StaticCredentials로 로컬에 붙는다.
+> 발행 대상 큐는 아웃박스 `topic` 컬럼(=SQS 큐 이름)이며, 큐 URL은 `GetQueueUrl`로 1회 해석해 캐시한다.
+> 큐 이름은 고정값이 아니라 `app.sqs.ocr-queue-name`(`${SQS_OCR_QUEUE_NAME:ocr-job-queue}`)으로 **환경별 주입**한다 —
+> 로컬/test는 기본값 `ocr-job-queue`, dev·prod는 `.env`의 `SQS_OCR_QUEUE_NAME`(`brbs-ocr-job-queue-{env}`)이다.
+> **엔티티는 `OcrOutboxEvent`, 테이블은 `kafka_outbox_events`로 이름이 다르다** — 전송 계층을 SQS로 교체하면서
+> 클래스만 `OcrOutbox*`(`OcrOutboxEvent`·`OcrOutboxStatus`·`OcrOutboxRepository`)로 정리했고, 테이블 리네임은
+> **보류**했다. `ALTER TABLE ... RENAME TO`가 `public` 스키마 `CREATE` 권한을 요구하는데 운영 DB 유저에 그 권한이
+> 없어 마이그레이션이 실패하기 때문이다. 문서·쿼리에서 둘을 섞어 쓰지 말 것(테이블명은 `kafka_outbox_events` 그대로).
 
-```yaml
-spring:
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    security:
-      protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
-    producer:                     # 참고: 실제로는 KafkaProducerConfig(ProducerConfig)로 동일 값 배선
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-      acks: all                   # 모든 ISR 확인 후 성공 — 유실 방지
-      retries: 3
-      properties:
-        enable.idempotence: true  # 중복/재전송 방지 (정확히 한 번 전송)
-        max.in.flight.requests.per.connection: 5
-        delivery.timeout.ms: 120000
-        request.timeout.ms: 30000
-        linger.ms: 10
+SQS 안전값은 브로커 위치와 무관하게 유효하다:
+- **at-least-once + 수신측 멱등:** SQS 표준 큐는 최소 1회 전달이라 중복 가능 — 수신자(report 워커)가 `job_id`로 멱등 처리한다(아웃박스도 at-least-once).
+- **큐 타입 Standard:** OCR 잡은 독립적·순서 무관이라 표준 큐를 쓴다(FIFO 불필요). 발행 재시도는 아웃박스 `attempts`(MAX 5) 초과 시 FAILED로 파킹.
+- **DLQ는 큐 redrive policy로:** 앱 코드가 아니라 큐 설정(maxReceiveCount → DLQ)이며 프로비저닝(IaC) 몫이다.
+- **apiCallTimeout:** `SqsConfig`가 5s로 걸어 릴레이 폴러 스레드의 SKIP LOCKED 락 점유를 짧게 묶는다(relay tx timeout 30s가 백스톱).
+
+```java
+// infra/sqs/SqsConfig.java — 핵심만
+SqsClient.builder()
+    .region(Region.of(region))
+    .overrideConfiguration(o -> o.apiCallTimeout(Duration.ofSeconds(5)))
+    // endpoint 있으면 LocalStack(더미 크리덴셜), 없으면 DefaultCredentialsProvider(IAM Role)
+    .credentialsProvider(hasEndpoint ? dummyStatic : DefaultCredentialsProvider.create())
+    .build();
 ```
 
-로컬 브로커는 **KRaft 모드(zookeeper 불필요)**로 compose에 올리고, 호스트/컨테이너 이중 리스너로 붙게 한다. 운영은 MSK로 오버라이드(추후).
+로컬 브로커는 **LocalStack(SQS)**를 compose에 올리고, ready 훅(`docker/localstack/init-sqs.sh`)이 `ocr-job-queue`를 생성한다. 운영/스테이징은 **관리형 AWS SQS**(컨테이너 없음)로 IAM Role로 접속한다 — `AWS_SQS_ENDPOINT`를 비우면 실제 SQS로 붙는다.
 
 ```yaml
-  kafka:
-    image: apache/kafka:4.3.1
+  localstack:
+    image: localstack/localstack:3
     ports:
-      - "${KAFKA_PORT:-9092}:9092"      # EXTERNAL → 호스트 bootRun
+      - "${LOCALSTACK_PORT:-4566}:4566"
     environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      # 호스트 생략(://:포트) 표기 필수 — 리터럴 0.0.0.0은 컨트롤러 광고 주소 폴백 검증에 걸려 기동 실패(#93)
-      KAFKA_LISTENERS: CONTROLLER://:9093,INTERNAL://:9094,EXTERNAL://:9092
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9094,EXTERNAL://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      SERVICES: sqs
+    volumes:
+      - ./docker/localstack/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name ocr-job-queue >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 15s
 ```
 
-- **이중 리스너 이유:** 컨테이너 내부는 `kafka:9094`(INTERNAL), 호스트 bootRun은 `localhost:9092`(EXTERNAL). advertised listener가 한 개면 한쪽이 못 붙는다.
-- app 서비스에 `KAFKA_BOOTSTRAP_SERVERS: kafka:9094`(env_file보다 우선) + `depends_on: kafka(healthy)` 추가.
-- 단일 브로커 → 복제 계수 1. 운영(MSK)에서는 3으로.
-- **producer 안전설정은 브로커 위치와 무관하게 유효** — 로컬↔MSK 전환 시 이 값은 안 바꾼다.
+- app 서비스에 `AWS_SQS_ENDPOINT: http://localstack:4566` + `AWS_REGION` + `depends_on: localstack(healthy)` 추가(호스트 bootRun은 `application-local.yml`이 `localhost:4566` 기본).
+- **IAM 권한:** app 태스크/인스턴스 Role = `sqs:SendMessage` + `sqs:GetQueueUrl`. 워커 Role = `sqs:ReceiveMessage`·`DeleteMessage`·`GetQueueAttributes`.
+- **`app.outbox.enabled=false`면 릴레이 no-op**(테스트·SQS 미가용 로컬). `@EnableScheduling`은 유지해 다른 스케줄러(OutboxProcessor)를 보존한다.
 
 ## 5. PII-안전 로깅
 
@@ -165,6 +163,8 @@ logging:
 `logback-spring.xml`은 body/header를 포함하지 않는 표준 패턴 + 회전 파일 appender로 구성한다. 손해사정 도메인은 주민번호·진단서·결제정보를 다루므로 정책 문서(`docs/logging-pii-policy.md`, **아직 미생성 — 생성 예정**)를 함께 유지한다: 금지 항목(토큰·주민번호·의료·금융·요청 본문), 마스킹 규칙, DTO 통째 로깅 금지.
 
 ## 6. Docker restart / healthcheck (docker-compose app)
+
+> dev는 soma-k8s로 옮겨 이 절은 prod(compose)와 로컬에만 해당한다. dev의 프로브(readiness·liveness, 관리 포트 9292)는 K8s-manifests `charts/backend`에 있다.
 
 ```yaml
     restart: unless-stopped
@@ -187,6 +187,19 @@ logging:
 
 `scripts/smoke-test.sh`(curl)는 health/liveness/readiness 상태코드 + 본문 `UP`을 확인한다. `scripts/smoke-test.k6.js`(k6)는 최소 부하로 실패율·p95 threshold를 검증한다. 엔드포인트가 늘면 스크립트에 추가한다. 스모크=배포 후 헬스 확인, 기능 검증은 통합 테스트(spring-qa) 몫 — 경계를 지킨다.
 
+## 8. 관측성 스택 (Loki·Grafana·Tempo·Prometheus) + k6 부하테스트
+
+`deploy/monitoring/`에 모니터링 EC2용 compose와 마운트되는 설정(`config/`)이 있다 — 로그(Loki)·대시보드(Grafana)·트레이스(Tempo) 설정과 Prometheus 스크레이프 설정(`config/prometheus.yml`)이다. 클러스터 쪽 수집기(alloy DaemonSet·kube-prometheus-stack) 설정은 이 리포가 아니라 K8s-manifests `platform/` 아래에 있다. Grafana 대시보드는 `config/grafana/dashboards/*.json`(API 지연시간 percentile·5xx 에러율, WebSocket 채팅 핸드셰이크/relay 지연, RDS(CloudWatch), redis_exporter, 비용 최적화 등)으로 프로비저닝되고 알림 정책은 `config/grafana/provisioning/alerting/`에 있다.
+
+- **k6 부하테스트 결과는 Grafana가 아니라 Datadog으로 수집한다** — 한때 k6 결과도 Grafana 대시보드로 연동했으나 제거했다(현재는 앱/인프라 관측은 Grafana, 부하테스트 결과는 Datadog으로 역할이 분리돼 있다).
+- **CI 이미지 빌드**는 buildx + GitHub Actions 레이어 캐시를 쓴다(빌드 시간 단축 목적, 런타임 동작과는 무관).
+
+### k6 부하테스트 데이터 시더 (devtools)
+
+`devtools/K6ScenarioSeedRunner`·`K6AdjusterSeedRunner`는 부하테스트용 리포트·제안·채팅방·사정사 데이터를 1회성으로 시딩하는 `ApplicationRunner`다. `app.dev-seed.k6-*` 프로퍼티로 게이트하는데, **어떤 `application*.yml`에도 선언하지 않고** 배포 설정(dev는 K8s-manifests `envs/dev/backend.values.yaml`의 `config`)으로만 주입한다(프로퍼티 오주입 한 번으로 운영 DB가 오염되지 않게 이중 차단). 켜는 절차는 `deploy/README.md` "시드 러너·dev 로그인 백도어 켜기". `K6ScenarioSeedRunner`는 `@Profile("!test & !prod")`로 사정사 시더(`@Profile("!test")`)보다 더 강하게 잠갔다 — 기본 설정에서 약 20만 행(리포트·제안·채팅방·메시지·유저)을 만들기 때문. 도메인 서비스를 호출하지 않고 직접 시딩하므로 OCR 트리거(SQS)·푸시·Redis 브로드캐스트가 발생하지 않는다. 사후 정리 SQL·환경변수 이름 규칙(`APP_` 접두어 필수)은 클래스 Javadoc에 있다.
+
+`scripts/adjuster-loadtest.k6.js`는 시딩된 데이터를 소비하는 사정사(adjuster) role 시나리오다. dev 배포에도 `POST /auth/dev/login`으로 토큰을 받는데(`spring-security-impl`의 Dev 로그인 백도어 참고, `DEV_LOGIN_KEY` 필수 — dev는 시크릿 없이 열리지 않는다), dev의 `access_token` 쿠키가 `Secure`라 k6 기본 쿠키 jar가 http:// 재전송을 거부하므로 `Set-Cookie`에서 토큰을 직접 파싱해 매 요청 `Cookie` 헤더를 수동 구성한다.
+
 ## 검증 절차 (구현 후)
 1. `./gradlew compileJava` — 의존성/컴파일 확인
 2. `DB_PASSWORD=x docker compose config >/dev/null` — compose 문법 검증(엔진 불필요)
@@ -198,4 +211,4 @@ logging:
 - 변경 파일 목록
 - 각 설정 값과 **근거**(왜 이 값인지)
 - 검증 결과(컴파일/compose config 통과 여부, 라이브 스모크 실행/미실행)
-- 남은 TODO (예: 실제 KafkaProducer 컴포넌트 구현은 backend-developer)
+- 남은 TODO (예: SQS 큐·DLQ 프로비저닝·IAM 정책은 IaC 몫; 발행 컴포넌트 OutboxRelay·SqsConfig는 구현됨)

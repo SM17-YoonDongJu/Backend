@@ -26,8 +26,8 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
-import com.soma.backend.global.security.AuthTokenService.RefreshTokenContext;
+import com.soma.backend.global.security.AuthTokenManager;
+import com.soma.backend.global.security.AuthTokenManager.RefreshTokenContext;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuthReissueService 단위 테스트")
@@ -37,7 +37,7 @@ class AuthReissueServiceTest {
   private AuthReissueService authReissueService;
 
   @Mock
-  private AuthTokenService authTokenService;
+  private AuthTokenManager authTokenManager;
 
   @Mock
   private UserRepository userRepository;
@@ -55,7 +55,7 @@ class AuthReissueServiceTest {
     UUID userId = UUID.randomUUID();
     RefreshTokenContext context = new RefreshTokenContext(userId, "refresh-token");
     User user = mock(User.class);
-    given(authTokenService.validateRefreshCookie(request)).willReturn(context);
+    given(authTokenManager.validateRefreshCookie(request)).willReturn(context);
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(user.getRole()).willReturn(Role.CERTIFICATED_ADJUSTER);
 
@@ -63,7 +63,7 @@ class AuthReissueServiceTest {
     authReissueService.reissue(request, response);
 
     // Then
-    then(authTokenService).should().reissueTokens(response, context, "CERTIFICATED_ADJUSTER");
+    then(authTokenManager).should().reissueTokens(response, context, "CERTIFICATED_ADJUSTER");
   }
 
   @Test
@@ -72,7 +72,7 @@ class AuthReissueServiceTest {
     // Given
     UUID userId = UUID.randomUUID();
     RefreshTokenContext context = new RefreshTokenContext(userId, "refresh-token");
-    given(authTokenService.validateRefreshCookie(request)).willReturn(context);
+    given(authTokenManager.validateRefreshCookie(request)).willReturn(context);
     given(userRepository.findById(userId)).willReturn(Optional.empty());
 
     // When & Then
@@ -80,6 +80,6 @@ class AuthReissueServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting(ex -> ((BusinessException) ex).getErrorCode())
         .isEqualTo(ErrorCode.USER_NOT_FOUND);
-    then(authTokenService).should(never()).reissueTokens(any(), any(), anyString());
+    then(authTokenManager).should(never()).reissueTokens(any(), any(), anyString());
   }
 }

@@ -30,11 +30,11 @@ import com.soma.backend.global.security.RestAccessDeniedHandler;
 import com.soma.backend.global.security.RestAuthenticationEntryPoint;
 import com.soma.backend.global.security.SecurityConfig;
 import com.soma.backend.infra.redis.TokenBlacklistRepository;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * UploadController 슬라이스 테스트. 실제 UploadService·UploadPurpose 파싱·GlobalExceptionHandler를
- * 시큐리티 체인과 함께 배선하고 S3 경계(S3UploadService)만 @MockitoBean으로 대체한다. multipart(file·purpose)
+ * 시큐리티 체인과 함께 배선하고 S3 경계(S3ObjectStorage)만 @MockitoBean으로 대체한다. multipart(file·purpose)
  * 수신, purpose×content_type 교차 검증, 매직바이트 위장 탐지, 용량 초과, purpose 파싱(소문자 계약, 대문자·미지값
  * 거부), 필수 파트 누락, 인증 경계, snake_case 응답 봉투를 검증한다.
  */
@@ -62,7 +62,7 @@ class UploadControllerTest {
   private MockMvc mockMvc;
 
   @MockitoBean
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
 
   @MockitoBean
   private TokenBlacklistRepository tokenBlacklistRepository;
@@ -78,7 +78,7 @@ class UploadControllerTest {
   }
 
   private void stubObjectUrl() {
-    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
+    given(s3ObjectStorage.objectUrl(anyString())).willReturn(S3_URL);
   }
 
   @Test

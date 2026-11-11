@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import com.soma.backend.domain.adjuster.entity.AdjusterRating;
 import com.soma.backend.domain.adjuster.repository.AdjusterCardRow;
 import com.soma.backend.domain.adjuster.repository.AdjusterListMetaRow;
 import com.soma.backend.domain.user.entity.Role;
@@ -42,10 +43,7 @@ public record AdjusterListResponse(
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String activityRegion) {
 
     public static Item from(AdjusterCardRow row, UnaryOperator<String> urlResolver) {
-      int reviewCount = row.reviewCount() == null ? 0 : row.reviewCount();
-      double averageRating = reviewCount == 0 || row.ratingMean() == null
-          ? 0.0
-          : row.ratingMean().doubleValue();
+      AdjusterRating rating = AdjusterRating.of(row.ratingMean(), row.reviewCount());
       return new Item(
           row.adjusterId(),
           row.nickname(),
@@ -53,8 +51,8 @@ public record AdjusterListResponse(
           row.role() == Role.CERTIFICATED_ADJUSTER,
           row.specialties() == null ? List.of() : row.specialties(),
           row.headline() == null ? "" : row.headline(),
-          averageRating,
-          reviewCount,
+          rating.average(),
+          rating.reviewCount(),
           row.career() == null ? 0 : row.career(),
           row.completedConsultCount() == null ? 0 : row.completedConsultCount(),
           RegionFormat.toSingle(row.activityRegion()));

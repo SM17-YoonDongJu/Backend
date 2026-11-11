@@ -1,0 +1,106 @@
+package com.soma.backend.domain.report.service;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
+import com.soma.backend.domain.report.entity.OcrJobFailureView;
+import com.soma.backend.domain.report.entity.OcrResultView;
+import com.soma.backend.domain.report.entity.Report;
+import com.soma.backend.domain.report.entity.ReportAnalysis;
+import com.soma.backend.domain.report.entity.ReportAttachment;
+import com.soma.backend.domain.report.entity.ReportJobFailureView;
+import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
+import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
+import com.soma.backend.domain.report.repository.ReportRepository;
+import com.soma.backend.global.exception.BusinessException;
+import com.soma.backend.global.exception.ErrorCode;
+
+/**
+ * 리포트 분석(OCR·AI) 처리 상태 조회 유스케이스(design.md §4). CQRS 조회 전용이며, 판정 규칙 자체는
+ * {@link ReportAnalysis}·{@code AnalysisFailureReason}(VO)이 소유한다 — 이 서비스는 조회를 조율하고
+ * 결과를 옮기기만 한다(빈약한 도메인 방지).
+ *
+ * <p>상태는 저장하지 않고 매번 파생한다: AI 초안 존재 여부(reports) + 확정 실패 행({@code ai.ocr_job_failures}·
+ * {@code ai.report_job_failures}).
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class ReportAnalysisStatusQueryService {
+
+  private final ReportRepository reportRepository;
+  private final ReportAttachmentRepository reportAttachmentRepository;
+  private final OcrJobFailureViewRepository ocrJobFailureViewRepository;
+  private final ReportAnalysisResolver reportAnalysisResolver;
+
+  /**
+   * GET /reports/{reportId}/analysis-status — 폴링용 단건 조회.
+   *
+   * <p><b>인가: 리포트 소유자 전용</b>이다(상세 조회와 달리 사정사에게 열지 않는다 — design.md §12 S3).
+   * 미존재는 404 REPORT_NOT_FOUND, 소유자가 아니면 403 FORBIDDEN.
+   *
+   * <p><b>왜 사정사를 뺐나</b> — 이 응답에만 있는 {@code failed_documents[].name}은 사용자가 업로드할 때
+   * 준 원본 파일명({@code report_attachments.name} ← {@code CreateReportRequest.Document.name})이라
+   * "환자명_진단서_병원.pdf"처럼 타인의 신원·병력을 그대로 담을 수 있다. 반면 사정사에게 이 엔드포인트가
+   * 필요한 업무는 없다 — 폴링의 목적은 "업로드한 사용자가 자기 리포트가 언제 뜨는지 확인하는 것"이고,
+   * 사정사가 검수 큐에서 분석 미완 리포트를 만나는 경우에 필요한 정보(처리 중인가/실패인가)는 파일명 없는
+   * 평면 3필드({@code analysis_state}·{@code analysis_failure_reason}·{@code analysis_failure_message})로
+   * 이미 목록·상세에 실려 나간다. 즉 사정사에게 열어봐야 추가로 주는 것은 <b>타인의 파일명뿐</b>이라
+   * 최소 권한 원칙상 닫는 게 맞다. (신규 엔드포인트라 기존 소비자가 없어 축소에 따른 회귀도 없다.)
+   *
+   * <p>목록·상세와 달리 OCR 실패 저널({@code ai.ocr_job_failures}) 조회 오류를 <b>삼키지 않는다</b>. 이
+   * 엔드포인트의 유일한 책임이 분석 상태 전달이라, 조회에 실패했는데 PROCESSING을 내리면 "영원히 처리 중"이라는
+   * 거짓을 말하게 된다(design.md §8 E14). 반면 품질 미달 문서({@code ai.ocr_results}) 조회는 <b>삼킨다</b> — 이
+   * 값이 없어도 상태 판정({@code reports.status} 기반) 자체는 이미 정확하고, 이 조회는 "어느 문서인지"만 보강하기
+   * 때문이다(GRANT 미배포 상태에선 항상 실패하므로, 여기서도 실패했다고 500을 내면 이 엔드포인트 자체가 못 쓰이게
+   * 된다).
+   *
+   * <p>리포트 생성 실패 저널({@code ai.report_job_failures})은 <b>테이블이 아직 없을 때만</b> 삼킨다. 012는 AI
+   * report 워커가 기동할 때 환경별로 적용하므로 Backend가 먼저 배포된 환경에선 테이블이 없을 수 있는데, 거기서
+   * 500을 내면 그동안 모든 리포트의 폴링이 막힌다. 그때는 리포트 생성 단계 실패만 이 저널이 생기기 전처럼
+   * PROCESSING으로 보인다. 테이블이 있는데도 못 읽으면 OCR 저널과 같은 이유로 삼키지 않는다.
+   */
+  public ReportAnalysisStatusResponse getAnalysisStatus(UUID userId, UUID reportId) {
+    Report report = reportRepository.findById(reportId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+    // 역할(role)이 아니라 소유권으로만 판정한다 — 사정사 계정이 스스로 만든 리포트는 소유자로서 통과한다.
+    if (!report.isOwnedBy(userId)) {
+      throw new BusinessException(ErrorCode.FORBIDDEN);
+    }
+    List<UUID> target = List.of(reportId);
+    List<OcrJobFailureView> ocrJobFailures = ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(target);
+    List<ReportJobFailureView> reportJobFailures =
+        reportAnalysisResolver.reportJobFailuresOrEmptyIfJournalMissing(target).getOrDefault(reportId, List.of());
+    List<OcrResultView> needsReuploadDocuments =
+        reportAnalysisResolver.needsReuploadDocumentsOrEmpty(target).getOrDefault(reportId, List.of());
+    ReportAnalysis analysis = ReportAnalysis.of(report, ocrJobFailures, reportJobFailures, needsReuploadDocuments);
+    return ReportAnalysisStatusResponse.of(reportId, analysis, attachmentNames(reportId, analysis));
+  }
+
+  /**
+   * 실패 문서에 붙일 첨부 파일명({@code report_attachments.id → name}). 실패 문서가 없으면 조회하지 않는다.
+   * 첨부 행이 없거나 이름이 비어 있으면 맵에서 빠지고 응답에는 null로 나간다.
+   */
+  private Map<UUID, String> attachmentNames(UUID reportId, ReportAnalysis analysis) {
+    if (analysis.documents().isEmpty()) {
+      return Map.of();
+    }
+    Map<UUID, String> names = new HashMap<>();
+    for (ReportAttachment attachment : reportAttachmentRepository.findAllByReportId(reportId)) {
+      if (attachment.getName() != null) {
+        names.put(attachment.getId(), attachment.getName());
+      }
+    }
+    return names;
+  }
+}

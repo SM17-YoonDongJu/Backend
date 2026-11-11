@@ -30,35 +30,35 @@ class ReportQuerydslExecutionTest {
   private ReportReviewRepository reportReviewRepository;
 
   @Test
-  @DisplayName("findPendingReviewRows — users 조인 + 보류 제외(notExists) 서브쿼리 + 접수 최신순 SQL이 실행된다")
+  @DisplayName("findPendingReviewRows·countPendingReviewRows — users 조인 + 보류 제외(notExists) 서브쿼리 SQL이 실행된다")
   void pendingReviewRowsExecutes() {
-    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
-        null, null, null, UUID.randomUUID(), Set.of(), PageRequest.of(0, 20));
+    UUID adjusterId = UUID.randomUUID();
+    List<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
+        null, null, null, adjusterId, Set.of(), PageRequest.of(0, 20));
 
-    assertThat(page).isNotNull();
-    assertThat(page.getContent()).isEmpty();
-    assertThat(page.getTotalElements()).isZero();
+    assertThat(rows).isEmpty();
+    assertThat(reportRepository.countPendingReviewRows(null, null, null, adjusterId)).isZero();
   }
 
   @Test
   @DisplayName("findPendingReviewRows — 전문분야 매칭 accident_type 우선 정렬(CASE) SQL이 실행된다")
   void pendingReviewRowsSpecialtySortExecutes() {
-    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
+    List<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
         null, null, null, UUID.randomUUID(), Set.of(AccidentType.TRAFFIC, AccidentType.DISABILITY),
         PageRequest.of(0, 20));
 
-    assertThat(page).isNotNull();
-    assertThat(page.getContent()).isEmpty();
+    assertThat(rows).isEmpty();
   }
 
   @Test
   @DisplayName("findPendingReviewRows — region 필터가 users.region 배열 contains(array_contains)로 실행된다")
   void pendingReviewRowsRegionFilterExecutes() {
-    Page<PendingReviewRow> page = reportRepository.findPendingReviewRows(
-        null, null, "서울", UUID.randomUUID(), Set.of(), PageRequest.of(0, 20));
+    UUID adjusterId = UUID.randomUUID();
+    List<PendingReviewRow> rows = reportRepository.findPendingReviewRows(
+        null, null, "서울", adjusterId, Set.of(), PageRequest.of(0, 20));
 
-    assertThat(page).isNotNull();
-    assertThat(page.getContent()).isEmpty();
+    assertThat(rows).isEmpty();
+    assertThat(reportRepository.countPendingReviewRows(null, null, "서울", adjusterId)).isZero();
   }
 
   @Test
@@ -77,5 +77,18 @@ class ReportQuerydslExecutionTest {
 
     assertThat(page).isNotNull();
     assertThat(page.getContent()).isEmpty();
+  }
+
+  /**
+   * design.md §12.4 C30 — PII 암호화(V34) 이후에도 이 projection이 그대로 실행되는지 확인한다.
+   * 셀렉트 대상 배열 3종은 {@code report_reviews}(사정사 검수본, 1단계 평문 유지)라 스코프 밖이고,
+   * {@code reports}의 동명 컬럼은 PR-2 게이트 대상이다.
+   */
+  @Test
+  @DisplayName("findCustomerReportDetail — report_reviews 배열 3종 projection SQL이 실행된다(PII 스코프 밖 확인)")
+  void customerReportDetailExecutes() {
+    CustomerReportDetailRow row = reportRepository.findCustomerReportDetail(UUID.randomUUID());
+
+    assertThat(row).isNull();
   }
 }

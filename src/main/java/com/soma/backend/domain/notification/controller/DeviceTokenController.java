@@ -1,6 +1,5 @@
 package com.soma.backend.domain.notification.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,21 +30,21 @@ public class DeviceTokenController {
 
   /** 디바이스 토큰 등록(멱등 upsert). 이미 등록된 토큰이면 기존 행을 그대로 반환한다. 200. */
   @PostMapping
-  public ResponseEntity<ApiResponse<DeviceTokenResponse>> register(
+  public ApiResponse<DeviceTokenResponse> register(
       @AuthenticationPrincipal CustomUserDetails principal,
       @Valid @RequestBody RegisterDeviceTokenRequest request) {
 
     DeviceTokenResponse response = deviceTokenService.register(principal.getUserId(), request);
-    return ResponseEntity.ok(ApiResponse.ok("디바이스 토큰을 등록했습니다.", response));
+    return ApiResponse.ok("디바이스 토큰을 등록했습니다.", response);
   }
 
   /** 디바이스 토큰 해제(멱등). 본인 소유 토큰만 삭제하고, 없어도 no-op 200이다. */
   @DeleteMapping
-  public ResponseEntity<ApiResponse<Void>> deregister(
+  public ApiResponse<Void> deregister(
       @AuthenticationPrincipal CustomUserDetails principal,
       @Valid @RequestBody DeleteDeviceTokenRequest request) {
 
     deviceTokenService.deregister(principal.getUserId(), request.token());
-    return ResponseEntity.ok(ApiResponse.ok("디바이스 토큰을 해제했습니다.", null));
+    return ApiResponse.ok("디바이스 토큰을 해제했습니다.", null);
   }
 }

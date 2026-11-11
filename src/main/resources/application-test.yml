@@ -16,16 +16,20 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      # test는 Flyway 비활성이라 시퀀스(엔티티가 아님)를 ddl-auto가 못 만든다 — 이 스크립트로 보충한다.
+      # defer-datasource-initialization은 켜지 않는다: 초기화기가 EMF에 의존하게 되면 PII 컨버터→piiCipher→
+      # piiDataKeyProvider→jdbcTemplate→초기화기로 빈 순환이 생긴다. 시퀀스는 테이블 의존이 없어 datasource
+      # 초기화 시점(EMF 이전)에 만들어도 충분하다.
+      mode: always
+      schema-locations: classpath:sql/test-schema.sql
   flyway:
     enabled: false
   data:
     redis:
       host: localhost
       port: 6379
-  kafka:
-    bootstrap-servers: localhost:9092
-    security:
-      protocol: PLAINTEXT
   security:
     oauth2:
       client:
@@ -39,18 +43,32 @@ spring:
 
 management:
   tracing:
-    # 테스트 컨텍스트는 Tempo가 없다 — 트레이싱을 꺼서 OTLP export·네트워크 시도를 막는다.
-    enabled: false
+    export:
+      # 테스트 컨텍스트는 Tempo가 없다 — span 전송을 꺼서 OTLP export·네트워크 시도를 막는다(Boot 4 키).
+      enabled: false
 
 logging:
   file:
     path: /tmp/logs
 
 app:
+  sqs:
+    # 릴레이는 outbox.enabled=false로 꺼두지만, 큐 이름은 빈 초기화 시점에 필요하다(application.yml에 폴백 없음).
+    ocr-queue-name: ocr-job-queue
   cookie:
     secure: false
   outbox:
     enabled: false
+  report:
+    # 테스트 컨텍스트에는 ai 스키마(AI 워커 소유)가 없다 — 스윕을 꺼서 폴링 실패 로그와 테스트 간섭을 막는다.
+    # 스윕 자체를 검증하는 테스트는 이 플래그를 켜고 부트스트랩 SQL로 ai.ocr_job_failures를 준비한다.
+    analysis-failure-sweep-enabled: false
+    # BLOCKED 스윕은 ai 스키마와 무관하지만(reports만 스캔), 다른 테스트의 BLOCKED 리포트 픽스처에
+    # 스윕이 끼어들어 알림이 중복 생성되는 걸 막기 위해 기본은 꺼둔다. 검증 테스트는 이 플래그를 켠다.
+    blocked-sweep-enabled: false
+    # NEEDS_REUPLOAD 스윕도 같은 이유로 기본은 꺼둔다(다른 테스트의 NEEDS_REUPLOAD 픽스처에 스윕이 끼어들어
+    # 알림이 중복 생성되는 걸 막는다). 검증 테스트는 이 플래그를 켠다.
+    needs-reupload-sweep-enabled: false
 
 jwt:
   secret: testsecretkeyforcitestingonly32chars!!

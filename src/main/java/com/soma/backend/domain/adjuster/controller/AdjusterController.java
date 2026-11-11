@@ -2,7 +2,6 @@ package com.soma.backend.domain.adjuster.controller;
 
 import java.util.UUID;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,7 +33,7 @@ public class AdjusterController {
    */
   @PreAuthorize("isAuthenticated()")
   @GetMapping("/adjusters")
-  public ResponseEntity<ApiResponse<AdjusterListResponse>> getAdjusters(
+  public ApiResponse<AdjusterListResponse> getAdjusters(
       @RequestParam(required = false) String keyword,
       @RequestParam(required = false) String specialty,
       @RequestParam(required = false) String region,
@@ -43,14 +42,14 @@ public class AdjusterController {
       @RequestParam(defaultValue = "12") int size) {
     AdjusterListResponse result =
         adjusterListQueryService.getAdjusters(keyword, specialty, region, sort, page, size);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   @PreAuthorize("isAuthenticated()")
   @GetMapping("/adjusters/{adjusterId}")
-  public ResponseEntity<ApiResponse<AdjusterDetailResponse>> getAdjusterDetail(
+  public ApiResponse<AdjusterDetailResponse> getAdjusterDetail(
       @PathVariable UUID adjusterId) {
     AdjusterDetailResponse result = adjusterProfileQueryService.getAdjusterDetail(adjusterId);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

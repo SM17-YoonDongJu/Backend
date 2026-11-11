@@ -1,6 +1,5 @@
 package com.soma.backend.domain.report.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,10 +23,10 @@ public class UserActivitySummaryController {
   private final UserActivitySummaryQueryService userActivitySummaryQueryService;
 
   @GetMapping("/users/me/activity-summary")
-  public ResponseEntity<ApiResponse<UserActivitySummaryResponse>> activitySummary(
+  public ApiResponse<UserActivitySummaryResponse> activitySummary(
       @AuthenticationPrincipal CustomUserDetails principal) {
     UserActivitySummaryResponse result =
         userActivitySummaryQueryService.getActivitySummary(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

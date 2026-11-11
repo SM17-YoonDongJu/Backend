@@ -1,0 +1,16 @@
+-- =====================================================================
+-- V35 — encryption_keys를 core 스키마로 이관.
+--
+-- V33은 app_owner가 public에 CREATE 권한이 없어(PG15+ 기본 REVOKE) 배포 시 실패했다.
+-- public에 CREATE를 임시로 허용해 V33·V34가 원래 작성된 대로 성공하게 한 뒤, 이 마이그레이션으로
+-- encryption_keys를 원래 의도한 core 스키마로 옮긴다(테이블 소유자는 app_owner이므로 별도 권한 없이
+-- 셀프로 수행 가능 — SET SCHEMA는 대상 스키마에 대한 CREATE 권한만 있으면 된다).
+--
+-- app_owner의 기본 search_path가 이미 "core, public"이라 EncryptionKeyStore의 스키마 미지정
+-- SQL은 이관 전후 어느 쪽이든 그대로 동작한다(존재하는 스키마를 순서대로 탐색).
+--
+-- ⚠️ public에 대한 CREATE 권한은 이 마이그레이션이 성공적으로 적용된 뒤 별도로(app_owner가 아닌
+-- 관리자 권한으로) REVOKE한다 — Flyway 마이그레이션 안에서는 되돌릴 수 없다(app_owner는 자신에게
+-- 부여된 권한을 스스로 회수할 권한이 없다).
+-- =====================================================================
+ALTER TABLE public.encryption_keys SET SCHEMA core;

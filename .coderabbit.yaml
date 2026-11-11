@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit 리뷰 대상 base branch 설정. 기본 브랜치(main)는 항상 포함되고, 통합 브랜치인
+# develop을 추가해 develop 대상 PR도 자동 리뷰를 받게 한다(그전엔 develop은 "reviews are
+# disabled for this base branch"로 스킵됐다). CodeRabbit은 PR의 base 브랜치에서 이 파일을 읽으므로,
+# 이 설정이 develop에 병합된 뒤 열리는 develop 대상 PR부터 리뷰가 동작한다.
+reviews:
+  auto_review:
+    enabled: true
+    base_branches:
+      - main
+      - develop

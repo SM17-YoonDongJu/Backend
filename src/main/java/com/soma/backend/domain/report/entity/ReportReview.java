@@ -1,7 +1,9 @@
 package com.soma.backend.domain.report.entity;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
@@ -75,10 +77,25 @@ public class ReportReview extends BaseEntity {
   @JoinColumn(name = "report_review_id", nullable = false)
   private List<ReportReviewIssue> issues = new ArrayList<>();
 
-  public ReportReview(UUID reportId, UUID adjusterId) {
+  private ReportReview(UUID reportId, UUID adjusterId) {
     this.reportId = reportId;
     this.adjusterId = adjusterId;
     this.status = ReviewStatus.SENT;
+  }
+
+  /** 사정사의 첫 검수 제출로 제안(SENT)을 만든다. */
+  public static ReportReview create(UUID reportId, UUID adjusterId) {
+    return new ReportReview(reportId, adjusterId);
+  }
+
+  /** 이 제안이 지정한 리포트에 대한 것인지 — 경로의 reportId와 proposalId가 서로 맞는지 확인할 때 쓴다. */
+  public boolean belongsTo(UUID reportId) {
+    return this.reportId.equals(reportId);
+  }
+
+  /** 상담 중(COUNSELING)인 제안인지. */
+  public boolean isCounseling() {
+    return this.status == ReviewStatus.COUNSELING;
   }
 
   /** 사용자가 이 제안을 채택. 리포트 종결과 함께 호출된다(design.md §6 decide). */
@@ -91,6 +108,19 @@ public class ReportReview extends BaseEntity {
   public void reject() {
     ensureDecidable();
     this.status = ReviewStatus.REJECTED;
+  }
+
+  /**
+   * 고객이 이 제안으로 상담을 시작한다(채팅방 개설 트리거). SENT → COUNSELING.
+   * 이미 COUNSELING이면 멱등 no-op이다 — 더블클릭·재요청에서 같은 방을 그대로 쓰기 위함.
+   * 종료 상태(ACCEPTED/REJECTED)에서는 409 INVALID_STATE_TRANSITION.
+   */
+  public void startCounseling() {
+    if (isCounseling()) {
+      return;
+    }
+    ensureDecidable();
+    this.status = ReviewStatus.COUNSELING;
   }
 
   /** 아직 결정 전(SENT·COUNSELING)이라 채택/거절 가능한지 — 종료 상태(ACCEPTED/REJECTED)면 false. */
@@ -151,6 +181,21 @@ public class ReportReview extends BaseEntity {
     target.updateContent(desired.getTitle(), desired.getDescription(), desired.getImpactAmount(),
         desired.getReviewStatus(), desired.getAdjusterOpinion(), desired.getModifiedReason(),
         desired.getExcludedReason());
+  }
+
+  /**
+   * 채택된 검수의 쟁점 오버레이(report_issues_reviews)에서 report_issue_id → adjuster_opinion 맵을 만든다
+   * (고객 상세 조회용). 둘 다 있는 쟁점만 담고, 없으면 빈 맵이다. 검수 로딩은 호출 서비스(repository)가 하고,
+   * 이 파생은 자기 자식(issues)만 보므로 애그리거트 안에 둔다(외부가 issues를 직접 헤집지 않게).
+   */
+  public Map<UUID, String> adjusterOpinionsByIssue() {
+    Map<UUID, String> opinions = new HashMap<>();
+    for (ReportReviewIssue issue : this.issues) {
+      if (issue.getReportIssueId() != null && issue.getAdjusterOpinion() != null) {
+        opinions.put(issue.getReportIssueId(), issue.getAdjusterOpinion());
+      }
+    }
+    return opinions;
   }
 
   private ReportReviewIssue findByReviewIssueId(UUID reviewIssueId) {

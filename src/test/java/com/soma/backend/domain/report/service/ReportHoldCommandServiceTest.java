@@ -27,6 +27,7 @@ import com.soma.backend.domain.report.repository.ReportHoldRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /** API#3 보류 추가 유스케이스 단위 테스트(멱등·404·사유 검증 경계). */
 @ExtendWith(MockitoExtension.class)
@@ -37,7 +38,9 @@ class ReportHoldCommandServiceTest {
   @Mock
   private ReportHoldRepository reportHoldRepository;
   @Mock
-  private ReportHoldInitializer reportHoldInitializer;
+  private ReportHoldWriter reportHoldWriter;
+  @Mock
+  private PendingReviewCountCache pendingReviewCountCache;
 
   @InjectMocks
   private ReportHoldCommandService service;
@@ -53,7 +56,7 @@ class ReportHoldCommandServiceTest {
 
   private void givenExistingHold(HoldReason reason, String reasonDetail) {
     given(reportHoldRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
-        .willReturn(Optional.of(new ReportHold(reportId, adjusterId, reason, reasonDetail)));
+        .willReturn(Optional.of(ReportHold.create(reportId, adjusterId, reason, reasonDetail)));
   }
 
   @Test
@@ -66,7 +69,8 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.REPORT_NOT_FOUND);
-    verify(reportHoldInitializer, never()).ensureExists(any(), any(), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(any(), any(), any(), any());
+    verify(pendingReviewCountCache, never()).evictAfterCommit(any());
   }
 
   @Test
@@ -82,7 +86,9 @@ class ReportHoldCommandServiceTest {
     assertThat(result.reportId()).isEqualTo(reportId);
     assertThat(result.reason()).isEqualTo("SCHEDULE_CONFLICT");
     assertThat(result.reasonDetail()).isNull();
-    verify(reportHoldInitializer).ensureExists(reportId, adjusterId, HoldReason.SCHEDULE_CONFLICT, null);
+    verify(reportHoldWriter).ensureExists(reportId, adjusterId, HoldReason.SCHEDULE_CONFLICT, null);
+    // 보류로 내 검수대기 목록이 줄어드므로 내 count 캐시를 비운다.
+    verify(pendingReviewCountCache).evictAfterCommit(adjusterId);
   }
 
   @Test
@@ -96,7 +102,7 @@ class ReportHoldCommandServiceTest {
 
     assertThat(result.reason()).isEqualTo("OTHER");
     assertThat(result.reasonDetail()).isEqualTo("장해진단서, MRI 판독지 필요");
-    verify(reportHoldInitializer).ensureExists(reportId, adjusterId, HoldReason.OTHER, "장해진단서, MRI 판독지 필요");
+    verify(reportHoldWriter).ensureExists(reportId, adjusterId, HoldReason.OTHER, "장해진단서, MRI 판독지 필요");
   }
 
   @Test
@@ -109,7 +115,7 @@ class ReportHoldCommandServiceTest {
     HoldResponse result = service.addHold(reportId, adjusterId, request);
 
     assertThat(result.reasonDetail()).isNull();
-    verify(reportHoldInitializer).ensureExists(reportId, adjusterId, HoldReason.OUT_OF_SPECIALTY, null);
+    verify(reportHoldWriter).ensureExists(reportId, adjusterId, HoldReason.OUT_OF_SPECIALTY, null);
   }
 
   @Test
@@ -122,7 +128,7 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD);
-    verify(reportHoldInitializer, never()).ensureExists(any(), any(), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(any(), any(), any(), any());
   }
 
   @Test
@@ -135,7 +141,7 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.VALIDATION_ERROR);
-    verify(reportHoldInitializer, never()).ensureExists(any(), any(), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(any(), any(), any(), any());
   }
 
   @Test
@@ -148,6 +154,6 @@ class ReportHoldCommandServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.MISSING_REQUIRED_FIELD);
-    verify(reportHoldInitializer, never()).ensureExists(eq(reportId), eq(adjusterId), any(), any());
+    verify(reportHoldWriter, never()).ensureExists(eq(reportId), eq(adjusterId), any(), any());
   }
 }

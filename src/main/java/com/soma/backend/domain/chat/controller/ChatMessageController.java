@@ -2,13 +2,14 @@ package com.soma.backend.domain.chat.controller;
 
 import java.util.UUID;
 
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -40,34 +41,35 @@ public class ChatMessageController {
   private final ChatAttachmentService chatAttachmentService;
 
   @GetMapping("/chats/{chatRoomId}/messages")
-  public ResponseEntity<ApiResponse<ChatMessageListResponse>> getMessages(
+  public ApiResponse<ChatMessageListResponse> getMessages(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID chatRoomId,
       @RequestParam(required = false) String cursor,
       @RequestParam(defaultValue = "" + DEFAULT_SIZE) int size) {
     UUID me = requireUserId(principal);
-    return ResponseEntity.ok(
-        ApiResponse.ok(chatMessageQueryService.getMessages(me, chatRoomId, cursor, size)));
+    return ApiResponse.ok(chatMessageQueryService.getMessages(me, chatRoomId, cursor, size));
   }
 
   @PostMapping("/chats/{chatRoomId}/messages")
-  public ResponseEntity<ApiResponse<ChatMessageResponse>> send(
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<ChatMessageResponse> send(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID chatRoomId,
       @RequestBody SendMessageRequest request) {
     UUID me = requireUserId(principal);
     ChatMessageResponse data = chatMessageCommandService.send(me, chatRoomId, request);
-    return ResponseEntity.status(201).body(ApiResponse.created("메시지를 전송했습니다.", data));
+    return ApiResponse.created("메시지를 전송했습니다.", data);
   }
 
   @PostMapping("/chats/{chatRoomId}/attachments")
-  public ResponseEntity<ApiResponse<UploadAttachmentResponse>> uploadAttachment(
+  @ResponseStatus(HttpStatus.CREATED)
+  public ApiResponse<UploadAttachmentResponse> uploadAttachment(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID chatRoomId,
       @RequestParam("file") MultipartFile file) {
     UUID me = requireUserId(principal);
     UploadAttachmentResponse data = chatAttachmentService.upload(me, chatRoomId, file);
-    return ResponseEntity.status(201).body(ApiResponse.created("첨부를 업로드했습니다.", data));
+    return ApiResponse.created("첨부를 업로드했습니다.", data);
   }
 
   private UUID requireUserId(CustomUserDetails principal) {

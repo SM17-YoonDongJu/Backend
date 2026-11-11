@@ -110,8 +110,45 @@ public class ChatRoom extends BaseEntity {
     this.lastMessageAt = at;
   }
 
+  /** 종료(CLOSED)된 방인지. */
+  public boolean isClosed() {
+    return this.status == ChatRoomStatus.CLOSED;
+  }
+
+  /**
+   * 메시지·첨부를 올릴 수 있는 방인지 확인한다. 참여자가 아니면 CHAT_NOT_A_MEMBER, 종료된 방이면
+   * CHAT_ROOM_CLOSED. 참여자 검사를 먼저 해야 비참여자에게 방의 종료 여부가 새지 않는다.
+   */
+  public void ensureWritableBy(UUID accountId) {
+    if (!isMember(accountId)) {
+      throw new BusinessException(ErrorCode.CHAT_NOT_A_MEMBER);
+    }
+    if (isClosed()) {
+      throw new BusinessException(ErrorCode.CHAT_ROOM_CLOSED);
+    }
+  }
+
   /** 방을 종료 상태로 전이한다. */
   public void close() {
     this.status = ChatRoomStatus.CLOSED;
+  }
+
+  /**
+   * 상담 채팅방을 개설한다(고객이 제안을 골라 상담을 시작하는 시점). 파이프라인 방이므로
+   * reportId·reportReviewId가 모두 필수다 — 하나라도 비면 {@link #canDecideConsultation()}이 거짓이 되어
+   * 이후 상담 수락/거절이 영구히 막힌다. 방 생명주기는 ACTIVE로 시작하며, 수락/거절 결정 상태는
+   * 여기서 다루지 않는다(REPORT_REVIEWS.status가 소유).
+   */
+  public static ChatRoom openConsultation(UUID userId, UUID adjusterId, UUID reportId, UUID reportReviewId) {
+    if (userId == null || adjusterId == null || reportId == null || reportReviewId == null) {
+      throw new BusinessException(ErrorCode.MISSING_REQUIRED_FIELD);
+    }
+    ChatRoom room = new ChatRoom();
+    room.userId = userId;
+    room.adjusterId = adjusterId;
+    room.reportId = reportId;
+    room.reportReviewId = reportReviewId;
+    room.status = ChatRoomStatus.ACTIVE;
+    return room;
   }
 }

@@ -62,7 +62,8 @@ class OutboxProcessorTest {
   }
 
   private OutboxEvent appleRevokeEvent(UUID userId, String encryptedRefreshToken) {
-    String payload = jsonMapper.writeValueAsString(new AppleRevokePayload(encryptedRefreshToken));
+    String payload = jsonMapper.writeValueAsString(
+        new AppleRevokePayload(encryptedRefreshToken, "apple", "apple-1"));
     return OutboxEvent.of("USER", userId, OutboxEventPublisher.EVENT_APPLE_REVOKE, payload, NOW);
   }
 
@@ -108,7 +109,9 @@ class OutboxProcessorTest {
     UUID userId = UUID.randomUUID();
     OutboxEvent event = appleRevokeEvent(userId, "enc-token");
     given(outboxEventRepository.lockPendingBatch(any(), anyInt())).willReturn(List.of(event));
-    given(aesGcmCipher.decrypt("enc-token")).willReturn("plain-refresh-token");
+    given(aesGcmCipher.decrypt(
+        "enc-token", AesGcmCipher.appleRefreshTokenAad("apple", "apple-1")))
+        .willReturn("plain-refresh-token");
 
     // When
     processor.poll();
@@ -120,13 +123,34 @@ class OutboxProcessorTest {
   }
 
   @Test
+  @DisplayName("AAD 도입 전 legacy 페이로드(행 식별자 없음)는 AAD 없이 복호화해 revoke한다")
+  void poll_appleRevokeLegacyPayload_decryptsWithoutAad() {
+    // Given: #225 배포 전에 적재된 이벤트 — payload에 provider·providerUserId 필드가 없다.
+    UUID userId = UUID.randomUUID();
+    String legacyPayload = "{\"encryptedRefreshToken\":\"enc-token\"}";
+    OutboxEvent event = OutboxEvent.of(
+        "USER", userId, OutboxEventPublisher.EVENT_APPLE_REVOKE, legacyPayload, NOW);
+    given(outboxEventRepository.lockPendingBatch(any(), anyInt())).willReturn(List.of(event));
+    given(aesGcmCipher.decrypt("enc-token", null)).willReturn("plain-refresh-token");
+
+    // When
+    processor.poll();
+
+    // Then
+    then(appleTokenRevoker).should().revoke("plain-refresh-token");
+    assertThat(event.getStatus()).isEqualTo(OutboxStatus.PROCESSED);
+  }
+
+  @Test
   @DisplayName("APPLE_REVOKE revoke 호출이 실패하면 재시도 횟수를 늘리고 PENDING으로 남긴다")
   void poll_appleRevokeFails_schedulesRetry() {
     // Given
     UUID userId = UUID.randomUUID();
     OutboxEvent event = appleRevokeEvent(userId, "enc-token");
     given(outboxEventRepository.lockPendingBatch(any(), anyInt())).willReturn(List.of(event));
-    given(aesGcmCipher.decrypt("enc-token")).willReturn("plain-refresh-token");
+    given(aesGcmCipher.decrypt(
+        "enc-token", AesGcmCipher.appleRefreshTokenAad("apple", "apple-1")))
+        .willReturn("plain-refresh-token");
     willThrow(new RuntimeException("revoke 실패"))
         .given(appleTokenRevoker).revoke("plain-refresh-token");
 

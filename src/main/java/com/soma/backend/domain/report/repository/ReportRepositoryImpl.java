@@ -1,63 +1,148 @@
 package com.soma.backend.domain.report.repository;
 
+import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import org.hibernate.Session;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.core.types.dsl.NumberExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.soma.backend.domain.adjuster.entity.QAdjusterProfile;
 import com.soma.backend.domain.report.entity.AccidentType;
+import com.soma.backend.domain.report.entity.QInsuranceProduct;
+import com.soma.backend.domain.report.entity.QInsurer;
 import com.soma.backend.domain.report.entity.QReport;
 import com.soma.backend.domain.report.entity.QReportHold;
 import com.soma.backend.domain.report.entity.QReportIssue;
 import com.soma.backend.domain.report.entity.QReportReview;
+import com.soma.backend.domain.report.entity.QUserClaim;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.user.entity.QUser;
 
 /** Report 동적 조회 QueryDSL 구현. issueCount·held는 상관 서브쿼리, users 조인은 엔티티 조인(on)으로 처리한다. */
+@Slf4j
 @RequiredArgsConstructor
 public class ReportRepositoryImpl implements ReportRepositoryCustom {
 
+  private static final String FORCE_CUSTOM_PLAN = "SET LOCAL plan_cache_mode = force_custom_plan";
+
   private final JPAQueryFactory queryFactory;
+  private final EntityManager entityManager;
 
   @Override
-  public Page<PendingReviewRow> findPendingReviewRows(
+  public List<PendingReviewRow> findPendingReviewRows(
       ReportStatus status, AccidentType accidentType, String region, UUID adjusterId,
       Set<AccidentType> specialtyTypes, Pageable pageable) {
+    useCustomPlanForThisTransaction();
     QReport rp = QReport.report;
     QUser us = QUser.user;
     QReportIssue ri = QReportIssue.reportIssue;
-    QReportHold rh = QReportHold.reportHold;
-    QReportReview rv = QReportReview.reportReview;
 
+    // 2단계 조회: 커버링 인덱스(V48)로 index-only scan이 되려면 select 컬럼이 전부 인덱스 안에 있어야 한다.
+    // 그래서 먼저 조건·정렬·offset/limit을 id만 꺼내는 쿼리로 끝내고, 상세 컬럼과 issueCount 서브쿼리는
+    // 그 페이지 id(최대 page size개)에만 붙인다. 두 쿼리 사이 동시 변경으로 한 행이 빠질 수 있으나 읽기 전용
+    // 목록이라 허용한다(채팅방 목록 #371과 같은 판단).
+    List<UUID> ids = queryFactory
+        .select(rp.id)
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .where(pendingReviewCondition(rp, us, status, accidentType, region, adjusterId))
+        .orderBy(pendingReviewOrder(rp, specialtyTypes))
+        .offset(pageable.getOffset())
+        .limit(pageable.getPageSize())
+        .fetch();
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+
+    return queryFactory
+        .select(Projections.constructor(PendingReviewRow.class,
+            rp.id, rp.caseNo, rp.title, rp.accidentType, us.region, rp.status,
+            rp.claimedMinAmount, rp.claimedMaxAmount, rp.offeredAmount,
+            JPAExpressions.select(ri.count()).from(ri).where(ri.reportId.eq(rp.id)),
+            // 보류 건은 where에서 제외되므로 held는 항상 false다. FE 계약 유지를 위해 필드만 남긴다.
+            Expressions.constant(false),
+            rp.createdAt))
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .where(rp.id.in(ids))
+        .orderBy(pendingReviewOrder(rp, specialtyTypes))
+        .fetch();
+  }
+
+  @Override
+  public long countPendingReviewRows(
+      ReportStatus status, AccidentType accidentType, String region, UUID adjusterId) {
+    useCustomPlanForThisTransaction();
+    QReport rp = QReport.report;
+    QUser us = QUser.user;
+    // 목록과 같은 조인·조건이어야 페이지 수가 맞는다(users 조인은 region 필터와 고아 리포트 제외에 필요).
+    Long total = queryFactory
+        .select(rp.count())
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .where(pendingReviewCondition(rp, us, status, accidentType, region, adjusterId))
+        .fetchOne();
+    return total == null ? 0L : total;
+  }
+
+  /**
+   * 검수대기 목록·건수 쿼리가 이 트랜잭션에서 custom plan을 쓰게 한다(#378). 문서화된 native 예외 — 조회가 아니라
+   * 세션 설정이고, 조회 쿼리 자체는 QueryDSL 그대로다.
+   *
+   * <p>pgjdbc는 같은 SQL이 5번 넘게 실행되면 서버 측 prepared statement로 바꾸고, PostgreSQL은 그 뒤 바인딩 값을
+   * 모르는 generic plan을 고를 수 있다. 이 쿼리는 사정사 ID·지역 값에 따라 선택도가 크게 달라 generic plan이
+   * Nested Loop Anti Join으로 굳는데, dev 재현에서 generic 68.5ms(약 48,000블록) vs custom 8.7ms(Hash Right Anti
+   * Join)였다. 전역(prepareThreshold·JDBC URL)으로 바꾸면 다른 쿼리의 plan 캐시 이점까지 잃으니 이 경로에만 건다.
+   *
+   * <p>LOCAL인 이유: 커밋·롤백과 함께 원래 값(auto)으로 돌아가 커넥션 풀로 설정이 새지 않는다. 트랜잭션 밖에서는
+   * 경고만 나고 효과가 없으므로 왕복 자체를 생략한다. 목록·건수 중 무엇이 먼저 불려도 적용되도록 둘 다 부르며,
+   * 같은 트랜잭션에서 두 번 실행돼도 무해하다. JPA {@code executeUpdate} 대신 JDBC로 실행하는 건 native 변경
+   * 쿼리로 취급돼 Hibernate 쿼리 통계에 잡히고 2차 캐시 영역 무효화 대상이 되는 부수효과를 피하기 위해서다.
+   */
+  private void useCustomPlanForThisTransaction() {
+    if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+      log.debug("트랜잭션 밖 검수대기 조회라 plan_cache_mode 설정을 건너뜀");
+      return;
+    }
+    entityManager.unwrap(Session.class).doWork(connection -> {
+      try (Statement statement = connection.createStatement()) {
+        statement.execute(FORCE_CUSTOM_PLAN);
+      }
+    });
+  }
+
+  /** 검수대기 목록·건수 공용 조건. 두 쿼리가 어긋나지 않게 한 곳에서만 만든다. */
+  private static BooleanBuilder pendingReviewCondition(
+      QReport rp, QUser us, ReportStatus status, AccidentType accidentType, String region, UUID adjusterId) {
     BooleanBuilder where = new BooleanBuilder();
     // 검수 대기 목록은 검수 단계(AWAITING_INSPECTION·AWAITING_ADOPTION, 상세 조회 노출 정책과 동일)만 노출한다.
     // CLOSED·COUNSELING·NOT_SELECTED가 목록에 새어 클릭 시 상세가 404 나던 불일치를 막는다.
     where.and(rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION));
-    // 요청 사정사가 보류(report_holds)한 리포트는 목록에서 숨긴다(보류 = 내 대기열에서 제외). count 쿼리도 같은 where라 함께 줄어든다.
-    where.and(JPAExpressions.selectOne().from(rh)
-        .where(rh.reportId.eq(rp.id).and(rh.adjusterId.eq(adjusterId))).notExists());
-    // 본인이 이미 검수 진행 중(SENT·COUNSELING)인 리포트도 숨긴다 — 내가 SENT 한 AWAITING_ADOPTION 건은
-    // 진행중으로 넘어갔으므로 검수 대기(아직 안 본 큐)에서 제외한다(진행중∩검수대기=∅).
-    where.and(JPAExpressions.selectOne().from(rv)
-        .where(rv.reportId.eq(rp.id).and(rv.adjusterId.eq(adjusterId))
-            .and(rv.status.in(ReviewStatus.SENT, ReviewStatus.COUNSELING))).notExists());
+    // 내가 보류했거나 이미 검수 진행 중인 리포트는 숨긴다. count도 이 조건을 공유해 함께 줄어든다.
+    where.and(inMyPendingQueue(rp, adjusterId));
     if (status != null) {
       where.and(rp.status.eq(status));
     }
@@ -68,31 +153,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
       // users.region이 text[]라 동등비교 대신 '배열이 필터 지역을 포함'하는지로 매칭한다(Hibernate array_contains).
       where.and(Expressions.booleanTemplate("array_contains({0}, {1})", us.region, region));
     }
-
-    List<PendingReviewRow> content = queryFactory
-        .select(Projections.constructor(PendingReviewRow.class,
-            rp.id, rp.caseNo, rp.title, rp.accidentType, us.region, rp.status,
-            rp.claimedMinAmount, rp.claimedMaxAmount, rp.offeredAmount,
-            JPAExpressions.select(ri.count()).from(ri).where(ri.reportId.eq(rp.id)),
-            // 보류 건은 위 where에서 제외되므로 held는 항상 false다. FE 계약 유지를 위해 필드만 남긴다.
-            Expressions.constant(false),
-            rp.createdAt))
-        .from(rp)
-        .join(us).on(us.id.eq(rp.userId))
-        .where(where)
-        .orderBy(pendingReviewOrder(rp, specialtyTypes))
-        .offset(pageable.getOffset())
-        .limit(pageable.getPageSize())
-        .fetch();
-
-    Long total = queryFactory
-        .select(rp.count())
-        .from(rp)
-        .join(us).on(us.id.eq(rp.userId))
-        .where(where)
-        .fetchOne();
-
-    return new PageImpl<>(content, pageable, total == null ? 0L : total);
+    return where;
   }
 
   /**
@@ -107,6 +168,9 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
       orders.add(specialtyRank.asc());
     }
     orders.add(rp.createdAt.desc());
+    // created_at 동률이면 순서가 유일하지 않아 페이지 경계에서 중복·누락이 생기고, ID 단계와 상세 단계의 순서도
+    // 어긋날 수 있다. id(커버링 인덱스 INCLUDE 컬럼)를 타이브레이커로 둔다.
+    orders.add(rp.id.asc());
     return orders.toArray(new OrderSpecifier[0]);
   }
 
@@ -257,5 +321,69 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
         .leftJoin(adjusterProfile).on(adjusterProfile.userId.eq(rp.adjusterId))
         .where(rp.id.eq(reportId))
         .fetchOne();
+  }
+
+  @Override
+  public ReviewContextRow findReviewContext(UUID reportId) {
+    QReport rp = QReport.report;
+    QUser us = QUser.user;
+    QUserClaim uc = QUserClaim.userClaim;
+    QInsuranceProduct ip = QInsuranceProduct.insuranceProduct;
+    QInsurer ins = QInsurer.insurer;
+
+    return queryFactory
+        .select(Projections.constructor(ReviewContextRow.class,
+            us.nickname, us.gender, us.birthDate, us.createdAt,
+            uc.accidentType, uc.accidentDate, ip.productName, ins.name))
+        .from(rp)
+        .join(us).on(us.id.eq(rp.userId))
+        .leftJoin(uc).on(uc.id.eq(rp.claimId))
+        .leftJoin(ip).on(ip.id.eq(rp.productId))
+        .leftJoin(ins).on(ins.id.eq(ip.insurerId))
+        .where(rp.id.eq(reportId))
+        .fetchOne();
+  }
+
+  @Override
+  public long countPendingNotHeldBy(UUID adjusterId) {
+    QReport rp = QReport.report;
+    return countReports(rp, rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
+        .and(inMyPendingQueue(rp, adjusterId)));
+  }
+
+  @Override
+  public long countDueSoonNotHeldBy(LocalDateTime dueSoonThreshold, UUID adjusterId) {
+    QReport rp = QReport.report;
+    return countReports(rp, rp.status.eq(ReportStatus.AWAITING_INSPECTION)
+        .and(rp.createdAt.loe(dueSoonThreshold))
+        .and(inMyPendingQueue(rp, adjusterId)));
+  }
+
+  @Override
+  public long countPendingByAccidentTypeInNotHeldBy(Collection<AccidentType> types, UUID adjusterId) {
+    QReport rp = QReport.report;
+    return countReports(rp, rp.status.in(ReportStatus.AWAITING_INSPECTION, ReportStatus.AWAITING_ADOPTION)
+        .and(rp.accidentType.in(types))
+        .and(inMyPendingQueue(rp, adjusterId)));
+  }
+
+  private long countReports(QReport rp, BooleanExpression condition) {
+    Long count = queryFactory.select(rp.count()).from(rp).where(condition).fetchOne();
+    return count == null ? 0L : count;
+  }
+
+  /**
+   * 요청 사정사의 '내 대기 큐'에 남은 리포트 조건 — 본인이 보류(report_holds)하지도, 이미 검수 진행
+   * (report_reviews SENT·COUNSELING)하지도 않았다. 내가 SENT 한 AWAITING_ADOPTION 건은 진행중으로 넘어갔으므로
+   * 대기 큐에서 뺀다(진행중∩검수대기=∅). 검수대기 목록과 요약 카운트 세 개가 이 정의를 공유한다.
+   */
+  private static BooleanExpression inMyPendingQueue(QReport rp, UUID adjusterId) {
+    QReportHold hold = new QReportHold("myHold");
+    QReportReview myReview = new QReportReview("myReview");
+    return JPAExpressions.selectOne().from(hold)
+        .where(hold.reportId.eq(rp.id).and(hold.adjusterId.eq(adjusterId))).notExists()
+        .and(JPAExpressions.selectOne().from(myReview)
+            .where(myReview.reportId.eq(rp.id).and(myReview.adjusterId.eq(adjusterId))
+                .and(myReview.status.in(ReviewStatus.SENT, ReviewStatus.COUNSELING))).notExists());
   }
 }
