@@ -4,7 +4,6 @@ import java.util.UUID;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -33,32 +32,32 @@ public class NotificationController {
 
   /** 내 알림 목록(최신순, 페이지네이션) + 미읽음 수. 200. */
   @GetMapping
-  public ResponseEntity<ApiResponse<NotificationListResponse>> getMyNotifications(
+  public ApiResponse<NotificationListResponse> getMyNotifications(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
 
     Pageable pageable = PageRequest.of(page, size);
     NotificationListResponse result = notificationService.getMyNotifications(principal.getUserId(), pageable);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   /** 내 알림을 모두 읽음 처리. 200. */
   @PatchMapping("/read-all")
-  public ResponseEntity<ApiResponse<Void>> readAll(
+  public ApiResponse<Void> readAll(
       @AuthenticationPrincipal CustomUserDetails principal) {
 
     notificationService.markAllRead(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok("모든 알림을 읽음 처리했습니다.", null));
+    return ApiResponse.ok("모든 알림을 읽음 처리했습니다.", null);
   }
 
   /** 내 알림 1건 읽음 처리. 본인 소유가 아니면 404. 200. */
   @PatchMapping("/{notificationId}/read")
-  public ResponseEntity<ApiResponse<Void>> read(
+  public ApiResponse<Void> read(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID notificationId) {
 
     notificationService.markRead(principal.getUserId(), notificationId);
-    return ResponseEntity.ok(ApiResponse.ok("알림을 읽음 처리했습니다.", null));
+    return ApiResponse.ok("알림을 읽음 처리했습니다.", null);
   }
 }

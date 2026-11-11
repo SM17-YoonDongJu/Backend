@@ -112,7 +112,7 @@ register(response, RegisterRequest):
 
 ## 5. SecurityConfig — oauth2Login 없음
 
-Spring `oauth2Login`을 **추가하지 않는다.** 모든 인증 진입점은 `/auth/**`(permitAll)로 노출된 REST 컨트롤러이고, 쿠키는 `AuthTokenService`가 부착한다. SecurityConfig 상세는 `SKILL.md`의 "SecurityConfig 기본 구조" 참조.
+Spring `oauth2Login`을 **추가하지 않는다.** 모든 인증 진입점은 `/auth/**`(permitAll)로 노출된 REST 컨트롤러이고, 쿠키는 `AuthTokenManager`가 부착한다. SecurityConfig 상세는 `SKILL.md`의 "SecurityConfig 기본 구조" 참조.
 
 ---
 

@@ -3,6 +3,7 @@ package com.soma.backend.domain.user.service;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,12 +15,15 @@ import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
 import com.soma.backend.domain.user.entity.User;
+import com.soma.backend.domain.user.entity.event.UserWithdrawnEvent;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
+import com.soma.backend.global.security.crypto.PiiAad;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * 내 정보 조회·수정·탈퇴 유스케이스.
@@ -32,12 +36,15 @@ import com.soma.backend.infra.s3.S3UploadService;
 public class UserService {
 
   private static final String APPLE = "apple";
+  private static final PiiAad PHONE_NUMBER_AAD = PiiAad.ofColumn("users", "phone_number");
 
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
-  private final AuthTokenService authTokenService;
+  private final ApplicationEventPublisher eventPublisher;
+  private final AuthTokenManager authTokenManager;
   private final OutboxEventPublisher outboxEventPublisher;
-  private final S3UploadService s3UploadService;
+  private final S3ObjectStorage s3ObjectStorage;
+  private final PiiHmac piiHmac;
 
   /**
    * 내 정보를 조회한다. 존재하지 않거나 이미 탈퇴한 계정이면 {@code USER_NOT_FOUND}.
@@ -45,7 +52,7 @@ public class UserService {
   @Transactional(readOnly = true)
   public UserMeResponse getMe(UUID userId) {
     return UserMeResponse.from(
-        findActiveUser(userId), resolveSocialProvider(userId), s3UploadService::presignedGetUrl);
+        findActiveUser(userId), resolveSocialProvider(userId), s3ObjectStorage::presignedGetUrl);
   }
 
   /**
@@ -60,13 +67,14 @@ public class UserService {
     }
     User user = findActiveUser(userId);
     String newPhone = request.phoneNumber();
+    byte[] newPhoneHmac = newPhone == null ? null : piiHmac.hmac(newPhone, PHONE_NUMBER_AAD);
     if (newPhone != null
         && !newPhone.equals(user.getPhoneNumber())
-        && userRepository.existsByPhoneNumber(newPhone)) {
+        && userRepository.existsByPhoneNumberHmac(newPhoneHmac)) {
       throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE);
     }
-    user.updateProfile(newPhone, request.region(), request.avatarUrl());
-    return UserMeResponse.from(user, resolveSocialProvider(userId), s3UploadService::presignedGetUrl);
+    user.updateProfile(newPhone, newPhoneHmac, request.region(), request.avatarUrl());
+    return UserMeResponse.from(user, resolveSocialProvider(userId), s3ObjectStorage::presignedGetUrl);
   }
 
   /**
@@ -81,10 +89,14 @@ public class UserService {
     // 링크 삭제 전에, Apple 계정은 저장된 refresh_token(암호문)으로 revoke 이벤트를 적재한다(App Store 정책).
     socialAccountRepository.findByUserId(userId).stream()
         .filter(account -> APPLE.equals(account.getProvider()) && account.getRefreshToken() != null)
-        .forEach(account -> outboxEventPublisher.publishAppleRevoke(userId, account.getRefreshToken()));
+        .forEach(account -> outboxEventPublisher.publishAppleRevoke(
+            userId, account.getProvider(), account.getProviderUserId(), account.getRefreshToken()));
     socialAccountRepository.deleteByUserId(userId);
+    // 아이디·비밀번호 자격증명 파기는 auth 컨텍스트 Aggregate라 직접 지우지 않고 사실만 발행한다(#389).
+    // 동기 리스너(PasswordCredentialEraser)가 이 트랜잭션에 합류해 지운다.
+    eventPublisher.publishEvent(new UserWithdrawnEvent(userId));
     outboxEventPublisher.publishAuthCleanup(userId);
-    authTokenService.expireCookies(response);
+    authTokenManager.expireCookies(response);
   }
 
   /**

@@ -30,7 +30,7 @@ import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * 사정사 홈 집계 유스케이스 단위 테스트. 상담·평점은 adjuster_profiles 비정규화에서 읽고, 완료(누적·이번 달)는
@@ -47,7 +47,7 @@ class AdjusterHomeQueryServiceTest {
   private ReportReviewRepository reportReviewRepository;
 
   @Mock
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
 
   @InjectMocks
   private AdjusterHomeQueryService service;
@@ -66,7 +66,7 @@ class AdjusterHomeQueryServiceTest {
     given(adjusterHomeRepository.countPendingPoolNewNotHeldBy(any(), eq(adjusterId))).willReturn(2L);
     given(adjusterHomeRepository.findAdjusterIdentity(adjusterId))
         .willReturn(new AdjusterIdentityRow("김도현", "https://cdn/a.png", 9, new BigDecimal("4.9"), 86));
-    given(s3UploadService.presignedGetUrl("https://cdn/a.png")).willReturn("https://cdn/a.png");
+    given(s3ObjectStorage.presignedGetUrl("https://cdn/a.png")).willReturn("https://cdn/a.png");
     given(reportReviewRepository.countByAdjusterId(adjusterId)).willReturn(240L);
     given(adjusterHomeRepository.countCompletedBetween(eq(adjusterId), any(), any())).willReturn(14L);
     given(adjusterHomeRepository.countInProgress(adjusterId)).willReturn(2L);

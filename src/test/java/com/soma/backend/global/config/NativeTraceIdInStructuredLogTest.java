@@ -36,7 +36,8 @@ import io.opentelemetry.api.trace.Span;
     properties = {
       "spring.profiles.active=prod",
       "spring.main.banner-mode=off",
-      "management.tracing.enabled=true",
+      // prod 프로파일은 span 전송을 끈다 — 이 테스트는 전송이 켜진 dev와 같은 조건에서 traceId 로그를 본다.
+      "management.tracing.export.enabled=true",
       "management.tracing.sampling.probability=1.0",
       "management.opentelemetry.tracing.export.otlp.endpoint=http://localhost:4318/v1/traces"
     })

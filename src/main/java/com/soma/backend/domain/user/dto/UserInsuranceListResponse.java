@@ -46,7 +46,7 @@ public record UserInsuranceListResponse(@Schema(requiredMode = Schema.RequiredMo
 
   /**
    * @param urlResolver 저장된 {@code policy_file_url}(private S3 객체)을 단기 presigned GET URL로 치환하는
-   *                    함수(보통 {@code S3UploadService::presignedGetUrl}). 미등록(null)·외부 URL은 그대로 통과한다.
+   *                    함수(보통 {@code S3ObjectStorage::presignedGetUrl}). 미등록(null)·외부 URL은 그대로 통과한다.
    */
   public static UserInsuranceListResponse from(
       List<UserInsurance> insurances, UnaryOperator<String> urlResolver) {

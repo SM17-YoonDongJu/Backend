@@ -16,12 +16,24 @@ spring:
       file-size-threshold: 1MB
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:brbs_dev}
+    # currentSchema=core,public — 앱 테이블은 core 스키마에 있다(V40으로 통일). 이 값을 명시해야
+    # Hibernate가 인식하는 기본 스키마가 core로 고정되고(ddl-auto=validate 대상), EncryptionKeyStore의
+    # 스키마 미지정 원시 JDBC도 core.encryption_keys를 찾는다. 명시하지 않으면 DB 롤의 search_path
+    # 설정(app_owner에 걸린 "core, public")에 의존하게 되는데, 그건 레포 밖 상태라 롤 재생성·RDS 복원
+    # 등으로 사라지면 앱이 조용히 깨진다. core가 아직 없는 DB에서는 public으로 폴백하므로 안전하다.
+    # reWriteBatchedInserts=true: 다건 INSERT를 실제 다중행 INSERT로 재작성해 DB 왕복을 줄인다
+    # (아래 jpa.properties.hibernate.jdbc.batch_size와 함께 동작 — 리포트 생성의 첨부·아웃박스 적재).
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:brbs_dev}?currentSchema=core,public&reWriteBatchedInserts=true
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
+      # 10 → 15: ReportAnalysisResolver.resolveAll이 REQUIRES_NEW라, 목록/상세 조회
+      # 요청 하나가 바깥 트랜잭션 커넥션을 쥔 채로 그 안에서 잠깐 커넥션을 하나 더 잡는다(degrade 격리를
+      # 위해 필요 — 같은 트랜잭션에서 예외를 잡으면 Hibernate가 세션을 rollback-only로 표시해 커밋 시점에
+      # 다시 실패한다). 동시 요청이 몰리면 실효 동시성이 사실상 절반이 되어 10에서는 connection-timeout이
+      # 날 수 있어 여유를 뒀다.
+      maximum-pool-size: 15
       minimum-idle: 5
       connection-timeout: 30000
   
@@ -32,23 +44,30 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        # 한 트랜잭션의 다건 INSERT를 배치로 묶어 DB 왕복을 줄인다. 서비스에서 같은 타입 INSERT가
+        # 연속되도록 정렬해야 실제로 묶인다(order_inserts는 매핑 안 된 FK 순서 리스크가 있어 미사용).
+        jdbc:
+          batch_size: 50
+        # 임계(ms) 초과 쿼리를 org.hibernate.SQL_SLOW 로거(INFO)로 남긴다 — 실행시간·SQL 텍스트만 찍히고
+        # 바인드 값은 포함되지 않는다(PII 로깅 정책과 충돌 없음). dev·prod 구조화 로그엔 MDC traceId가
+        # 함께 실려 Loki에서 SQL_SLOW 검색 → Tempo 트레이스 점프가 된다. 기본 1초 — 그 이상이면 명백한
+        # 병목이라 노이즈 없이 잡힌다. 조정은 SLOW_QUERY_THRESHOLD_MS 주입으로(0이면 비활성).
+        # 키는 Hibernate 7 canonical(JdbcSettings.LOG_SLOW_QUERY)이다 — 구 hibernate.session.events.log.*
+        # 키도 하위호환으로 아직 읽히지만 7.x 문서에서 빠진 별칭이라 쓰지 않는다(PR #325 리뷰 반영).
+        log_slow_query: ${SLOW_QUERY_THRESHOLD_MS:1000}
     open-in-view: false
   
   flyway:
     enabled: true
     locations: classpath:db/migration
-    schemas: public
+    schemas: core, public
+    default-schema: public
   
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
   
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    security:
-      protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
-
 server:
   port: 8080
   compression:
@@ -65,6 +84,28 @@ jwt:
   refresh-token-expiry: 1209600000 # 14일
 
 app:
+  report:
+    # 분석(OCR·AI) 확정 실패 알림 스윕 주기(ms). AI 워커가 ai.ocr_job_failures·ai.report_job_failures에 남긴
+    # terminal 실패를 폴링해 인앱 알림 + FCM 푸시로 통지한다(리포트당 1회, reports.analysis_failure_notified_at 가드).
+    # 결정적 실패는 업로드 후 수십 초~수 분에 확정되므로 분 단위면 충분하다.
+    analysis-failure-sweep-interval-ms: ${ANALYSIS_FAILURE_SWEEP_INTERVAL_MS:60000}
+    # false면 스윕을 no-op으로 만든다(테스트·ai 스키마 미가용 환경).
+    analysis-failure-sweep-enabled: ${ANALYSIS_FAILURE_SWEEP_ENABLED:true}
+    # BLOCKED(AI 입력 가드레일 차단·리포트 생성 LLM 거절) 알림 스윕 주기(ms). reports.status='BLOCKED'를
+    # 직접 스캔한다 — 가드레일은 OCR 이전에 끊기고 LLM 거절은 실패 저널에 기록되지 않아 흔적이 없다(F1 후속).
+    blocked-sweep-interval-ms: ${BLOCKED_SWEEP_INTERVAL_MS:60000}
+    blocked-sweep-enabled: ${BLOCKED_SWEEP_ENABLED:true}
+    # NEEDS_REUPLOAD(OCR 품질 미달로 AI가 리포트 생성을 건너뜀) 알림 스윕 주기(ms). reports.status를 직접
+    # 스캔한다 — 실패가 아니라 품질 판정이라 ai.ocr_job_failures에 흔적이 없다.
+    needs-reupload-sweep-interval-ms: ${NEEDS_REUPLOAD_SWEEP_INTERVAL_MS:60000}
+    needs-reupload-sweep-enabled: ${NEEDS_REUPLOAD_SWEEP_ENABLED:true}
+  sqs:
+    # OCR 트리거 발행 대상 SQS 큐 이름. dev·prod는 .env의 SQS_OCR_QUEUE_NAME(brbs-ocr-job-queue-{env})으로 주입한다.
+    # 폴백 기본값을 두지 않는다 — env가 빠지면 존재하지 않는 큐 이름이 아웃박스 행의 topic에 그대로 박제되고,
+    # 릴레이는 GetQueueUrl 실패로 5회 재시도 후 FAILED 파킹한다. 이후 env를 고쳐도 이미 쌓인 행은 topic이
+    # 저장 시점 값이라 자동 복구되지 않는다(2026-08-13 dev에서 실제 발생, 수동 UPDATE로 복구).
+    # 미주입 시 기동을 실패시켜 배포 시점에 드러나게 한다. 로컬·test는 각 프로파일이 큐 이름을 명시한다.
+    ocr-queue-name: ${SQS_OCR_QUEUE_NAME}
   cookie:
     secure: ${COOKIE_SECURE:true}      # 운영 https 기본값. 로컬 http는 프로파일에서 false
     # 프론트(Vercel)와 백엔드가 다른 사이트(cross-site)로 배포되면 쿠키가 XHR에 실리도록
@@ -79,6 +120,25 @@ app:
     # Apple refresh_token 저장용 AES-256-GCM 키(base64 32바이트). 로컬/테스트는 아래 dev 기본값으로 기동되며,
     # 운영은 반드시 APPLE_TOKEN_ENC_KEY로 교체한다(키·평문은 로깅하지 않는다).
     apple-token-key: ${APPLE_TOKEN_ENC_KEY:ZGV2LWxvY2FsLWFwcGxlLXRva2VuLWVuYy1rZXkhISE=}
+    pii:
+      # PII 컬럼(user_claims·user_insurances·reports) 암호화용 DEK.
+      # kms-key-id가 비어 있을 때만 쓰이는 로컬/개발/테스트 전용 raw 키(base64 32바이트).
+      # 이 기본값 덕분에 로컬·CI도 평문이 아니라 실제 암호화된 상태로 동작한다(운영에서 처음 켜지는 사고 방지).
+      # 운영은 이 값을 비우고 kms-key-id로 KMS 봉투암호화 경로를 탄다(PiiCryptoProdGuard가 강제).
+      # Apple 토큰 키와 반드시 다른 값을 쓴다(용도별 키 분리).
+      key: ${PII_ENC_KEY:ZGV2LWxvY2FsLXBpaS1lbmNyeXB0aW9uLWtleS0zMmI=}
+      # HMAC-SHA256 블라인드 인덱스(phone_number·provider_user_id 조회용, 이슈 #232)용 DEK.
+      # AES 키(위 key)와 반드시 다른 값을 쓴다(알고리즘 목적별 키 분리). kms-key-id가 비어 있을 때만 쓰인다.
+      hmac-key: ${PII_HMAC_KEY:ZGV2LWxvY2FsLXBpaS1obWFjLWluZGV4LWtleS0zMmI=}
+      # PII 전용 KMS CMK(키 ID 또는 ARN). 값이 있으면 봉투암호화 경로로 전환되고 실제 KMS를 호출한다.
+      # 로컬·CI에서는 반드시 비워 둔다. RDS 볼륨 키·APPLE_TOKEN_ENC_KEY와 공유 금지.
+      # PII·PII_HMAC 두 purpose가 같은 CMK를 공유하고, encryption_keys에 purpose별로 다른 wrapped DEK를 둔다.
+      kms-key-id: ${PII_KMS_KEY_ID:}
+  password-login:
+    # 아이디·비밀번호 일반 로그인(POST /auth/password/signup·/auth/password/login, 이슈 #389) 사용 여부.
+    # 기본 true — 소셜 로그인과 나란히 쓰는 정식 경로라서 dev-login 백도어와 달리 기본으로 열어 둔다.
+    # false로 주면 컨트롤러·두 서비스 빈이 모두 등록되지 않아 경로 자체가 사라진다(코드가 없는 상태와 동일).
+    enabled: ${PASSWORD_LOGIN_ENABLED:true}
   oauth:
     # 토큰 교환 시 provider(카카오·네이버)로 보내는 redirect_uri의 {baseUrl} 치환값.
     # 프론트가 인가요청에 사용한 redirect_uri와 정확히 일치해야 하고 provider 콘솔에 등록돼 있어야 한다.
@@ -141,14 +201,42 @@ management:
       probes:
         enabled: true          # liveness/readiness 프로브 → /actuator/health/{liveness,readiness}
   metrics:
+    distribution:
+      # http.server.requests에 Prometheus 히스토그램 버킷(_bucket)을 노출한다. 기본은 count/sum/max뿐이라
+      # Grafana histogram_quantile로 p50/p95/p99를 계산할 원재료가 없었다 — k6 부하테스트 전 API별
+      # percentile 확인을 위해 추가(deploy/monitoring/config/grafana/dashboards/api-latency-percentiles.json 참고).
+      percentiles-histogram:
+        http.server.requests: true
+        # 채팅 Redis relay 종단 지연(발행→STOMP 전달) — 히스토그램 없으면 chat_relay_latency_seconds에
+        # count/sum/max만 남아 histogram_quantile로 p50/p95/p99를 못 뽑는다.
+        chat.relay.latency: true
+        # WebSocket 핸드셰이크·SUBSCRIBE 인가 소요시간 — 성공/실패 카운터만으론 "됐는지"만 보이고
+        # "얼마나 걸렸는지"는 안 보여서 추가.
+        chat.ws.handshake.duration: true
+        chat.ws.subscribe.duration: true
+        # POST /reports 쓰기 경로 구간(#306). 총 지연을 락 대기·저장·커밋으로 쪼개 보기 위한 것이라
+        # 평균이 아니라 꼬리(p95/p99)가 필요하다 — 병목은 평균이 아니라 꼬리에서 먼저 드러난다.
+        report.create.caseno: true
+        report.create.persist: true
+        report.create.lock_hold: true
+        # 커넥션 획득 대기. Boot가 기본 등록하지만 count/sum/max뿐이라 평균만 나왔다 — p95가 있어야
+        # "커넥션이 없어 기다린 것"과 "case_no 락에서 기다린 것"을 구분할 수 있다.
+        hikaricp.connections.acquire: true
+        # 아웃박스 적재→SQS 발행 지연. 202 응답 이후 구간이라 http.server.requests에는 안 잡힌다.
+        outbox.relay.latency: true
     tags:
       # 모든 메트릭에 붙는 공통 라벨. Grafana SpringBoot APM(12900)·JVM Micrometer(4701) 대시보드가
       # application 라벨(label_values(application))로 대상을 선택한다 — 없으면 패널이 No data.
       application: ${spring.application.name}
   tracing:
-    # 기본 OFF. Tempo가 있는 환경(dev)에서만 compose가 TRACING_ENABLED=true로 켠다.
-    # → Tempo가 아직 없는 prod/기타 환경은 OTLP export를 시도하지 않아 연결실패 경고가 없다.
-    enabled: ${TRACING_ENABLED:false}
+    export:
+      # span 외부 전송 여부. Tempo가 있는 dev는 켜고, 수집기가 없는 prod·local·test는 각 프로파일에서 끈다.
+      # 꺼도 트레이싱 자체(traceId 생성·로그 상관관계·전파)는 유지되고 OTLP 전송만 멈춘다.
+      # ⚠️ Boot 4 키다. 구 management.tracing.enabled는 deprecated라 런타임 자동 매핑이 안 되고(properties-migrator
+      #    미포함) 그대로 무시된다 — 예전에 이 키를 false로 둬서 prod가 없는 수집기로 span을 보내며 ERROR를 남겼다.
+      # 기본값 true는 지금 실제 동작 그대로다: dev(K8s-manifests values)는 TRACING_ENABLED를 넣지 않고 이 기본값으로
+      # 켜져 있으므로, 기본값을 false로 바꾸려면 values에 TRACING_ENABLED=true를 먼저 넣어야 한다.
+      enabled: ${TRACING_ENABLED:true}
     sampling:
       # 샘플링 확률. 기본 1.0(dev = 전량). prod은 application-prod.yml에서 0.1(10%)로 낮춘다.
       # 운영 중 조정은 TRACING_SAMPLE_PROBABILITY env로(재배포 없이 값만 교체).
@@ -157,7 +245,7 @@ management:
     tracing:
       export:
         otlp:
-          # OTLP HTTP span export → Tempo. tracing.enabled=true인 환경에서 compose가 tempo:4318을 주입한다.
+          # OTLP HTTP span export → Tempo. dev는 K8s-manifests values의 OTLP_TRACING_ENDPOINT(모니터링 EC2)로 주입한다.
           # ⚠️ Boot 4.0에서 프로퍼티가 이 이름으로 리네임됐다. 구 management.otlp.tracing.endpoint는
           #    deprecated라 런타임 자동 매핑이 안 되고(properties-migrator 미포함), 이 값이 없으면
           #    OtlpTracingConnectionDetails 빈이 안 생겨 span exporter가 조용히 backoff한다
@@ -179,6 +267,19 @@ info:
     name: ${spring.application.name}
     description: 손해사정 매칭·검수 리포트 백엔드 API
     environment: ${SPRING_PROFILES_ACTIVE:local}
+    commit: ${GIT_COMMIT:unknown}   # Dockerfile이 빌드 커밋으로 채운다. CI 배포 검증이 이 값을 본다
+
+# JDBC 쿼리 관측(datasource-micrometer, #324) — DataSource를 프록시해 쿼리 실행을 Micrometer Observation으로
+# 기록한다. 트레이싱이 켜진 환경(dev)에선 HTTP 스팬 아래에 쿼리 스팬이 달려 느린 요청을 쿼리 단위로
+# 내려볼 수 있고, 꺼진 환경에서도 jdbc.query 타이머는 /actuator/prometheus에 남는다.
+jdbc:
+  # query 스팬만 생성(connection·fetch 제외) — 스팬 수가 요청당 몇 배로 늘면 Tempo push 부하가 커진다
+  # (샘플링 0.5에서도 OOM 전력, 2026-09-16). 커넥션 획득 대기는 hikaricp.connections.acquire p95로 이미 본다.
+  includes: query
+  datasource-proxy:
+    # 라이브러리 기본값도 false지만 명시 고정 — true면 바인드 파라미터(=PII 실값)가 관측 태그에 실린다.
+    # logback의 org.hibernate.orm.jdbc.bind 억제와 같은 정책(PII 로깅 금지)의 트레이스 버전이다.
+    include-parameter-values: false
 
 logging:
   file:

@@ -3,10 +3,13 @@ package com.soma.backend.domain.adjuster.controller;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,12 +19,14 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -65,7 +70,7 @@ class AdjusterProfileControllerTest {
   @MockitoBean
   private AdjusterProfileQueryService adjusterProfileQueryService;
 
-  // PATCH 핸들러가 주입받는 커맨드 서비스 — 조회 테스트에선 쓰지 않지만 슬라이스 컨텍스트 로딩을 위해 목으로 등록.
+  // PATCH 핸들러가 주입받는 커맨드 서비스.
   @MockitoBean
   private AdjusterProfileCommandService adjusterProfileCommandService;
 
@@ -297,5 +302,24 @@ class AdjusterProfileControllerTest {
           .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
           .build();
     }
+  }
+
+  // ---------- 수정 (PATCH /adjusters/me/profile) ----------
+
+  @Test
+  @DisplayName("PATCH /profile: 수정(Command)을 먼저 하고 조회(Query)로 다시 읽은 최신 프로필을 응답한다")
+  void updateProfile_commandsThenReadsBackViaQuery() throws Exception {
+    given(adjusterProfileQueryService.getProfile(any())).willReturn(populatedProfile());
+
+    mockMvc.perform(patch("/adjusters/me/profile").with(as("CERTIFICATED_ADJUSTER"))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"headline\":\"새 태그라인\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.adjuster_id").value(PRINCIPAL_ID.toString()))
+        .andExpect(jsonPath("$.data.nickname").value("김사정"));
+
+    InOrder order = inOrder(adjusterProfileCommandService, adjusterProfileQueryService);
+    order.verify(adjusterProfileCommandService).updateProfile(eq(PRINCIPAL_ID), any());
+    order.verify(adjusterProfileQueryService).getProfile(PRINCIPAL_ID);
   }
 }

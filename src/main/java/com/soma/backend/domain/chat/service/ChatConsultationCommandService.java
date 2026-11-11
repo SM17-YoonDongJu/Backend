@@ -3,6 +3,7 @@ package com.soma.backend.domain.chat.service;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,6 +13,7 @@ import com.soma.backend.domain.chat.dto.ConsultationDecisionResponse;
 import com.soma.backend.domain.chat.entity.ChatMessage;
 import com.soma.backend.domain.chat.entity.ChatMessageType;
 import com.soma.backend.domain.chat.entity.ChatRoom;
+import com.soma.backend.domain.chat.entity.event.ConsultationAcceptedEvent;
 import com.soma.backend.domain.chat.repository.ChatMessageRepository;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
 import com.soma.backend.domain.report.entity.Report;
@@ -21,11 +23,16 @@ import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.infra.redis.ChatEventPublisher;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 import com.soma.backend.infra.redis.dto.ChatBroadcastMessage;
 
 /**
  * 상담 수락/거절(설계서 §4 ④·⑤, 확정 결정 §0). chat 도메인이 소유하는 크로스-도메인 쓰기다 —
  * report_reviews·reports 엔티티 메서드를 직접 호출하되 불변식은 각 엔티티가 방어한다. 주체는 방 소유자(user).
+ *
+ * <p>수락은 담당 확정이므로 adjuster_profiles의 상담 완료 수(completed_consult_count)까지 같은
+ * 트랜잭션에서 갱신한다 — 다만 그 Aggregate는 여기서 직접 건드리지 않고 {@link ConsultationAcceptedEvent}만
+ * 발행하며, adjuster 컨텍스트의 동기 리스너가 갱신한다. 거절은 담당 확정이 아니라 발행하지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -40,6 +47,8 @@ public class ChatConsultationCommandService {
   private final ReportRepository reportRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final ChatEventPublisher chatEventPublisher;
+  private final PendingReviewCountCache pendingReviewCountCache;
+  private final ApplicationEventPublisher eventPublisher;
 
   /**
    * 상담 수락: 내 제안 ACCEPTED + 형제 제안 REJECTED + report COUNSELING→CLOSED. 내 방은 CLOSED하지 않고
@@ -56,6 +65,16 @@ public class ChatConsultationCommandService {
     rejectSiblingReviews(report.getId(), myReview.getId());
     report.accept(room.getAdjusterId());
     closeSiblingRooms(report.getId(), room.getId());
+    // 담당이 확정됐으니 사정사 프로필의 상담 완료 수를 재집계하도록 이벤트를 발행한다. 리스너가 동기라 여기서
+    // 바로 실행되며 내부에서 adjuster_profiles 행을 잠근다(직접 호출하던 때와 실행 시점·순서가 같다).
+    // 호출을 뒤쪽에 뒀다고 잠금 보유 시간이 짧아지지는 않는다 — Hibernate auto-flush는 쿼리의 query space가
+    // 대기 중인 변경과 겹칠 때만 돌아서, 앞선 closeSiblingRooms의 조회(chat_rooms)는 flush를 유발하지 않고
+    // 결국 UPDATE reports·UPDATE chat_rooms·INSERT chat_messages가 전부 이 잠금을 잡은 뒤에 나간다.
+    // 이어지는 appendSystemMessage도 커밋 후가 아니라 이 트랜잭션 안에서 동기 실행된다(커밋 후로 미뤄지는
+    // 것은 publishAfterCommit 브로드캐스트뿐이다).
+    // 그래도 데드락 사이클은 생기지 않는다 — adjuster_profiles를 잡는 경로는 이 수락과 평가 등록뿐이고,
+    // 평가 등록은 report 계열 테이블을 쓰지 않으며 수락끼리는 report_reviews → adjuster_profiles 순서가 일정하다.
+    eventPublisher.publishEvent(new ConsultationAcceptedEvent(room.getAdjusterId(), report.getId()));
     appendSystemMessage(room, ACCEPT_SYSTEM_MESSAGE);
 
     return new ConsultationDecisionResponse(
@@ -63,22 +82,43 @@ public class ChatConsultationCommandService {
   }
 
   /**
-   * 상담 거절: 내 제안 REJECTED + report COUNSELING→AWAITING_ADOPTION + 방 CLOSED. 다른 제안은 유지.
+   * 상담 거절: 내 제안 REJECTED + 방 CLOSED. 다른 제안은 유지한다. 리포트를 채택 대기로 되돌리는 것은
+   * 이 거절로 리포트의 마지막 상담이 끝났을 때만이다 — 형제 제안이 아직 COUNSELING이면 그대로 둔다.
    * SYSTEM 메시지 브로드캐스트.
+   *
+   * <p>"마지막 상담인가" 판정은 리포트 행을 비관적 잠금으로 잡은 뒤에 한다({@code loadReportForUpdate}) —
+   * 같은 리포트의 형제 방을 동시에 거절할 때 두 트랜잭션이 서로를 COUNSELING으로 관찰해 둘 다 복귀를
+   * 건너뛰는 레이스를 막기 위함이다.
    */
   @Transactional
   public ConsultationDecisionResponse reject(UUID me, UUID roomId) {
     ChatRoom room = loadOwnedConsultableRoom(me, roomId);
     ReportReview myReview = loadReview(room.getReportReviewId());
-    Report report = loadReport(room.getReportId());
+    Report report = loadReportForUpdate(room.getReportId());
 
     myReview.reject();
-    report.reopenForAdoption();
+    report.reopenForAdoptionIfNoCounselingLeft(hasOtherCounselingReview(report.getId(), myReview.getId()));
     room.close();
     appendSystemMessage(room, REJECT_SYSTEM_MESSAGE);
+    // 거절된 사정사의 제안이 COUNSELING → REJECTED가 되고 리포트가 채택 대기로 돌아오면, 이 리포트가 그 사정사의
+    // 검수대기 목록에 다시 나타난다. 그 사정사의 count 캐시를 커밋 후 비운다.
+    pendingReviewCountCache.evictAfterCommit(room.getAdjusterId());
 
     return new ConsultationDecisionResponse(
         room.getId(), room.getStatus(), myReview.getStatus(), report.getId(), report.getStatus());
+  }
+
+  /**
+   * 같은 리포트의 다른 제안이 아직 COUNSELING 중인지 — 있으면 리포트를 채택 대기로 되돌리지 않는다
+   * (다른 상담이 살아있는데 리포트가 채택 대기 풀로 새어 나가 스케줄러에 NOT_SELECTED로 잘못 전이되는
+   * 것을 막는다).
+   *
+   * <p>호출자가 리포트 행을 잠근 뒤에 실행되므로, 같은 리포트의 거절끼리는 직렬화돼 형제의 최신 상태를
+   * 본다. 잠금 없이 이 판정을 하면 동시 거절이 서로를 COUNSELING으로 관찰해 둘 다 복귀를 건너뛴다.
+   */
+  private boolean hasOtherCounselingReview(UUID reportId, UUID myReviewId) {
+    return reportReviewRepository.findByReportId(reportId).stream()
+        .anyMatch(sibling -> !sibling.getId().equals(myReviewId) && sibling.isCounseling());
   }
 
   /** 소유자(user)이며 상담 결정이 가능한(파이프라인) 방인지 확인 후 반환한다. */
@@ -104,6 +144,15 @@ public class ChatConsultationCommandService {
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
   }
 
+  /**
+   * 거절 전용 리포트 로드 — 행을 {@code PESSIMISTIC_WRITE}로 잠가 같은 리포트의 동시 거절을 직렬화한다.
+   * 잠금 대상은 리포트 1행뿐이고 거절 경로에서 가장 먼저 잡으므로 잠금 순서가 어긋날 여지가 없다.
+   */
+  private Report loadReportForUpdate(UUID reportId) {
+    return reportRepository.findByIdForUpdate(reportId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+  }
+
   /** 같은 리포트의 형제 제안(다른 사정사)을 일괄 거절한다. 이미 결정된 제안은 건너뛴다. */
   private void rejectSiblingReviews(UUID reportId, UUID myReviewId) {
     List<ReportReview> siblings = reportReviewRepository.findByReportId(reportId);
@@ -121,7 +170,7 @@ public class ChatConsultationCommandService {
   private void closeSiblingRooms(UUID reportId, UUID myRoomId) {
     List<ChatRoom> siblings = chatRoomRepository.findByReportId(reportId);
     for (ChatRoom sibling : siblings) {
-      if (sibling.getId().equals(myRoomId)) {
+      if (sibling.getId().equals(myRoomId) || sibling.isClosed()) {
         continue;
       }
       sibling.close();

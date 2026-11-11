@@ -70,7 +70,7 @@ request.md
 | `backend-developer` | Controller, Service, Repository, 비즈니스 로직 |
 | `security-developer` | Spring Security, JWT, OAuth2, RBAC, Redis Refresh Token |
 | `realtime-developer` | WebSocket/STOMP, 채팅, presence, FCM 오프라인 푸시 |
-| `infra-developer` | 관측성(actuator)·JVM/GC·DB 풀·Kafka producer 배선·docker 하드닝·PII 로깅·smoke test |
+| `infra-developer` | 관측성(actuator)·JVM/GC·DB 풀·SQS producer 배선·docker 하드닝·PII 로깅·smoke test |
 | `qa-reviewer` | 코드 리뷰, 테스트, 보안/컴플라이언스 검증 |
 
 역할을 분리한 이유는 다음과 같다.
@@ -203,7 +203,7 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 - PostgreSQL + Flyway
 - `ddl-auto=validate`
 - Redis
-- Kafka (spring-kafka — OCR 트리거 producer + 트랜잭셔널 아웃박스 릴레이)
+- AWS SQS (awssdk:sqs — OCR 트리거 producer + 트랜잭셔널 아웃박스 릴레이, 로컬은 LocalStack)
 - Firebase Admin SDK
 - S3 SDK
 - Jackson snake_case

@@ -1,6 +1,5 @@
 package com.soma.backend.domain.adjuster.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,10 +28,10 @@ public class AdjusterHomeController {
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/adjusters/me/home")
-  public ResponseEntity<ApiResponse<AdjusterHomeResponse>> home(
+  public ApiResponse<AdjusterHomeResponse> home(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestParam(name = "in_progress_limit", defaultValue = "5") int inProgressLimit) {
     AdjusterHomeResponse result = adjusterHomeQueryService.getHome(principal.getUserId(), inProgressLimit);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

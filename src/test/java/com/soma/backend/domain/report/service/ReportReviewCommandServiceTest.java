@@ -39,6 +39,7 @@ import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.infra.redis.PendingReviewCountCache;
 
 /**
  * API#4 검수 반영 유스케이스 단위 테스트(§10 경계 케이스).
@@ -55,9 +56,11 @@ class ReportReviewCommandServiceTest {
   @Mock
   private ReportIssueRepository reportIssueRepository;
   @Mock
-  private ReportReviewSkeletonInitializer reportReviewSkeletonInitializer;
+  private ReportReviewWriter reportReviewWriter;
   @Mock
   private ApplicationEventPublisher eventPublisher;
+  @Mock
+  private PendingReviewCountCache pendingReviewCountCache;
 
   @InjectMocks
   private ReportReviewCommandService service;
@@ -79,7 +82,7 @@ class ReportReviewCommandServiceTest {
   }
 
   private ReportReview persistedReview() {
-    ReportReview review = new ReportReview(reportId, adjusterId);
+    ReportReview review = ReportReview.create(reportId, adjusterId);
     ReflectionTestUtils.setField(review, "id", UUID.randomUUID());
     return review;
   }
@@ -91,7 +94,7 @@ class ReportReviewCommandServiceTest {
   }
 
   private ReportReviewIssue reviewIssueRow(UUID reportIssueId, IssueReviewStatus status, String opinion) {
-    return new ReportReviewIssue(reportIssueId, null, null, null, status, opinion, null, null);
+    return ReportReviewIssue.create(reportIssueId, null, null, null, status, opinion, null, null);
   }
 
   private ReviewReportRequest request(List<ReviewReportRequest.IssueReview> issues) {
@@ -211,7 +214,7 @@ class ReportReviewCommandServiceTest {
     assertThat(review.getIssues()).hasSize(1);
     assertThat(review.getIssues().get(0).getTitle()).isEqualTo("신규 쟁점 제목");
     assertThat(review.getIssues().get(0).getImpactAmount()).isEqualTo(1_500_000);
-    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
+    verify(reportReviewWriter).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
   }
 
@@ -261,9 +264,11 @@ class ReportReviewCommandServiceTest {
     assertThat(result.status()).isEqualTo(ReportStatus.AWAITING_ADOPTION.name());
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
     assertThat(review.getIssues()).hasSize(1);
-    verify(reportReviewSkeletonInitializer).ensureExists(reportId, adjusterId);
+    verify(reportReviewWriter).ensureExists(reportId, adjusterId);
     verify(reportReviewRepository).save(review);
     verify(reportRepository).save(report);
+    // 검수 제출(SENT)로 이 리포트가 내 검수대기 목록에서 빠지므로 내 count 캐시를 비운다.
+    verify(pendingReviewCountCache).evictAfterCommit(adjusterId);
   }
 
   @Test
@@ -363,7 +368,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(true);
+    given(reportReviewWriter.ensureExists(reportId, adjusterId)).willReturn(true);
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
@@ -388,7 +393,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(true);
+    given(reportReviewWriter.ensureExists(reportId, adjusterId)).willReturn(true);
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
@@ -406,7 +411,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId)).willReturn(false);
+    given(reportReviewWriter.ensureExists(reportId, adjusterId)).willReturn(false);
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));
     given(reportRepository.save(any(Report.class))).willAnswer(inv -> inv.getArgument(0));
@@ -423,7 +428,7 @@ class ReportReviewCommandServiceTest {
     ReportReview review = persistedReview();
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
     given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
-    given(reportReviewSkeletonInitializer.ensureExists(reportId, adjusterId))
+    given(reportReviewWriter.ensureExists(reportId, adjusterId))
         .willThrow(new DataIntegrityViolationException("동시 최초 삽입 UK 충돌"));
     given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId))
         .willReturn(Optional.of(review));
@@ -447,5 +452,6 @@ class ReportReviewCommandServiceTest {
         .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
 
     verify(eventPublisher, never()).publishEvent(any());
+    verify(pendingReviewCountCache, never()).evictAfterCommit(any());
   }
 }

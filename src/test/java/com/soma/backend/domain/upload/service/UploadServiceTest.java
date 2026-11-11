@@ -26,10 +26,10 @@ import com.soma.backend.domain.upload.dto.UploadResponse;
 import com.soma.backend.domain.upload.entity.UploadPurpose;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
- * UploadService(서버 경유 프록시 업로드) 단위 테스트. S3 경계(S3UploadService)를 mock으로 대체하고 purpose별
+ * UploadService(서버 경유 프록시 업로드) 단위 테스트. S3 경계(S3ObjectStorage)를 mock으로 대체하고 purpose별
  * 화이트리스트·용량 검증, 매직바이트 위장 탐지, key 조립(prefix·확장자), s3_url 반환을 검증한다.
  */
 @ExtendWith(MockitoExtension.class)
@@ -45,13 +45,13 @@ class UploadServiceTest {
   private UploadService uploadService;
 
   @Mock
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
 
   @Test
   @DisplayName("report_document + PDF면 S3에 저장하고 s3_url을 반환한다(report-documents/UUID.pdf)")
   void upload_reportDocumentPdf_storesAndReturnsS3Url() {
     // Given
-    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
+    given(s3ObjectStorage.objectUrl(anyString())).willReturn(S3_URL);
     MultipartFile file = new MockMultipartFile("file", "diagnosis.pdf", "application/pdf", PDF_BYTES);
 
     // When
@@ -69,7 +69,7 @@ class UploadServiceTest {
   @DisplayName("avatar + image/png면 avatars prefix와 .png 확장자로 저장한다")
   void upload_avatarPng_buildsAvatarKey() {
     // Given
-    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
+    given(s3ObjectStorage.objectUrl(anyString())).willReturn(S3_URL);
     MultipartFile file = new MockMultipartFile("file", "profile.png", "image/png", PNG_BYTES);
 
     // When
@@ -85,7 +85,7 @@ class UploadServiceTest {
   @DisplayName("image/jpeg는 jpeg가 아니라 jpg 확장자로 매핑된다")
   void upload_jpeg_mapsToJpgExtension() {
     // Given
-    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
+    given(s3ObjectStorage.objectUrl(anyString())).willReturn(S3_URL);
     MultipartFile file = new MockMultipartFile("file", "profile.jpg", "image/jpeg", JPEG_BYTES);
 
     // When
@@ -99,7 +99,7 @@ class UploadServiceTest {
   @DisplayName("license 용도는 licenses prefix로 저장한다")
   void upload_license_usesLicensePrefix() {
     // Given
-    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
+    given(s3ObjectStorage.objectUrl(anyString())).willReturn(S3_URL);
     MultipartFile file = new MockMultipartFile("file", "license.png", "image/png", PNG_BYTES);
 
     // When
@@ -113,7 +113,7 @@ class UploadServiceTest {
   @DisplayName("registration 용도는 registrations prefix로 저장한다")
   void upload_registration_usesRegistrationPrefix() {
     // Given
-    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
+    given(s3ObjectStorage.objectUrl(anyString())).willReturn(S3_URL);
     MultipartFile file = new MockMultipartFile("file", "reg.png", "image/png", PNG_BYTES);
 
     // When
@@ -127,7 +127,7 @@ class UploadServiceTest {
   @DisplayName("putObject와 objectUrl에는 동일한 key가 전달된다(저장↔URL 정합)")
   void upload_delegatesSameKeyToPutObjectAndObjectUrl() {
     // Given
-    given(s3UploadService.objectUrl(anyString())).willReturn(S3_URL);
+    given(s3ObjectStorage.objectUrl(anyString())).willReturn(S3_URL);
     MultipartFile file = new MockMultipartFile("file", "p.png", "image/png", PNG_BYTES);
 
     // When
@@ -136,8 +136,8 @@ class UploadServiceTest {
     // Then
     ArgumentCaptor<String> putKey = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> urlKey = ArgumentCaptor.forClass(String.class);
-    then(s3UploadService).should().putObject(putKey.capture(), eq("image/png"), any(MultipartFile.class));
-    then(s3UploadService).should().objectUrl(urlKey.capture());
+    then(s3ObjectStorage).should().putObject(putKey.capture(), eq("image/png"), any(MultipartFile.class));
+    then(s3ObjectStorage).should().objectUrl(urlKey.capture());
     assertThat(putKey.getValue()).isEqualTo(urlKey.getValue());
   }
 
@@ -151,7 +151,7 @@ class UploadServiceTest {
     assertThatThrownBy(() -> uploadService.upload(file, UploadPurpose.AVATAR))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.UPLOAD_CONTENT_TYPE_NOT_ALLOWED);
-    then(s3UploadService).shouldHaveNoInteractions();
+    then(s3ObjectStorage).shouldHaveNoInteractions();
   }
 
   @Test
@@ -164,7 +164,7 @@ class UploadServiceTest {
     assertThatThrownBy(() -> uploadService.upload(file, UploadPurpose.REPORT_DOCUMENT))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.UPLOAD_CONTENT_TYPE_NOT_ALLOWED);
-    then(s3UploadService).shouldHaveNoInteractions();
+    then(s3ObjectStorage).shouldHaveNoInteractions();
   }
 
   @Test
@@ -177,7 +177,7 @@ class UploadServiceTest {
     assertThatThrownBy(() -> uploadService.upload(file, UploadPurpose.AVATAR))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.UPLOAD_CONTENT_TYPE_NOT_ALLOWED);
-    then(s3UploadService).shouldHaveNoInteractions();
+    then(s3ObjectStorage).shouldHaveNoInteractions();
   }
 
   @Test
@@ -190,7 +190,7 @@ class UploadServiceTest {
     assertThatThrownBy(() -> uploadService.upload(file, UploadPurpose.AVATAR))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.UPLOAD_FILE_EMPTY);
-    then(s3UploadService).shouldHaveNoInteractions();
+    then(s3ObjectStorage).shouldHaveNoInteractions();
   }
 
   @Test
@@ -205,7 +205,7 @@ class UploadServiceTest {
     assertThatThrownBy(() -> uploadService.upload(file, UploadPurpose.AVATAR))
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode").isEqualTo(ErrorCode.UPLOAD_FILE_TOO_LARGE);
-    then(s3UploadService).shouldHaveNoInteractions();
+    then(s3ObjectStorage).shouldHaveNoInteractions();
   }
 
   @Test
@@ -222,7 +222,7 @@ class UploadServiceTest {
 
   private String capturedKey(String contentType) {
     ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-    then(s3UploadService).should().putObject(keyCaptor.capture(), eq(contentType), any(MultipartFile.class));
+    then(s3ObjectStorage).should().putObject(keyCaptor.capture(), eq(contentType), any(MultipartFile.class));
     return keyCaptor.getValue();
   }
 

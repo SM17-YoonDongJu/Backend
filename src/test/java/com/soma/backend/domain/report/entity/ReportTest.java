@@ -3,6 +3,8 @@ package com.soma.backend.domain.report.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -87,6 +89,64 @@ class ReportTest {
 
     report.applyReviewTransition(ReportStatus.CLOSED);
     assertThat(report.getStatus()).isEqualTo(ReportStatus.CLOSED);
+  }
+
+  @Test
+  @DisplayName("BLOCKED는 종료 상태라 어떤 전이도 허용하지 않는다(AI 워커가 원시 SQL로 직접 세팅)")
+  void blockedIsTerminal() {
+    Report report = reportWithStatus(ReportStatus.BLOCKED);
+
+    assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.COUNSELING))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+    assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("BLOCKED로는 어떤 상태에서도 applyReviewTransition으로 전이할 수 없다(Backend 도메인 메서드를 거치지 않는 값)")
+  void nothingTransitionsIntoBlockedViaDomainMethod() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+
+    assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.BLOCKED))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD는 종료 상태라 검수 착수·채택·미채택·재채택 전이가 전부 막힌다")
+  void needsReuploadIsTerminal() {
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).applyReviewStart())
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).accept(UUID.randomUUID()))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).markNotSelected())
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+    assertThatThrownBy(() -> reportWithStatus(ReportStatus.NEEDS_REUPLOAD).reopenForAdoption())
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
+  }
+
+  @Test
+  @DisplayName("NEEDS_REUPLOAD로는 어떤 상태에서도 applyReviewTransition으로 전이할 수 없다(AI 워커가 직접 쓰는 값)")
+  void nothingTransitionsIntoNeedsReuploadViaDomainMethod() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+
+    assertThatThrownBy(() -> report.applyReviewTransition(ReportStatus.NEEDS_REUPLOAD))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_STATE_TRANSITION);
   }
 
   @Test
@@ -239,5 +299,94 @@ class ReportTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.REPORT_ALREADY_CLOSED);
+  }
+
+  @Test
+  @DisplayName("markAnalysisFailureNotified: 최초 1회만 true를 반환하고 시각을 기록한다(단방향 멱등 가드)")
+  void markAnalysisFailureNotifiedIsOneWayGuard() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+
+    boolean first = report.markAnalysisFailureNotified();
+    LocalDateTime notifiedAt = (LocalDateTime) ReflectionTestUtils.getField(report, "analysisFailureNotifiedAt");
+    boolean second = report.markAnalysisFailureNotified();
+
+    assertThat(first).isTrue();
+    assertThat(notifiedAt).isNotNull();
+    assertThat(second).isFalse();
+    // 두 번째 호출이 시각을 덮어쓰지 않는다 — 통지 시점 기록은 되돌아가지도 갱신되지도 않는다.
+    assertThat(ReflectionTestUtils.getField(report, "analysisFailureNotifiedAt")).isEqualTo(notifiedAt);
+  }
+
+  @Test
+  @DisplayName("markBlockedNotified: 최초 1회만 true를 반환하고 시각을 기록한다(단방향 멱등 가드, F1 후속)")
+  void markBlockedNotifiedIsOneWayGuard() {
+    Report report = reportWithStatus(ReportStatus.BLOCKED);
+
+    boolean first = report.markBlockedNotified();
+    LocalDateTime notifiedAt = (LocalDateTime) ReflectionTestUtils.getField(report, "blockedNotifiedAt");
+    boolean second = report.markBlockedNotified();
+
+    assertThat(first).isTrue();
+    assertThat(notifiedAt).isNotNull();
+    assertThat(second).isFalse();
+    assertThat(ReflectionTestUtils.getField(report, "blockedNotifiedAt")).isEqualTo(notifiedAt);
+  }
+
+  @Test
+  @DisplayName("markNeedsReuploadNotified: 최초 1회만 true를 반환하고 시각을 기록한다(단방향 멱등 가드)")
+  void markNeedsReuploadNotifiedIsOneWayGuard() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+
+    boolean first = report.markNeedsReuploadNotified();
+    LocalDateTime notifiedAt = (LocalDateTime) ReflectionTestUtils.getField(report, "needsReuploadNotifiedAt");
+    boolean second = report.markNeedsReuploadNotified();
+
+    assertThat(first).isTrue();
+    assertThat(notifiedAt).isNotNull();
+    assertThat(second).isFalse();
+    assertThat(ReflectionTestUtils.getField(report, "needsReuploadNotifiedAt")).isEqualTo(notifiedAt);
+    // BLOCKED 가드와 컬럼을 공유하지 않는다.
+    assertThat(ReflectionTestUtils.getField(report, "blockedNotifiedAt")).isNull();
+  }
+
+  @Test
+  @DisplayName("isAiDraftGenerated: applicable_guarantees가 채워졌을 때만 true다(분석 성공 신호)")
+  void isAiDraftGeneratedFollowsApplicableGuarantees() {
+    Report pending = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+    assertThat(pending.isAiDraftGenerated()).isFalse();
+
+    Report drafted = reportWithStatus(ReportStatus.AWAITING_INSPECTION);
+    ReflectionTestUtils.setField(drafted, "applicableGuarantees", List.of("상해후유장해"));
+    assertThat(drafted.isAiDraftGenerated()).isTrue();
+  }
+
+  @Test
+  @DisplayName("reopenForAdoptionIfNoCounselingLeft: 마지막 상담이 끝난 COUNSELING 리포트는 채택 대기로 돌아간다")
+  void reopenWhenLastCounselingEnded() {
+    Report report = reportWithStatus(ReportStatus.COUNSELING);
+
+    report.reopenForAdoptionIfNoCounselingLeft(false);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+  }
+
+  @Test
+  @DisplayName("reopenForAdoptionIfNoCounselingLeft: 다른 상담이 남아 있으면 COUNSELING을 유지한다")
+  void keepCounselingWhenOtherCounselingRemains() {
+    Report report = reportWithStatus(ReportStatus.COUNSELING);
+
+    report.reopenForAdoptionIfNoCounselingLeft(true);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.COUNSELING);
+  }
+
+  @Test
+  @DisplayName("reopenForAdoptionIfNoCounselingLeft: COUNSELING이 아니면 예외 없이 그대로 둔다")
+  void noopWhenNotCounseling() {
+    Report report = reportWithStatus(ReportStatus.AWAITING_ADOPTION);
+
+    report.reopenForAdoptionIfNoCounselingLeft(false);
+
+    assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
   }
 }

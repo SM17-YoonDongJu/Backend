@@ -1,6 +1,5 @@
 package com.soma.backend.domain.user.controller;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,9 +23,9 @@ public class UserDashboardController {
   private final UserDashboardQueryService userDashboardQueryService;
 
   @GetMapping("/users/me/dashboard")
-  public ResponseEntity<ApiResponse<UserDashboardResponse>> dashboard(
+  public ApiResponse<UserDashboardResponse> dashboard(
       @AuthenticationPrincipal CustomUserDetails principal) {
     UserDashboardResponse result = userDashboardQueryService.getDashboard(principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

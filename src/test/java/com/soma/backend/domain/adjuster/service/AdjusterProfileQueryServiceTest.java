@@ -40,7 +40,7 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AdjusterProfileQueryService 단위 테스트")
@@ -57,7 +57,7 @@ class AdjusterProfileQueryServiceTest {
   @Mock
   private AdjusterReviewRepository adjusterReviewRepository;
   @Mock
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
   @InjectMocks
   private AdjusterProfileQueryService service;
 

@@ -24,7 +24,7 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 /**
  * 손해사정사 마이페이지/프로필 조회 유스케이스(GET /adjusters/me/mypage, GET /adjusters/me/profile).
@@ -51,7 +51,7 @@ public class AdjusterProfileQueryService {
   private final AdjusterHomeRepository adjusterHomeRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final AdjusterReviewRepository adjusterReviewRepository;
-  private final S3UploadService s3UploadService;
+  private final S3ObjectStorage s3ObjectStorage;
 
   /** 마이페이지 4개 섹션(프로필·통계·당월 활동·자격) 집계 조회. */
   public AdjusterMyPageResponse getMyPage(UUID userId) {
@@ -74,7 +74,7 @@ public class AdjusterProfileQueryService {
 
     return AdjusterMyPageResponse.from(
         profile, user, totalCompleted, conversionRate, monthlyCompleted, monthlyConsultConverted,
-        s3UploadService::presignedGetUrl);
+        s3ObjectStorage::presignedGetUrl);
   }
 
   /** 프로필 수정 화면 초기값용 flat 프로필 조회(누적 통계 + 최근 후기 2건). */
@@ -92,7 +92,7 @@ public class AdjusterProfileQueryService {
 
     return AdjusterProfileResponse.from(
         profile, user, recentReviews, handledCaseCount, pendingReviewCount,
-        s3UploadService::presignedGetUrl);
+        s3ObjectStorage::presignedGetUrl);
   }
 
   /**
@@ -109,7 +109,7 @@ public class AdjusterProfileQueryService {
     long handledCaseCount = reportReviewRepository.countByAdjusterId(adjusterId);
 
     return AdjusterDetailResponse.from(
-        profile, user, recentReviews, handledCaseCount, s3UploadService::presignedGetUrl);
+        profile, user, recentReviews, handledCaseCount, s3ObjectStorage::presignedGetUrl);
   }
 
   private AdjusterProfile findProfile(UUID userId) {

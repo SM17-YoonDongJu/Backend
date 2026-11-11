@@ -43,7 +43,8 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "node .claude/hooks/warn-native-query.js", "timeout": 10 }
+          { "type": "command", "command": "node .claude/hooks/warn-native-query.js", "timeout": 10 },
+          { "type": "command", "command": "node .claude/hooks/warn-migration-schema.js", "timeout": 10 }
         ]
       }
     ]

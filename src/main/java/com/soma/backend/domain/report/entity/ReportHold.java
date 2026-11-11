@@ -40,11 +40,16 @@ public class ReportHold extends CreatedAtEntity {
   @Column(name = "reason_detail")
   private String reasonDetail;
 
-  public ReportHold(UUID reportId, UUID adjusterId, HoldReason reason, String reasonDetail) {
+  private ReportHold(UUID reportId, UUID adjusterId, HoldReason reason, String reasonDetail) {
     this.reportId = reportId;
     this.adjusterId = adjusterId;
     this.reason = reason;
     this.reasonDetail = reasonDetail;
+  }
+
+  /** 사정사가 리포트를 처음 보류할 때 보류 행을 만든다. */
+  public static ReportHold create(UUID reportId, UUID adjusterId, HoldReason reason, String reasonDetail) {
+    return new ReportHold(reportId, adjusterId, reason, reasonDetail);
   }
 
   /** 재보류 시 최신 사유로 갱신한다(created_at은 최초 보류 시각을 유지). */

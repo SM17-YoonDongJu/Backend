@@ -14,8 +14,10 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
 import com.soma.backend.global.security.crypto.AesGcmCipher;
+import com.soma.backend.global.security.crypto.PiiAad;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
 /**
@@ -33,13 +35,16 @@ import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 @RequiredArgsConstructor
 public class OAuthLoginService {
 
+  private static final PiiAad PROVIDER_USER_ID_AAD = PiiAad.ofColumn("social_accounts", "provider_user_id");
+
   private final OAuthClient oAuthClient;
   private final SocialAccountRepository socialAccountRepository;
   private final UserRepository userRepository;
   private final SignupTicketProvider signupTicketProvider;
-  private final AuthTokenService authTokenService;
+  private final AuthTokenManager authTokenManager;
   private final AesGcmCipher aesGcmCipher;
   private final AppleRefreshStagingRepository appleRefreshStagingRepository;
+  private final PiiHmac piiHmac;
 
   public OAuthCallbackResponse handleCallback(
       HttpServletResponse response, String provider, String code, String state, String redirectUri) {
@@ -47,8 +52,9 @@ public class OAuthLoginService {
     // 외부 OAuth 프로필 조회는 트랜잭션 밖에서 수행한다(HTTP 지연 시 DB 커넥션 점유·풀 고갈 방지).
     OAuthProfile profile = oAuthClient.fetchProfile(provider, code, state, redirectUri);
 
+    byte[] providerUserIdHmac = piiHmac.hmac(profile.providerUserId(), PROVIDER_USER_ID_AAD);
     return socialAccountRepository
-        .findByProviderAndProviderUserId(profile.provider(), profile.providerUserId())
+        .findByProviderAndProviderUserIdHmac(profile.provider(), providerUserIdHmac)
         .map(account -> loginExisting(response, account))
         .orElseGet(() -> issueSignupTicket(profile));
   }
@@ -56,17 +62,20 @@ public class OAuthLoginService {
   private OAuthCallbackResponse loginExisting(HttpServletResponse response, SocialAccount account) {
     User user = userRepository.findById(account.getUserId())
         .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-    authTokenService.issueTokens(response, user.getId(), user.getRole().name());
+    authTokenManager.issueTokens(response, user.getId(), user.getRole().name());
     return OAuthCallbackResponse.existingUser(user.getId());
   }
 
   private OAuthCallbackResponse issueSignupTicket(OAuthProfile profile) {
     if (profile.providerRefreshToken() != null) {
       // Apple만 non-null. 평문을 즉시 암호화해 스테이징하고, 가입 시점에 SocialAccount로 옮긴다.
+      // AAD는 행 자연키(provider, providerUserId) 바인딩 — 다른 계정 행에 잘못 들어가면 복호화가 실패한다.
       appleRefreshStagingRepository.stage(
           profile.provider(),
           profile.providerUserId(),
-          aesGcmCipher.encrypt(profile.providerRefreshToken()));
+          aesGcmCipher.encrypt(
+              profile.providerRefreshToken(),
+              AesGcmCipher.appleRefreshTokenAad(profile.provider(), profile.providerUserId())));
     }
     String ticket = signupTicketProvider.issue(profile.provider(), profile.providerUserId());
     return OAuthCallbackResponse.newUser(ticket);

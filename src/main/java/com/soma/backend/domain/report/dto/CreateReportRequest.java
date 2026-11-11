@@ -10,8 +10,8 @@ import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.claim.Hospitalization;
 
 /**
- * POST /reports 요청 본문(design.md §6). diagnosis·hospitalizations는 UserClaim.details(jsonb)로 조립되고,
- * 나머지는 공통 컬럼/첨부(documents)로 매핑된다.
+ * POST /reports 요청 본문(design.md §6). diagnosis·hospitalizations는 UserClaim.details(PII 암호화, 이슈 #235)로
+ * 조립되고, 나머지는 공통 컬럼/첨부(documents)로 매핑된다.
  */
 public record CreateReportRequest(
     @Schema(nullable = true) UUID productId,

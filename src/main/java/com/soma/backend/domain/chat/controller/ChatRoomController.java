@@ -2,12 +2,12 @@ package com.soma.backend.domain.chat.controller;
 
 import java.util.UUID;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
@@ -34,51 +34,55 @@ import com.soma.backend.global.security.CustomUserDetails;
 @RequiredArgsConstructor
 public class ChatRoomController {
 
+  private static final int DEFAULT_SIZE = 20;
+
   private final ChatRoomQueryService chatRoomQueryService;
   private final ChatConsultationCommandService chatConsultationCommandService;
   private final ChatReadService chatReadService;
   private final SharedReportQueryService sharedReportQueryService;
 
   @GetMapping("/chats")
-  public ResponseEntity<ApiResponse<ChatRoomListResponse>> listMyRooms(
-      @AuthenticationPrincipal CustomUserDetails principal) {
+  public ApiResponse<ChatRoomListResponse> listMyRooms(
+      @AuthenticationPrincipal CustomUserDetails principal,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(defaultValue = "" + DEFAULT_SIZE) int size) {
     UUID me = requireUserId(principal);
-    return ResponseEntity.ok(ApiResponse.ok(chatRoomQueryService.listMyRooms(me)));
+    return ApiResponse.ok(chatRoomQueryService.listMyRooms(me, cursor, size));
   }
 
   @GetMapping("/chats/{chatRoomId}")
-  public ResponseEntity<ApiResponse<ChatRoomDetailResponse>> getRoom(
+  public ApiResponse<ChatRoomDetailResponse> getRoom(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
     UUID me = requireUserId(principal);
-    return ResponseEntity.ok(ApiResponse.ok(chatRoomQueryService.getRoom(me, chatRoomId)));
+    return ApiResponse.ok(chatRoomQueryService.getRoom(me, chatRoomId));
   }
 
   @GetMapping("/chats/{chatRoomId}/shared-report")
-  public ResponseEntity<ApiResponse<SharedReportResponse>> getSharedReport(
+  public ApiResponse<SharedReportResponse> getSharedReport(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
     UUID me = requireUserId(principal);
-    return ResponseEntity.ok(ApiResponse.ok(sharedReportQueryService.getSharedReport(me, chatRoomId)));
+    return ApiResponse.ok(sharedReportQueryService.getSharedReport(me, chatRoomId));
   }
 
   @PatchMapping("/chats/{chatRoomId}/accept")
-  public ResponseEntity<ApiResponse<ConsultationDecisionResponse>> accept(
+  public ApiResponse<ConsultationDecisionResponse> accept(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
     UUID me = requireUserId(principal);
-    return ResponseEntity.ok(ApiResponse.ok(chatConsultationCommandService.accept(me, chatRoomId)));
+    return ApiResponse.ok(chatConsultationCommandService.accept(me, chatRoomId));
   }
 
   @PatchMapping("/chats/{chatRoomId}/reject")
-  public ResponseEntity<ApiResponse<ConsultationDecisionResponse>> reject(
+  public ApiResponse<ConsultationDecisionResponse> reject(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
     UUID me = requireUserId(principal);
-    return ResponseEntity.ok(ApiResponse.ok(chatConsultationCommandService.reject(me, chatRoomId)));
+    return ApiResponse.ok(chatConsultationCommandService.reject(me, chatRoomId));
   }
 
   @PostMapping("/chats/{chatRoomId}/read")
-  public ResponseEntity<ApiResponse<ReadResponse>> read(
+  public ApiResponse<ReadResponse> read(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID chatRoomId) {
     UUID me = requireUserId(principal);
-    return ResponseEntity.ok(ApiResponse.ok(chatReadService.read(me, chatRoomId)));
+    return ApiResponse.ok(chatReadService.read(me, chatRoomId));
   }
 
   private UUID requireUserId(CustomUserDetails principal) {

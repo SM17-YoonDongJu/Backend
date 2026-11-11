@@ -1,0 +1,127 @@
+# Prometheus 스크랩 설정 — 모니터링 전용 인스턴스(brbs-monitoring) 상주 (#88, #214 인스턴스 분리)
+# 같은 docker network(brbs-net)의 서비스(grafana·loki·tempo)는 컨테이너 이름으로, 다른 호스트는 원격이라
+# private IP로 스크랩하고 instance 라벨로 별칭을 붙인다(타깃 주소 대신 호스트 정체가 알림 문구에 찍히도록).
+# dev 앱 스택은 soma-k8s 클러스터로 이주했다(#328) — 앱·노드·컨테이너 메트릭은 여기서 원격 스크랩하지 않고,
+# 클러스터 안 kube-prometheus-stack이 수집해 이 Prometheus로 remote_write한다(cluster="soma-k8s" 라벨로 유입).
+# 남은 원격 스크랩 후보는 brbs-etl(10.0.11.131, g4dn.xlarge)·brbs-ai(10.0.11.93, g6.xlarge)인데 둘 다
+# 현재 stopped라 해당 잡은 주석 상태다(켜진 채로 두면 TargetDown critical이 상시 발화).
+# 이 파일은 grafana provisioning과 함께 deploy/monitoring/config/ 로 관리하며 서버에서 직접 편집하지 않는다.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: brbs-dev
+
+scrape_configs:
+  # Prometheus 자체
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # 관측성 스택 자체 메트릭(로그·트레이스 파이프라인 건강성). 모니터링 인스턴스 내부망(brbs-net) 스크랩.
+  - job_name: loki
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          instance: monitoring
+  - job_name: tempo
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels:
+          instance: monitoring
+
+  # ── (제거됨, #328) 구 앱 t3(10.0.11.42) 정적 타깃 5종 — brbs-backend·node-t3·cadvisor-t3·alloy·redis-exporter ──
+  # 그 호스트가 soma-k8s 워커로 조인되고 docker가 제거되면서 compose 에이전트들이 전부 소멸했다.
+  # 대체 경로(모두 remote_write로 유입, cluster="soma-k8s"):
+  #  - 앱 메트릭: 클러스터 Prometheus가 backend.default.svc:9292 를 같은 job 이름(brbs-backend)으로 스크랩
+  #    → 기존 대시보드(12900·4701·api-latency)·알림 룰(High5xx·HikariSaturated)이 job 이름 호환으로 그대로 동작
+  #  - 호스트 메트릭: node-exporter DaemonSet(job=node-exporter, 클러스터 양 노드) — 1860 대시보드
+  #  - 컨테이너 메트릭: kubelet 내장 cAdvisor(job=kubelet) — 라벨 체계가 구 cadvisor exporter와 달라
+  #    14282 대시보드는 대상 소멸, 클러스터 컨테이너는 Kubernetes 대시보드(15757~15760)로 본다
+  #  - redis: 클러스터로 이주했으나 메트릭 exporter 미배선(후속) — 763 대시보드는 그때까지 No data
+  #  - alloy(로그): DaemonSet 전환 후속(#328) — 전까지 Loki 신규 유입 없음
+
+  # OCR 워커(ocr-worker)·리포트 워커(report) — AI 레포 소유, soma-k8s Deployment. 둘 다 HTTP 서버가 없어
+  # 스크랩 대상이 아니다. 생존은 kube-state-metrics(OcrWorkerDown·ReportWorkerDown), 소비는 Loki 로그
+  # (Ocr/ReportWorkerNotConsuming), 적체는 CloudWatch AWS/SQS(OcrQueueStale)가 본다 — alerting/rules.yml.
+  # 워커가 prometheus_client로 /metrics를 노출하면 여기가 아니라 K8s-manifests charts/ocr-worker에
+  # ServiceMonitor(release=kps)를 두고 remote_write로 받는다(insurance-chunker와 같은 경로). 그때 처리량·
+  # 실패율·처리지연 알림 룰을 alerting/rules.yml의 OCR 섹션에 추가한다.
+
+  # ── 보험 약관 청커(insurance-chunker, Policy-Chunker 레포 소유) — brbs-etl 원격 스크랩 (#259) ──
+  # 앱·모니터링과 또 다른 호스트(brbs-etl, 10.0.11.131)라 보안그룹: 모니터링 인스턴스 → 10.0.11.131 인바운드 9101을
+  # private(내부)만 허용해야 UP으로 뜬다. exporter가 실제로 응답하기 전에 이 잡을 배포하면
+  # TargetDown(critical, 2m)이 곧바로 발화하므로 순서를 지킬 것.
+  #
+  # 인덱싱 주기가 7일(INGEST_INTERVAL_SECONDS=604800)이라 대부분의 시간 동안 카운터가 안 움직이는 게 정상이다 —
+  # rate() 기반 활동 알림을 걸면 상시 발화한다. 주 신호는 "마지막 실행 상태" 게이지이고, 룰은
+  # alerting/rules.yml의 인덱싱 섹션에 있다.
+  # scrape_interval을 글로벌(15s)보다 늘려 잡은 이유: exporter가 스크랩마다 runlog(items.jsonl)를 다시 읽어
+  # 누적치를 접는 구조라 잦은 스크랩이 그대로 파일 I/O가 된다. 7일 주기 데몬에 15초 해상도는 의미도 없다.
+  # ⚠️ brbs-etl 인스턴스가 stopped라 주석 처리(#328 시점) — 재기동하면 주석을 해제한다.
+  #    같은 이유로 rules.yml의 IndexNeverSucceeded 룰도 pause 상태다(둘을 같이 복원할 것).
+  # - job_name: insurance-chunker
+  #   scrape_interval: 30s
+  #   static_configs:
+  #     - targets: ["10.0.11.131:9101"]
+  #       labels:
+  #         instance: g4dn-etl
+  #         service: insurance-chunker
+
+  # ── brbs-etl(10.0.11.131 / g4dn.xlarge) 호스트·컨테이너 메트릭·로그 에이전트 — #257 ──
+  # 바로 위 청커 잡은 이 호스트에서 도는 '앱'의 지표이고, 여기는 그 '호스트 자체'의 지표다 — 별개 관측이다.
+  # brbs-etl에 node_exporter·cAdvisor·Alloy를 배포한 뒤(#257) 아래 주석을 해제한다. exporter 없이 켜면
+  # TargetDown(critical)이 상시 울린다.
+  # cAdvisor를 두는 이유는 리소스 귀속보다 brbs-corpus-worker(AI 레포) 때문이다 — 그 컨테이너는 /metrics·노출
+  # 포트·healthcheck가 전부 없어서 container_last_seen 말고는 생존을 볼 수단이 없다(ocr-worker와 같은 상황).
+  # 죽으면 로그도 끊기므로 로그 기반 룰(NoData=OK)로도 못 잡는다. 청커·Alloy는 스크랩 대상이라 TargetDown이 덮는다.
+  # Alloy는 로그를 monitoring:3100으로 push하는 게 본업이고(아웃바운드라 이 호스트 인바운드와 무관),
+  # 아래 alloy-etl 잡은 그 Alloy 자신의 상태를 스크랩하는 것이다.
+  # cAdvisor 포트가 t3(8082)와 다르다 — soma-sg-ai 인바운드는 9100·8080으로 열려 있으므로(2026-09-04 확인,
+  # 규칙 설명 "GPU node exporter"·"GPU cadvisor") exporter도 8080으로 띄우는 게 맞다. 다르게 띄울 거면
+  # 보안그룹부터 고칠 것. 이 포트가 t3와 어긋난 것도 g6 기준으로 만든 규칙을 brbs-etl이 물려받은 탓이다.
+  # ⚠️ 이 호스트는 보안그룹을 brbs-ai와 공유한다(soma-sg-ai) — 분리는 #294. 분리되면 아래 소스 SG 이름이 바뀐다.
+  # - job_name: node-etl
+  #   static_configs:
+  #     - targets: ["10.0.11.131:9100"]
+  #       labels:
+  #         instance: g4dn-etl
+  # - job_name: cadvisor-etl
+  #   static_configs:
+  #     - targets: ["10.0.11.131:8080"]
+  #       labels:
+  #         instance: g4dn-etl
+  # - job_name: alloy-etl
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["10.0.11.131:12345"]
+  #       labels:
+  #         instance: g4dn-etl
+
+  # ── GPU(g6.xlarge = brbs-ai, 10.0.11.93) 시스템·컨테이너·GPU 메트릭 — 원격 스크랩 (#291) ──
+  # ⚠️ 위 brbs-etl과 다른 호스트다 — GPU 인스턴스가 둘이고, 이쪽 g6가 원래 'GPU'로 불리던 그 인스턴스다.
+  # g6에 node_exporter(9100)·cAdvisor(8080)·dcgm-exporter(9400)를 상주시킨다(AI 레포 deploy/docker-compose.ocr.yml).
+  # 보안그룹: 모니터링 인스턴스 → g6 인바운드로 9100·8080·9400 을 private(내부)만 허용(외부 노출 금지).
+  # ⚠️ 이 SG(soma-sg-ai)는 brbs-etl과 공유한다 — 한쪽에서 포트를 바꾸면 다른 쪽도 같이 영향받는다. 분리는 #294.
+  # (인스턴스 분리 전엔 t3 → g6이었으나, 스크랩 주체가 모니터링 인스턴스로 바뀌어 소스를 다시 잡았다.)
+  # exporter가 실제로 응답하기 전에 배포하면 TargetDown(critical, 2m)이 곧바로 발화하므로 순서를 지킬 것.
+  # ⚠️ brbs-ai(g6) 인스턴스가 stopped라 3종 모두 주석 처리(#328 시점) — 재기동하면 주석을 해제한다.
+  #    같은 이유로 rules.yml의 OllamaDown 룰도 pause 상태다(둘을 같이 복원할 것).
+  # - job_name: node-gpu
+  #   static_configs:
+  #     - targets: ["10.0.11.93:9100"]
+  #       labels:
+  #         instance: g6-gpu
+  # - job_name: cadvisor-gpu
+  #   static_configs:
+  #     - targets: ["10.0.11.93:8080"]
+  #       labels:
+  #         instance: g6-gpu
+  # GPU 칩 메트릭(VRAM·util·온도·전력·클럭) — DCGM_FI_DEV_*. VRAM/OOM·스로틀링 감시의 핵심.
+  # - job_name: dcgm-gpu
+  #   static_configs:
+  #     - targets: ["10.0.11.93:9400"]
+  #       labels:
+  #         instance: g6-gpu

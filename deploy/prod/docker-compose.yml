@@ -1,0 +1,261 @@
+# prod EC2 배포용 compose (단일 진실원). 서버에서 수동 편집하지 말고 이 파일을 PR로 수정한다.
+# 사용: 이 디렉터리를 서버 ~/backend/ 에 두고 docker compose --env-file .env.prod up -d
+# CD(main push)는 backend만 bounce: ... up -d --no-deps backend
+# 인프라(redis)는 최초 1회 full up 후 restart 정책으로 상주한다. OCR 트리거 브로커는 AWS SQS(관리형, 컨테이너 없음).
+# ⚠️ CD는 compose 파일을 서버에 동기화만 하고 report·redis는 다시 만들지 않는다. 두 서비스 설정을 바꾼 PR은
+# 머지 후 서버에서 docker compose --env-file .env.prod up -d redis report를 따로 실행해야 반영된다.
+# (CD에 넣지 않은 이유: report 이미지는 AI 레포가 올리므로 태그가 없으면 pull이 실패하고, set -e라 backend 배포까지 막힌다.)
+# dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시.
+#
+# 메모리 예산(t3.small, RAM 2GiB): 커널이 보이는 MemTotal은 1.9GB이고, 컨테이너 없이 OS·dockerd·containerd·snapd·
+# SSM agent만 450~550MB를 쓴다(prod 호스트 실측, 2026-11-11). 컨테이너 몫은 1.4GB 남짓이다.
+# 기본 up -d로 뜨는 건 backend·report·redis 셋이고 chatbot은 profile(chatbot)로 빼 두었다.
+# dev 실측(유휴): backend 596MB(heap 200 + nonheap 230) · report 104MB(처리 중 577MB) · redis 13MB.
+# 유휴 합은 700MB대라 여유가 있지만, backend가 부하로 800MB까지 오르고 report가 처리 중(577MB)이면 1.4GB에 붙고
+# 상한 합(1152+768+128)은 이를 넘는다. 그 순간을 받아낼 swap(2GB, vm.swappiness=10)을 호스트에 먼저 잡아 둔다 —
+# 성능용이 아니라 호스트 OOM killer 방지용이다. swap 사용이 상시로 보이면 t3.medium으로 올릴 신호다.
+# 인스턴스를 키우면(t3.medium 이상) backend mem_limit·JAVA_OPTS를 함께 다시 잡을 것.
+name: brbs
+
+services:
+  backend:
+    image: ${ECR_REGISTRY}/brbs/backend:${BACKEND_TAG:-prod}
+    container_name: brbs-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      # actuator 관리 포트(9292)를 ALB 헬스체크용으로 호스트 게시.
+      # ⚠️ 인스턴스 SG에서 ALB SG로부터의 9292 인바운드만 허용할 것(외부 직접 노출 금지).
+      - "9292:9292"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # 슬로우쿼리 로그 임계(ms). 초과 쿼리가 org.hibernate.SQL_SLOW 로거로 남는다(관측 스택 미배포라 docker logs·파일 로그로 확인).
+      SLOW_QUERY_THRESHOLD_MS: ${SLOW_QUERY_THRESHOLD_MS:-1000}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      # OCR 트리거는 SQS로 발행. 큐 이름은 .env의 SQS_OCR_QUEUE_NAME(brbs-ocr-job-queue-prod)으로 주입하고,
+      # backend가 그 이름에서 URL을 런타임 해석한다(URL env 불필요). 접속은 IAM Role 위임(AWS_REGION 아래 참조).
+      SQS_OCR_QUEUE_NAME: ${SQS_OCR_QUEUE_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      AWS_REGION: ${AWS_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      # Apple(Web/Services ID): 콘솔 발급 4개 + refresh_token 암호화 키 1개(우리 생성). 값은 .env.prod에서 주입(미설정 시 apple 로그인만 비활성)
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID}
+      APPLE_KEY_ID: ${APPLE_KEY_ID}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID}
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY}
+      APPLE_TOKEN_ENC_KEY: ${APPLE_TOKEN_ENC_KEY}
+      # PII 컬럼(user_claims·user_insurances) 암호화 — 운영은 KMS 봉투암호화 경로만 허용(PII_ENC_KEY 미주입).
+      # CMK 없이 배포하면 PiiCryptoProdGuard가 기동을 막는다 — 값은 CMK 생성 후 .env.prod에서 주입.
+      PII_KMS_KEY_ID: ${PII_KMS_KEY_ID}
+      # OAuth redirect_uri {baseUrl} 치환값 = 백엔드 API 도메인
+      OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://api.brbosang.com}
+      # 프론트가 콜백에 넘긴 redirect_uri를 허용할 오리진 = 프론트 도메인(API 아님)
+      OAUTH_ALLOWED_REDIRECT_ORIGINS: ${OAUTH_ALLOWED_REDIRECT_ORIGINS:-https://brbosang.com,https://www.brbosang.com}
+      # 쿠키 인증 CORS 허용 오리진 = 프론트 도메인(쿠키 인증이라 * 불가)
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-https://brbosang.com,https://www.brbosang.com}
+      # prod는 HTTPS. 프론트(brbosang.com)·API(api.brbosang.com)는 same-site라 SameSite=Lax로 충분(None 불필요)
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
+      # 아이디·비밀번호 일반 로그인(POST /auth/password/signup·/login, #389) 사용 여부. 앱 기본값이 true라
+      # 비워 두면 열린 상태로 뜬다. 끌 때는 .env에 PASSWORD_LOGIN_ENABLED=false를 넣고 재배포한다 —
+      # 이 매핑이 없으면 .env에 값을 넣어도 컨테이너에 전달되지 않아 끌 수가 없다(compose는 명시 매핑).
+      PASSWORD_LOGIN_ENABLED: ${PASSWORD_LOGIN_ENABLED:-true}
+      # ai.service.url은 현재 코드에서 읽는 곳이 없다(남은 설정). 비어 있어도 된다.
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-}
+      # actuator 관리 포트 분리(9292). health·metrics·prometheus를 관리 포트로 격리
+      MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
+      TZ: Asia/Seoul
+      # FCM 푸시 발송용 Firebase service account 키 경로(컨테이너 내부). 이 값이 있어야 FcmConfig가
+      # FirebaseApp 빈을 만들어 실제로 발송한다 — 미설정이면 stub 모드로 발송을 건너뛴다(FcmPushSender).
+      # 값을 비워 두면(키만 적음) .env.prod에 있을 때만 컨테이너로 넘어가고, 없으면 변수 자체가 빠진다.
+      # sync-env.sh가 prod/backend에 FCM 키가 있을 때만 파일을 배치하고 이 값을 .env.prod에 넣는다 — 키가
+      # 없으면 stub 모드로 기동한다. 빈 문자열로 넘기면 안 된다: @ConditionalOnProperty가 ""도 설정된 것으로 보고
+      # FileInputStream("")에서 기동이 실패한다.
+      FCM_SERVICE_ACCOUNT_PATH:
+      # Dockerfile 기본값(MaxRAMPercentage=75)을 덮는다. compose에서 JAVA_OPTS를 주면 Dockerfile 값이 통째로
+      # 대체되므로 G1·OOM 종료·힙덤프·GC 로그 플래그도 여기서 함께 유지한다.
+      # 75%가 안 되는 이유: 이 앱은 nonheap(metaspace·code cache)만 230~260MB를 쓴다. 75%면 힙 상한 + nonheap이
+      # mem_limit를 넘어, 힙이 다 차기 전에 cgroup에 먼저 OOMKilled된다(dev 1536Mi에서 실제로 겪음).
+      # 1152m의 60% = 힙 약 690MB(dev 실측 최대 200MB의 3배 이상). 초기 힙은 25%로 낮춰 유휴 RSS를 줄인다.
+      JAVA_OPTS: >-
+        -XX:MaxRAMPercentage=60.0 -XX:InitialRAMPercentage=25.0
+        -XX:+UseG1GC
+        -XX:+ExitOnOutOfMemoryError
+        -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs/heapdump.hprof
+        -Xlog:gc*:file=/app/logs/gc.log:time,uptime,level,tags:filecount=5,filesize=10m
+    # mem_limit이 없으면 JVM이 호스트 전체 메모리 기준으로 힙을 잡는다. t3.small 예산(파일 상단)에 맞춰 고정.
+    mem_limit: 1152m
+    mem_reservation: 768m
+    volumes:
+      # 호스트의 시크릿 디렉터리를 read-only로 마운트(컨테이너는 root 실행이라 600 파일도 읽힘).
+      # 파일이 아니라 디렉터리를 거는 이유: 없는 파일을 바인드 마운트하면 docker가 그 경로에 빈 디렉터리를 만들어
+      # 버려서, 나중에 키 파일을 같은 경로에 둘 수 없게 된다. 호스트 경로는 FCM_SA_HOST_DIR로 덮어쓸 수 있다.
+      - ${FCM_SA_HOST_DIR:-/home/ubuntu/secrets}:/etc/secrets:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # SQS 워커(OCR 트리거 소비 · LangGraph · RAG). AI 레포가 이미지 배포. HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
+  # LLM은 Claude(LLM_PROVIDER=anthropic, 키는 AI_API_KEY), 임베딩은 Voyage(EMBEDDING_PROVIDER=voyage)다 — dev
+  # (K8s-manifests envs/dev/report.values.yaml)와 같은 구성. AI_BASE_URL은 openai_compat(로컬 Ollama 등)일 때만 쓴다.
+  # 아래 environment에 없는 키는 .env.prod에 있어도 컨테이너로 넘어가지 않는다 — 새 키는 여기에도 추가할 것.
+  report:
+    # 새 AWS 계정(2026-10 이전)의 ECR 리포는 brbs/report다(구 계정 soma/report는 없음).
+    image: ${ECR_REGISTRY}/brbs/report:${REPORT_TAG:-prod}
+    container_name: brbs-report
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SERVICE_NAME: report-worker
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      # RDS는 rds.force_ssl=1이라 SSL 필수다. 워커는 이 값이 비면 SSL을 꺼서 접속이 거부되므로, 아래 volumes로
+      # 마운트한 RDS CA 번들 경로를 넣는다(sync-env.sh가 호스트에 번들을 받아 둔다).
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
+      REDIS_URL: ${REDIS_URL}
+      # report-worker는 Backend의 OCR 트리거 큐를 직접 소비하지 않는다 — ocr-worker(별도 배포, 이 레포 밖)가
+      # brbs-ocr-job-queue-prod를 소비해 OCR을 수행한 뒤 report-job 큐로 넘기고, report-worker는 그 결과만 받는다
+      # (Backend → ocr-worker → report-worker 2홉). 변수명이 SQS_REPORT_JOB_QUEUE_URL인 이유.
+      # (튜닝 후보: 롱폴링 wait-time·visibility-timeout·배치 max-messages. DLQ는 큐 redrive policy로 구성 — 앱 env 아님.)
+      SQS_REPORT_JOB_QUEUE_URL: ${SQS_REPORT_JOB_QUEUE_URL}
+      # 리포트 생성이 길어 큐 기본값(30초)이 아니라 수신 시 가시성을 길게 잡는다(dev와 같은 1800초).
+      SQS_VISIBILITY_TIMEOUT: ${SQS_VISIBILITY_TIMEOUT:-1800}
+      SQS_MAX_RECEIVE_COUNT: ${SQS_MAX_RECEIVE_COUNT:-3}
+      # SQS 접속·큐 URL 해석에 리전 필요 — 자격증명은 인스턴스 IAM Role 위임(정적 키 미주입)
+      AWS_REGION: ${AWS_REGION}
+      # PII 컬럼 복호화 — prod는 core.encryption_keys의 wrapped DEK를 이 CMK로 푼다(backend PII_KMS_KEY_ID와 같은 키).
+      # dev처럼 PII_ENC_KEY(raw DEK)를 넣지 않는다.
+      PII_KMS_KEY_ARN: ${PII_KMS_KEY_ARN}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL}
+      LLM_EFFORT: ${LLM_EFFORT:-high}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-voyage}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      # 임베딩 전용 키(Voyage). AI_API_KEY(Claude 키)와 분리한다 — 섞이면 Claude 키가 임베딩 업체로 나간다.
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      # 워커가 float로 파싱하므로 빈 문자열이면 기동에 실패한다 — 기본값을 둔다.
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-0.5}
+      TZ: Asia/Seoul
+    volumes:
+      - ${RDS_CA_HOST_PATH:-/home/ubuntu/certs/rds-global-bundle.pem}:/etc/ssl/rds/global-bundle.pem:ro
+    # 자체 메모리 캡 메커니즘이 없는 프로세스라 하드 상한으로 보호(실측 안정 시 577MB 기준 여유분 포함).
+    mem_limit: 768m
+    mem_reservation: 384m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). SQS·S3 없음, Redis 필수.
+  # t3.small 메모리 예산에 들어가지 않아 기본 up에서 제외한다(profile). 이 호스트에 올릴 때만
+  # docker compose --env-file .env.prod --profile chatbot up -d chatbot — 그 전에 인스턴스를 키울 것.
+  # 이미지 경로는 구 계정 기준(soma/chatbot)이고 새 계정 ECR엔 chatbot 리포가 아직 없다.
+  chatbot:
+    profiles: ["chatbot"]
+    image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-prod}
+    container_name: brbs-chatbot
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SERVICE_NAME: chatbot
+      INSTANCE_ID: ${INSTANCE_ID:-}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      RDS_CA_PATH: ${RDS_CA_PATH:-}
+      REDIS_URL: ${REDIS_URL}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      EMBEDDING_DIM: ${EMBEDDING_DIM}
+      USE_NER: ${USE_NER:-false}
+      NER_MODEL: ${NER_MODEL:-}
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
+      TZ: Asia/Seoul
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: brbs-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    # 담는 것은 refresh 토큰·블랙리스트·검수대기 count 캐시·채팅 pub/sub뿐이라 실사용이 작다(dev 실측 13MB).
+    # 캐시가 아니라 인증 저장소라 noeviction이다. 축출 정책(allkeys-lru 등)이면 상한에 닿았을 때 블랙리스트 키가
+    # 조용히 사라져 탈퇴 유저의 access 토큰이 다시 통과한다. noeviction은 쓰기를 OOM 에러로 거부할 뿐이라
+    # 실패가 드러난다(로그인은 에러, 블랙리스트 등록은 아웃박스 재시도, count 캐시는 실패를 삼키고 DB로 대체).
+    # 모든 키에 TTL이 있어 무한히 쌓이진 않지만, 실사용이 상한에 가까워지면 maxmemory를 올릴 것.
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - brbs-net
+
+volumes:
+  redis-data:
+
+networks:
+  brbs-net:
+    driver: bridge

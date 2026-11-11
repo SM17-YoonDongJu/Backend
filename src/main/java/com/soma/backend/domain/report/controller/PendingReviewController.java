@@ -3,7 +3,6 @@ package com.soma.backend.domain.report.controller;
 import java.util.UUID;
 
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,14 +50,14 @@ public class PendingReviewController {
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/reports/pending-review/summary")
-  public ResponseEntity<ApiResponse<PendingReviewSummaryResponse>> summary(
+  public ApiResponse<PendingReviewSummaryResponse> summary(
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(ApiResponse.ok(pendingReviewQueryService.getSummary(principal.getUserId())));
+    return ApiResponse.ok(pendingReviewQueryService.getSummary(principal.getUserId()));
   }
 
   @PreAuthorize("hasAnyRole('CERTIFICATED_ADJUSTER', 'UNCERTIFICATED_ADJUSTER')")
   @GetMapping("/reports/pending-review")
-  public ResponseEntity<ApiResponse<PendingReviewListResponse>> pendingReview(
+  public ApiResponse<PendingReviewListResponse> pendingReview(
       @AuthenticationPrincipal CustomUserDetails principal,
       @RequestParam(required = false) String status,
       @RequestParam(required = false) String accidentType,
@@ -69,35 +68,35 @@ public class PendingReviewController {
     PendingReviewListResponse result =
         pendingReviewQueryService.getPendingReviewList(
             status, accidentType, region, principal.getUserId(), pageable);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
   @GetMapping("/reports/{reportId}/review")
-  public ResponseEntity<ApiResponse<ReviewWorkspaceResponse>> reviewWorkspace(
+  public ApiResponse<ReviewWorkspaceResponse> reviewWorkspace(
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
     ReviewWorkspaceResponse result =
         reviewWorkspaceQueryService.getReviewWorkspace(reportId, principal.getUserId());
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
   @PostMapping("/reports/{reportId}/hold")
-  public ResponseEntity<ApiResponse<HoldResponse>> addHold(
+  public ApiResponse<HoldResponse> addHold(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID reportId,
       @RequestBody HoldReportRequest request) {
     HoldResponse result = reportHoldCommandService.addHold(reportId, principal.getUserId(), request);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 
   @PreAuthorize("hasRole('CERTIFICATED_ADJUSTER')")
   @PatchMapping("/reports/{reportId}")
-  public ResponseEntity<ApiResponse<ReviewReportResponse>> reviewReport(
+  public ApiResponse<ReviewReportResponse> reviewReport(
       @AuthenticationPrincipal CustomUserDetails principal,
       @PathVariable UUID reportId,
       @RequestBody ReviewReportRequest request) {
     ReviewReportResponse result = reportReviewCommandService.review(principal.getUserId(), reportId, request);
-    return ResponseEntity.ok(ApiResponse.ok(result));
+    return ApiResponse.ok(result);
   }
 }

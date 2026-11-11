@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -30,16 +32,21 @@ import com.soma.backend.domain.user.dto.UserUpdateRequest;
 import com.soma.backend.domain.user.entity.Role;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.entity.UserStatus;
+import com.soma.backend.domain.user.entity.event.UserWithdrawnEvent;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.outbox.OutboxEventPublisher;
-import com.soma.backend.infra.s3.S3UploadService;
+import com.soma.backend.infra.s3.S3ObjectStorage;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserService 단위 테스트")
 class UserServiceTest {
+
+  private static final byte[] PHONE_HMAC = {1, 2, 3};
+  private static final byte[] NEW_PHONE_HMAC = {4, 5, 6};
 
   @InjectMocks
   private UserService userService;
@@ -51,7 +58,10 @@ class UserServiceTest {
   private SocialAccountRepository socialAccountRepository;
 
   @Mock
-  private AuthTokenService authTokenService;
+  private ApplicationEventPublisher eventPublisher;
+
+  @Mock
+  private AuthTokenManager authTokenManager;
 
   @Mock
   private OutboxEventPublisher outboxEventPublisher;
@@ -60,10 +70,13 @@ class UserServiceTest {
   private HttpServletResponse response;
 
   @Mock
-  private S3UploadService s3UploadService;
+  private S3ObjectStorage s3ObjectStorage;
+
+  @Mock
+  private PiiHmac piiHmac;
 
   private User activeUser() {
-    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", Role.USER, null);
+    return User.create("홍길동", LocalDate.of(1990, 1, 1), "남", "010-1234-5678", PHONE_HMAC, Role.USER, null);
   }
 
   @Test
@@ -166,7 +179,7 @@ class UserServiceTest {
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
     UserUpdateRequest request = new UserUpdateRequest(null, List.of("서울"), "https://img/new.png");
-    given(s3UploadService.presignedGetUrl("https://img/new.png")).willReturn("https://img/new.png");
+    given(s3ObjectStorage.presignedGetUrl("https://img/new.png")).willReturn("https://img/new.png");
 
     // When
     UserMeResponse result = userService.updateMe(userId, request);
@@ -175,7 +188,7 @@ class UserServiceTest {
     assertThat(result.region()).containsExactly("서울");
     assertThat(result.avatarUrl()).isEqualTo("https://img/new.png");
     assertThat(result.phoneNumber()).isEqualTo("010-1234-5678");
-    then(userRepository).should(never()).existsByPhoneNumber("010-1234-5678");
+    then(userRepository).should(never()).existsByPhoneNumberHmac(any());
   }
 
   @Test
@@ -184,7 +197,8 @@ class UserServiceTest {
     // Given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.of(activeUser()));
-    given(userRepository.existsByPhoneNumber("010-9999-8888")).willReturn(true);
+    given(piiHmac.hmac(eq("010-9999-8888"), any())).willReturn(NEW_PHONE_HMAC);
+    given(userRepository.existsByPhoneNumberHmac(NEW_PHONE_HMAC)).willReturn(true);
     UserUpdateRequest request = new UserUpdateRequest("010-9999-8888", null, null);
 
     // When & Then
@@ -209,8 +223,10 @@ class UserServiceTest {
     assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     assertThat(user.getPhoneNumber()).isNull();
     then(socialAccountRepository).should().deleteByUserId(userId);
+    // 자격증명 파기는 auth 컨텍스트 리스너가 맡으므로 여기서는 사실 발행까지만 검증한다(#389).
+    then(eventPublisher).should().publishEvent(new UserWithdrawnEvent(userId));
     then(outboxEventPublisher).should().publishAuthCleanup(userId);
-    then(authTokenService).should().expireCookies(response);
+    then(authTokenManager).should().expireCookies(response);
   }
 
   @Test
@@ -221,6 +237,7 @@ class UserServiceTest {
     User user = activeUser();
     SocialAccount apple = mock(SocialAccount.class);
     given(apple.getProvider()).willReturn("apple");
+    given(apple.getProviderUserId()).willReturn("apple-1");
     given(apple.getRefreshToken()).willReturn("enc-token");
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(socialAccountRepository.findByUserId(userId)).willReturn(List.of(apple));
@@ -229,7 +246,7 @@ class UserServiceTest {
     userService.withdraw(userId, response);
 
     // Then
-    then(outboxEventPublisher).should().publishAppleRevoke(userId, "enc-token");
+    then(outboxEventPublisher).should().publishAppleRevoke(userId, "apple", "apple-1", "enc-token");
     then(socialAccountRepository).should().deleteByUserId(userId);
   }
 
@@ -248,6 +265,7 @@ class UserServiceTest {
     userService.withdraw(userId, response);
 
     // Then
-    then(outboxEventPublisher).should(never()).publishAppleRevoke(any(), anyString());
+    then(outboxEventPublisher).should(never())
+        .publishAppleRevoke(any(), anyString(), anyString(), anyString());
   }
 }

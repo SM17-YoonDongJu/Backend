@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.jspecify.annotations.Nullable;
+
 import com.querydsl.core.types.Expression;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -20,6 +22,10 @@ import com.soma.backend.domain.user.entity.QUser;
 /**
  * ChatRoom 목록 조회 QueryDSL 구현. native 없이(하네스 규칙) 상관 서브쿼리로 안읽음 수를 계산하고,
  * report_reviews·users를 엔티티 조인해 제안 상태·상대방 이름을 함께 가져온다(크로스-애그리거트 읽기).
+ *
+ * <p>목록({@link #findMyRoomRows})은 2단계로 조회한다. 조인 쿼리에 바로 keyset·limit을 걸면 PostgreSQL이 LEFT JOIN
+ * 아래로 LIMIT을 내리지 못해, 내 방 전부를 report_reviews·reports(큰 테이블 Seq Scan)와 조인한 뒤에야 정렬·절단한다.
+ * 그래서 chat_rooms 단독으로 한 페이지 id만 먼저 고르고, 그 id들에만 조인·안읽음 서브쿼리를 붙인다(이슈 #371).
  */
 public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 
@@ -30,9 +36,23 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
   }
 
   @Override
-  public List<ChatRoomListRow> findMyRoomRows(UUID me) {
+  public List<ChatRoomListRow> findMyRoomRows(UUID me, @Nullable ChatRoomCursor cursor, int limit) {
+    QChatRoom room = QChatRoom.chatRoom;
+    // 1단계: 조인 없이 chat_rooms만으로 keyset·정렬·limit → 이 페이지의 id만 확정한다.
+    List<UUID> ids = queryFactory
+        .select(room.id)
+        .from(room)
+        .where(participatedBy(room, me), after(room, cursor))
+        .orderBy(room.lastMessageAt.desc().nullsLast(), room.id.desc())
+        .limit(limit)
+        .fetch();
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+    // 2단계: 고른 id에만 조인·서브쿼리를 붙인다. IN은 순서를 보장하지 않으므로 같은 정렬을 다시 건다.
     return baseRoomQuery(me)
-        .orderBy(QChatRoom.chatRoom.lastMessageAt.desc().nullsLast())
+        .where(room.id.in(ids))
+        .orderBy(room.lastMessageAt.desc().nullsLast(), room.id.desc())
         .fetch();
   }
 
@@ -40,6 +60,28 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
   public Optional<ChatRoomListRow> findMyRoomRow(UUID me, UUID chatRoomId) {
     return Optional.ofNullable(
         baseRoomQuery(me).where(QChatRoom.chatRoom.id.eq(chatRoomId)).fetchOne());
+  }
+
+  /**
+   * keyset 조건 — 정렬 {@code last_message_at DESC NULLS LAST, id DESC}에서 커서 다음 행만 남긴다. 커서가 null이면
+   * 조건 없음(QueryDSL은 where(null)을 무시). SQL 3치 논리상 {@code last_message_at < t}는 null 행에서 UNKNOWN이라
+   * null 구간은 {@code isNull()} 분기로만 들어온다. id 비교·정렬은 둘 다 DB(uuid 순서)에서 일어나므로 일관된다.
+   */
+  private @Nullable BooleanExpression after(QChatRoom room, @Nullable ChatRoomCursor cursor) {
+    if (cursor == null) {
+      return null;
+    }
+    if (cursor.lastMessageAt() == null) {
+      return room.lastMessageAt.isNull().and(room.id.lt(cursor.id()));
+    }
+    return room.lastMessageAt.lt(cursor.lastMessageAt())
+        .or(room.lastMessageAt.eq(cursor.lastMessageAt()).and(room.id.lt(cursor.id())))
+        .or(room.lastMessageAt.isNull());
+  }
+
+  /** 참여자(user·adjuster) 필터 — 목록 1단계와 기반 쿼리가 같은 식을 쓰도록 한 곳에 둔다(남의 방 id 노출 방지). */
+  private BooleanExpression participatedBy(QChatRoom room, UUID me) {
+    return room.userId.eq(me).or(room.adjusterId.eq(me));
   }
 
   /**
@@ -93,6 +135,6 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
         .leftJoin(report).on(report.id.eq(room.reportId))
         .leftJoin(userAccount).on(userAccount.id.eq(room.userId))
         .leftJoin(adjusterAccount).on(adjusterAccount.id.eq(room.adjusterId))
-        .where(room.userId.eq(me).or(room.adjusterId.eq(me)));
+        .where(participatedBy(room, me));
   }
 }

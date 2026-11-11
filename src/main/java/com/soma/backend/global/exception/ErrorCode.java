@@ -50,6 +50,9 @@ public enum ErrorCode {
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
   DATABASE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "데이터베이스 오류가 발생했습니다."),
   EXTERNAL_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "외부 API 연동에 실패했습니다."),
+  // PII_CRYPTO_ERROR: 민감정보 컬럼 암복호화 실패(키 불일치·봉투 변조·AAD 불일치·포맷 오류).
+  //   원인값(키·평문·암호문)은 절대 응답·로그에 싣지 않는다.
+  PII_CRYPTO_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "민감정보 처리 중 오류가 발생했습니다."),
 
   // 503 Service Unavailable — 일시적 서비스 불가
   SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "서비스를 일시적으로 이용할 수 없습니다."),
@@ -57,6 +60,9 @@ public enum ErrorCode {
   // Auth (도메인 특화)
   REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰을 찾을 수 없습니다."),
   UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 소셜 로그인 제공자입니다."),
+  // LOGIN_FAILED: 아이디·비밀번호 로그인 실패. 아이디 없음·비밀번호 불일치·탈퇴 계정을 모두 이 하나의
+  //   code·message로 묶는다 — 응답이 달라지면 "그 아이디는 존재한다"는 계정 열거 오라클이 된다.
+  LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
 
   // Adjuster (도메인 특화)
   ADJUSTER_NOT_FOUND(HttpStatus.NOT_FOUND, "손해사정사를 찾을 수 없습니다."),
@@ -69,6 +75,7 @@ public enum ErrorCode {
   PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "제안을 찾을 수 없습니다."),
   REPORT_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종결된 리포트입니다."),
   CLAIM_DETAILS_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "청구 상세 유형이 사고 유형과 일치하지 않습니다."),
+  REPORT_TOO_MANY_DOCUMENTS(HttpStatus.BAD_REQUEST, "첨부 문서 개수가 허용 범위를 초과했습니다."),
 
   // Matching (도메인 특화)
   MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "매칭 요청을 찾을 수 없습니다."),

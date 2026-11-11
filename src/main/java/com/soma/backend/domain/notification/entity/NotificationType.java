@@ -15,6 +15,12 @@ public enum NotificationType {
   RECEIVED_PROPOSAL,
   CONSULT_ACCEPTED,
   ANALYSIS_COMPLETE,
+  /** 분석(OCR·AI) 확정 실패 통지. 시스템 실패 알림이라 수신 토글 대상이 아니다(항상 발송). */
+  ANALYSIS_FAILED,
+  /** AI 차단(입력 가드레일 차단·리포트 생성 LLM 거절) 통지. ANALYSIS_FAILED와 마찬가지로 시스템 알림이라 항상 발송된다. */
+  REPORT_BLOCKED,
+  /** OCR 품질 미달 통지. 사용자 액션(재업로드)이 필요한 시스템 통지라 수신 토글 대상이 아니다(항상 발송). */
+  REPORT_NEEDS_REUPLOAD,
   IDENTITY_VERIFIED,
   CHAT_MESSAGE,
   SETTLEMENT_NOTICE,

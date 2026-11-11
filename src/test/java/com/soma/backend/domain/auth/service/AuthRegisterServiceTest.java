@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -34,7 +35,8 @@ import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
-import com.soma.backend.global.security.AuthTokenService;
+import com.soma.backend.global.security.AuthTokenManager;
+import com.soma.backend.global.security.crypto.PiiHmac;
 import com.soma.backend.infra.redis.AppleRefreshStagingRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,10 +56,13 @@ class AuthRegisterServiceTest {
   private SocialAccountRepository socialAccountRepository;
 
   @Mock
-  private AuthTokenService authTokenService;
+  private AuthTokenManager authTokenManager;
 
   @Mock
   private AppleRefreshStagingRepository appleRefreshStagingRepository;
+
+  @Mock
+  private PiiHmac piiHmac;
 
   @Mock
   private HttpServletResponse response;
@@ -76,9 +81,9 @@ class AuthRegisterServiceTest {
   private void givenValidKakaoTicket() {
     given(signupTicketProvider.parse("ticket"))
         .willReturn(new SignupTicket("kakao", "kakao-1"));
-    given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
+    given(socialAccountRepository.existsByProviderAndProviderUserIdHmac(eq("kakao"), any()))
         .willReturn(false);
-    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(false);
+    given(userRepository.existsByPhoneNumberHmac(any())).willReturn(false);
   }
 
   private User capturedUser() {
@@ -93,9 +98,9 @@ class AuthRegisterServiceTest {
     // Given
     given(signupTicketProvider.parse("ticket"))
         .willReturn(new SignupTicket("kakao", "kakao-1"));
-    given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
+    given(socialAccountRepository.existsByProviderAndProviderUserIdHmac(eq("kakao"), any()))
         .willReturn(false);
-    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(false);
+    given(userRepository.existsByPhoneNumberHmac(any())).willReturn(false);
 
     // When
     RegisterResponse result = authRegisterService.register(response, request("insured_person"));
@@ -105,7 +110,7 @@ class AuthRegisterServiceTest {
     assertThat(result.role()).isEqualTo(Role.USER.name());
     then(userRepository).should().save(any(User.class));
     then(socialAccountRepository).should().save(any(SocialAccount.class));
-    then(authTokenService).should().issueTokens(any(HttpServletResponse.class), any(), anyString());
+    then(authTokenManager).should().issueTokens(any(HttpServletResponse.class), any(), anyString());
   }
 
   @Test
@@ -157,9 +162,9 @@ class AuthRegisterServiceTest {
     // Given
     given(signupTicketProvider.parse("ticket"))
         .willReturn(new SignupTicket("kakao", "kakao-1"));
-    given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
+    given(socialAccountRepository.existsByProviderAndProviderUserIdHmac(eq("kakao"), any()))
         .willReturn(false);
-    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(false);
+    given(userRepository.existsByPhoneNumberHmac(any())).willReturn(false);
 
     // When
     RegisterResponse result = authRegisterService.register(response, request("adjuster"));
@@ -176,9 +181,9 @@ class AuthRegisterServiceTest {
         "apple", "ticket", "홍길동", LocalDate.of(1990, 1, 1), PHONE, "남", "서울", "insured_person");
     given(signupTicketProvider.parse("ticket"))
         .willReturn(new SignupTicket("apple", "apple-1"));
-    given(socialAccountRepository.existsByProviderAndProviderUserId("apple", "apple-1"))
+    given(socialAccountRepository.existsByProviderAndProviderUserIdHmac(eq("apple"), any()))
         .willReturn(false);
-    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(false);
+    given(userRepository.existsByPhoneNumberHmac(any())).willReturn(false);
     given(appleRefreshStagingRepository.consume("apple", "apple-1"))
         .willReturn(Optional.of("enc-refresh"));
 
@@ -213,7 +218,7 @@ class AuthRegisterServiceTest {
     // Given
     given(signupTicketProvider.parse("ticket"))
         .willReturn(new SignupTicket("kakao", "kakao-1"));
-    given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
+    given(socialAccountRepository.existsByProviderAndProviderUserIdHmac(eq("kakao"), any()))
         .willReturn(true);
 
     // When & Then
@@ -230,15 +235,15 @@ class AuthRegisterServiceTest {
     // Given
     given(signupTicketProvider.parse("ticket"))
         .willReturn(new SignupTicket("kakao", "kakao-1"));
-    given(socialAccountRepository.existsByProviderAndProviderUserId("kakao", "kakao-1"))
+    given(socialAccountRepository.existsByProviderAndProviderUserIdHmac(eq("kakao"), any()))
         .willReturn(false);
-    given(userRepository.existsByPhoneNumber(PHONE)).willReturn(true);
+    given(userRepository.existsByPhoneNumberHmac(any())).willReturn(true);
 
     // When & Then
     assertThatThrownBy(() -> authRegisterService.register(response, request("insured_person")))
         .isInstanceOf(BusinessException.class)
         .extracting(ex -> ((BusinessException) ex).getErrorCode())
         .isEqualTo(ErrorCode.DUPLICATE_RESOURCE);
-    then(authTokenService).should(never()).issueTokens(any(), any(), anyString());
+    then(authTokenManager).should(never()).issueTokens(any(), any(), anyString());
   }
 }

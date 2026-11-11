@@ -8,6 +8,7 @@ import org.springframework.boot.micrometer.tracing.autoconfigure.MicrometerTraci
 import org.springframework.boot.micrometer.tracing.opentelemetry.autoconfigure.OpenTelemetryTracingAutoConfiguration;
 import org.springframework.boot.micrometer.tracing.opentelemetry.autoconfigure.otlp.OtlpTracingAutoConfiguration;
 import org.springframework.boot.opentelemetry.autoconfigure.OpenTelemetrySdkAutoConfiguration;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import io.opentelemetry.sdk.trace.export.SpanExporter;
@@ -30,15 +31,41 @@ class TracingOtlpExporterWiringTest {
 
   @Test
   void otlpSpanExporterIsWired() {
-    new ApplicationContextRunner()
+    tracingContext()
+        .withPropertyValues(
+            "management.tracing.export.enabled=true",
+            "management.opentelemetry.tracing.export.otlp.endpoint=http://tempo:4318/v1/traces")
+        .run(context -> assertThat(context).hasSingleBean(SpanExporter.class));
+  }
+
+  /**
+   * 전송을 끄는 키는 Boot 4의 {@code management.tracing.export.enabled}다. 구 {@code management.tracing.enabled}는
+   * deprecated라 런타임에 무시돼서, 그 키로 끄려던 prod가 수집기 없는 localhost:4318로 span을 보내며 ERROR를 남겼다.
+   */
+  @Test
+  void otlpSpanExporterIsNotWiredWhenExportDisabled() {
+    tracingContext()
+        .withPropertyValues(
+            "management.tracing.export.enabled=false",
+            "management.opentelemetry.tracing.export.otlp.endpoint=http://tempo:4318/v1/traces")
+        .run(context -> assertThat(context).doesNotHaveBean(SpanExporter.class));
+  }
+
+  /** 실제 application.yml·application-prod.yml을 읽었을 때 prod는 span을 내보내지 않는다(수집기 없음). */
+  @Test
+  void prodProfileDoesNotExportSpans() {
+    tracingContext()
+        .withInitializer(new ConfigDataApplicationContextInitializer())
+        .withPropertyValues("spring.profiles.active=prod")
+        .run(context -> assertThat(context).doesNotHaveBean(SpanExporter.class));
+  }
+
+  private ApplicationContextRunner tracingContext() {
+    return new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(
             OpenTelemetrySdkAutoConfiguration.class,
             MicrometerTracingAutoConfiguration.class,
             OpenTelemetryTracingAutoConfiguration.class,
-            OtlpTracingAutoConfiguration.class))
-        .withPropertyValues(
-            "management.tracing.enabled=true",
-            "management.opentelemetry.tracing.export.otlp.endpoint=http://tempo:4318/v1/traces")
-        .run(context -> assertThat(context).hasSingleBean(SpanExporter.class));
+            OtlpTracingAutoConfiguration.class));
   }
 }

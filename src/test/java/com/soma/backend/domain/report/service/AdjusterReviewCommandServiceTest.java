@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.List;
 import java.util.UUID;
@@ -13,12 +15,16 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.soma.backend.domain.report.dto.CreateAdjusterReviewRequest;
 import com.soma.backend.domain.report.dto.CreateAdjusterReviewResponse;
+import com.soma.backend.domain.report.entity.event.AdjusterReviewCreatedEvent;
 import com.soma.backend.domain.report.repository.AdjusterReviewRepository;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.global.exception.BusinessException;
@@ -32,6 +38,8 @@ class AdjusterReviewCommandServiceTest {
   private AdjusterReviewRepository adjusterReviewRepository;
   @Mock
   private ReportReviewRepository reportReviewRepository;
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
   @InjectMocks
   private AdjusterReviewCommandService service;
 
@@ -48,13 +56,32 @@ class AdjusterReviewCommandServiceTest {
     given(adjusterReviewRepository.existsByUserIdAndAdjusterId(userId, adjusterId)).willReturn(false);
     given(reportReviewRepository.findAcceptedReportIdsForReviewer(adjusterId, userId))
         .willReturn(List.of(UUID.randomUUID()));
-    given(adjusterReviewRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+    given(adjusterReviewRepository.saveAndFlush(any())).willAnswer(inv -> inv.getArgument(0));
 
     CreateAdjusterReviewResponse response = service.createReview(userId, adjusterId, request());
 
     assertThat(response.adjusterId()).isEqualTo(adjusterId);
     assertThat(response.score()).isEqualTo(5);
-    verify(adjusterReviewRepository).save(any());
+    verify(adjusterReviewRepository).saveAndFlush(any());
+  }
+
+  /** 저장 순서가 뒤바뀌면 재집계가 방금 등록한 평가를 놓친다(모수 1건 누락). */
+  @Test
+  @DisplayName("등록에 성공하면 평가를 flush한 뒤 평점 집계 갱신 이벤트를 1회 발행한다")
+  void createReview_refreshesAdjusterRatingAfterFlush() {
+    given(adjusterReviewRepository.existsByUserIdAndAdjusterId(userId, adjusterId)).willReturn(false);
+    given(reportReviewRepository.findAcceptedReportIdsForReviewer(adjusterId, userId))
+        .willReturn(List.of(UUID.randomUUID()));
+    given(adjusterReviewRepository.saveAndFlush(any())).willAnswer(inv -> inv.getArgument(0));
+
+    service.createReview(userId, adjusterId, request());
+
+    InOrder order = inOrder(adjusterReviewRepository, eventPublisher);
+    order.verify(adjusterReviewRepository).saveAndFlush(any());
+    order.verify(eventPublisher).publishEvent(any(AdjusterReviewCreatedEvent.class));
+    ArgumentCaptor<AdjusterReviewCreatedEvent> event = ArgumentCaptor.forClass(AdjusterReviewCreatedEvent.class);
+    verify(eventPublisher).publishEvent(event.capture());
+    assertThat(event.getValue().adjusterId()).isEqualTo(adjusterId);
   }
 
   @Test
@@ -65,7 +92,8 @@ class AdjusterReviewCommandServiceTest {
     assertThatThrownBy(() -> service.createReview(userId, adjusterId, request()))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_RESOURCE));
-    verify(adjusterReviewRepository, never()).save(any());
+    verify(adjusterReviewRepository, never()).saveAndFlush(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -77,6 +105,7 @@ class AdjusterReviewCommandServiceTest {
     assertThatThrownBy(() -> service.createReview(userId, adjusterId, request()))
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
-    verify(adjusterReviewRepository, never()).save(any());
+    verify(adjusterReviewRepository, never()).saveAndFlush(any());
+    verifyNoInteractions(eventPublisher);
   }
 }

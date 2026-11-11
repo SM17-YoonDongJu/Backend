@@ -40,6 +40,10 @@ class ReportQueryServiceTest {
   @Mock
   private ReportRepository reportRepository;
 
+  /** 분석 상태 부착 협력자 — 목록 조립 시 호출된다(기본 스텁은 빈 맵 = 전 카드 PROCESSING). */
+  @Mock
+  private ReportAnalysisResolver reportAnalysisResolver;
+
   private void givenEmptyPage() {
     Page<ReportCardRow> empty = new PageImpl<>(List.of());
     given(reportRepository.findUserReportCards(any(), any(), any())).willReturn(empty);
@@ -69,6 +73,18 @@ class ReportQueryServiceTest {
     assertThat(statusCaptor.getValue()).isEqualTo(ReportStatus.COUNSELING);
     assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(2);
     assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(20);
+  }
+
+  @Test
+  @DisplayName("status=NEEDS_REUPLOAD 필터도 enum 추가만으로 그대로 지원된다(parseStatus는 valueOf)")
+  void needsReuploadStatusFilterIsSupported() {
+    givenEmptyPage();
+
+    reportQueryService.getUserReports(UUID.randomUUID(), "NEEDS_REUPLOAD", 1, 10);
+
+    ArgumentCaptor<ReportStatus> statusCaptor = ArgumentCaptor.forClass(ReportStatus.class);
+    then(reportRepository).should().findUserReportCards(any(), statusCaptor.capture(), any());
+    assertThat(statusCaptor.getValue()).isEqualTo(ReportStatus.NEEDS_REUPLOAD);
   }
 
   @Test

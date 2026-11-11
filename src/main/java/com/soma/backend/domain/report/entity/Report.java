@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.entity;
 
+import java.time.LocalDateTime;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -25,6 +26,7 @@ import lombok.NoArgsConstructor;
 import com.soma.backend.domain.common.entity.BaseEntity;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
+import com.soma.backend.global.security.crypto.converter.ReportQuestionConverter;
 
 /**
  * REPORTS Aggregate Root. AI 초안 리포트와 사정사 검수 확정 상태를 함께 관리한다.
@@ -52,6 +54,13 @@ public class Report extends BaseEntity {
     // 미채택 이후에도 상담이 잡히면 COUNSELING으로 재개 가능. 단 CLOSED 직행·재검수(AWAITING_ADOPTION 복귀)는 불가.
     ALLOWED_TRANSITIONS.put(ReportStatus.NOT_SELECTED,
         EnumSet.of(ReportStatus.NOT_SELECTED, ReportStatus.COUNSELING));
+    // AI 워커가 원시 SQL로 직접 세팅(Backend 도메인 메서드를 거치지 않음). 종료 상태 — 여기서 나가는
+    // 전이는 없다(applyReviewTransition을 거치는 모든 호출은 여기서 INVALID_STATE_TRANSITION으로 막힌다).
+    ALLOWED_TRANSITIONS.put(ReportStatus.BLOCKED, EnumSet.of(ReportStatus.BLOCKED));
+    // OCR 품질 미달(재업로드 필요)도 AI 워커가 원시 SQL로 직접 세팅하는 종료 상태다. 회복은 재시도가
+    // 아니라 새 리포트(재업로드)이므로 여기서 나가는 전이는 없다 — 검수 착수·채택·미채택 스윕이 전부
+    // INVALID_STATE_TRANSITION으로 막힌다.
+    ALLOWED_TRANSITIONS.put(ReportStatus.NEEDS_REUPLOAD, EnumSet.of(ReportStatus.NEEDS_REUPLOAD));
   }
 
   @Id
@@ -108,6 +117,7 @@ public class Report extends BaseEntity {
   @Column(name = "treatment")
   private String treatment;
 
+  @Convert(converter = ReportQuestionConverter.class)
   @Column(name = "question")
   private String question;
 
@@ -120,6 +130,29 @@ public class Report extends BaseEntity {
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "documents", columnDefinition = "jsonb")
   private Map<String, String> documents;
+
+  /**
+   * 분석 실패 알림을 보낸 시각(멱등 가드). NULL이면 미통지다. OCR 단계·리포트 생성 단계 실패가 이 가드를 함께 써서
+   * 리포트당 FAILED 알림은 1회다. 실패 <b>상태</b>는 저장하지 않는다 — {@code ai.ocr_job_failures}·
+   * {@code ai.report_job_failures} 파생값이라 저장하면 정상 회복 전이를 놓친다(design.md §8 E2).
+   */
+  @Column(name = "analysis_failure_notified_at")
+  private LocalDateTime analysisFailureNotifiedAt;
+
+  /**
+   * BLOCKED(AI 입력 가드레일 차단·리포트 생성 LLM 거절) 알림을 보낸 시각(멱등 가드). NULL이면 미통지다. {@code status}는
+   * AI 워커가 원시 SQL로 직접 세팅하므로(도메인 메서드를 거치지 않음) 이 컬럼만 Backend가 관리한다.
+   */
+  @Column(name = "blocked_notified_at")
+  private LocalDateTime blockedNotifiedAt;
+
+  /**
+   * NEEDS_REUPLOAD(OCR 품질 미달 — 재업로드 필요) 알림을 보낸 시각(멱등 가드). NULL이면 미통지다.
+   * {@code blockedNotifiedAt}과 컬럼을 공유하지 않는다 — 두 상태는 상호배타적이라 하나로도 동작하지만
+   * 컬럼 의미가 흐려지고 상태별 통지 건수를 나눌 수 없게 된다.
+   */
+  @Column(name = "needs_reupload_notified_at")
+  private LocalDateTime needsReuploadNotifiedAt;
 
   /**
    * 리포트 생성 진입점(design.md §3). OCR·AI 분석 전 상태이므로 status=AWAITING_INSPECTION으로 시작한다.
@@ -170,6 +203,18 @@ public class Report extends BaseEntity {
   }
 
   /**
+   * 상담 거절 뒤 리포트를 채택 대기로 되돌릴지 판단해 반영한다. 같은 리포트에 아직 상담 중인 다른 제안이
+   * 있거나({@code otherCounselingRemains}) 리포트가 상담 중(COUNSELING)이 아니면 그대로 둔다 — 다른 상담이
+   * 살아 있는데 채택 대기로 새면 미채택 스윕에 NOT_SELECTED로 잘못 전이된다.
+   */
+  public void reopenForAdoptionIfNoCounselingLeft(boolean otherCounselingRemains) {
+    if (otherCounselingRemains || this.status != ReportStatus.COUNSELING) {
+      return;
+    }
+    reopenForAdoption();
+  }
+
+  /**
    * 미채택(NOT_SELECTED) 자동 전이. 접수 후 기한(1주일) 내에 상담 완료(CLOSED)되지 못했거나(케이스1)
    * 검수를 하나도 받지 못한(케이스2) 리포트를 스케줄러 스윕이 전이시킨다. 검수 대기·채택 대기에서만
    * 진입한다(전이표) — 이후 {@link #applyReviewStart()}가 NOT_SELECTED에서 예외를 던져 신규 사정사 검수는
@@ -178,6 +223,67 @@ public class Report extends BaseEntity {
    */
   public void markNotSelected() {
     applyReviewTransition(ReportStatus.NOT_SELECTED);
+  }
+
+  /**
+   * AI 초안(리포트 본문)이 생성됐는지 — 분석 처리 상태 판정의 "성공" 신호다({@link ReportAnalysis} 우선순위 1번).
+   *
+   * <p>근거: AI 워커의 persist 노드가 {@code applicable_guarantees}·{@code omitted_special_contract}·
+   * {@code basis_terms_precedents}·{@code claimed_min/max_amount}·{@code status}를 한 UPDATE로 함께 쓰므로
+   * (AI 레포 {@code report_worker/nodes/agents.py:931-941}) 대표값 하나로 판별할 수 있다.
+   *
+   * <p><b>2026-08-14 갱신 — claim_id 경로는 이제 동작한다.</b> AI 레포 PR #58(패스스루 + fan-in 게이팅)이
+   * 머지되어, {@code claim_id}가 있는 정상 흐름은 {@code job.report_id}를 그대로 써서 UPDATE가 행을 찾는다
+   * (report_worker가 {@code applicable_guarantees}를 정상적으로 채운다). {@code claim_id}가 없는 레거시/단독
+   * 경로만 여전히 {@code ocr_result_id}에서 파생한 UUID를 써서 0행 갱신 문제가 남아 있다. 이 메서드는 코드
+   * 변경 없이 그대로 동작한다(design.md §0-1, §4-2) — 판정 자체는 여전히 {@code applicable_guarantees} 존재
+   * 여부 하나로 충분하다.
+   */
+  public boolean isAiDraftGenerated() {
+    return applicableGuarantees != null;
+  }
+
+  /**
+   * 분석 실패 알림 발송을 1회만 기록한다(단방향 가드: null → 시각). 이미 통지된 리포트는 다시 통지하지 않는다.
+   * 재업로드는 새 리포트를 만들므로(POST /reports) 리포트당 1회여도 새 실패는 자연히 새로 통지된다.
+   *
+   * @return 이번 호출이 통지 시각을 기록했으면 {@code true}, 이미 통지돼 건너뛰었으면 {@code false}
+   */
+  public boolean markAnalysisFailureNotified() {
+    if (this.analysisFailureNotifiedAt != null) {
+      return false;
+    }
+    this.analysisFailureNotifiedAt = LocalDateTime.now();
+    return true;
+  }
+
+  /**
+   * BLOCKED 알림 발송을 1회만 기록한다(단방향 가드: null → 시각). {@code status}는 AI 워커가 직접 세팅하는
+   * 종료 상태라(§{@link ReportStatus#BLOCKED}) 재차단·재통지 시나리오가 없다 — 재시도는 항상 새 리포트다.
+   *
+   * @return 이번 호출이 통지 시각을 기록했으면 {@code true}, 이미 통지돼 건너뛰었으면 {@code false}
+   */
+  public boolean markBlockedNotified() {
+    if (this.blockedNotifiedAt != null) {
+      return false;
+    }
+    this.blockedNotifiedAt = LocalDateTime.now();
+    return true;
+  }
+
+  /**
+   * NEEDS_REUPLOAD 알림 발송을 1회만 기록한다(단방향 가드: null → 시각). {@code status}는 AI 워커가 직접
+   * 세팅하는 종료 상태라({@link ReportStatus#NEEDS_REUPLOAD}) 재판정·재통지 시나리오가 없다 — 재업로드는
+   * 항상 새 리포트다.
+   *
+   * @return 이번 호출이 통지 시각을 기록했으면 {@code true}, 이미 통지돼 건너뛰었으면 {@code false}
+   */
+  public boolean markNeedsReuploadNotified() {
+    if (this.needsReuploadNotifiedAt != null) {
+      return false;
+    }
+    this.needsReuploadNotifiedAt = LocalDateTime.now();
+    return true;
   }
 
   /** 리포트 소유자(요청 사용자) 여부 — 상세/제안/decide 인가 가드에 사용(design.md §8). */
