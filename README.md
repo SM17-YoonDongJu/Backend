@@ -8,8 +8,6 @@
 
 ## Architecture
 <img width="4081" height="2386" alt="brbs_architecture" src="https://github.com/user-attachments/assets/0784c522-3690-47c2-8d7a-e0d0739cdce8" />
-
-## 로컬 실행
 <p align="center"><img src="https://github.com/SM17-YoonDongJu/Backend/wiki/images/project-overview/service-flow-overview.png" width="95%" alt="서비스 흐름"></p>
 
 ## 목차
