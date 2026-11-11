@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import jakarta.servlet.http.HttpServletResponse;
 
 import com.soma.backend.domain.auth.entity.SocialAccount;
+import com.soma.backend.domain.auth.repository.PasswordCredentialRepository;
 import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
@@ -54,6 +55,9 @@ class UserServiceTest {
 
   @Mock
   private SocialAccountRepository socialAccountRepository;
+
+  @Mock
+  private PasswordCredentialRepository passwordCredentialRepository;
 
   @Mock
   private AuthTokenManager authTokenManager;
@@ -218,6 +222,8 @@ class UserServiceTest {
     assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     assertThat(user.getPhoneNumber()).isNull();
     then(socialAccountRepository).should().deleteByUserId(userId);
+    // 아이디·비밀번호 자격증명도 파기한다(#389) — 남기면 비밀번호 해시가 보존되고 login_id가 영구 점유된다.
+    then(passwordCredentialRepository).should().deleteByUserId(userId);
     then(outboxEventPublisher).should().publishAuthCleanup(userId);
     then(authTokenManager).should().expireCookies(response);
   }

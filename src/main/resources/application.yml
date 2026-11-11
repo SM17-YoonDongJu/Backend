@@ -134,6 +134,11 @@ app:
       # 로컬·CI에서는 반드시 비워 둔다. RDS 볼륨 키·APPLE_TOKEN_ENC_KEY와 공유 금지.
       # PII·PII_HMAC 두 purpose가 같은 CMK를 공유하고, encryption_keys에 purpose별로 다른 wrapped DEK를 둔다.
       kms-key-id: ${PII_KMS_KEY_ID:}
+  password-login:
+    # 아이디·비밀번호 일반 로그인(POST /auth/password/signup·/auth/password/login, 이슈 #389) 사용 여부.
+    # 기본 true — 소셜 로그인과 나란히 쓰는 정식 경로라서 dev-login 백도어와 달리 기본으로 열어 둔다.
+    # false로 주면 컨트롤러·두 서비스 빈이 모두 등록되지 않아 경로 자체가 사라진다(코드가 없는 상태와 동일).
+    enabled: ${PASSWORD_LOGIN_ENABLED:true}
   oauth:
     # 토큰 교환 시 provider(카카오·네이버)로 보내는 redirect_uri의 {baseUrl} 치환값.
     # 프론트가 인가요청에 사용한 redirect_uri와 정확히 일치해야 하고 provider 콘솔에 등록돼 있어야 한다.

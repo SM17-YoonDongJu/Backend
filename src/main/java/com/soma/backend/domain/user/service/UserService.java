@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
 import com.soma.backend.domain.auth.entity.SocialAccount;
+import com.soma.backend.domain.auth.repository.PasswordCredentialRepository;
 import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
@@ -38,6 +39,7 @@ public class UserService {
 
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
+  private final PasswordCredentialRepository passwordCredentialRepository;
   private final AuthTokenManager authTokenManager;
   private final OutboxEventPublisher outboxEventPublisher;
   private final S3ObjectStorage s3ObjectStorage;
@@ -89,6 +91,10 @@ public class UserService {
         .forEach(account -> outboxEventPublisher.publishAppleRevoke(
             userId, account.getProvider(), account.getProviderUserId(), account.getRefreshToken()));
     socialAccountRepository.deleteByUserId(userId);
+    // 아이디·비밀번호 자격증명도 같이 파기한다(#389). 남기면 비밀번호 해시가 보존되고 login_id UNIQUE가
+    // 영구 점유돼 같은 아이디로 재가입할 수 없다 — 전화번호 UNIQUE를 풀어 재가입을 허용하는 것과 같은 이유다.
+    // 자격증명이 없는 소셜 전용 회원이면 삭제 대상이 0건으로 아무 일도 하지 않는다.
+    passwordCredentialRepository.deleteByUserId(userId);
     outboxEventPublisher.publishAuthCleanup(userId);
     authTokenManager.expireCookies(response);
   }

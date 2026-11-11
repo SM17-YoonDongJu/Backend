@@ -43,6 +43,16 @@ public class User extends BaseEntity {
   /** 탈퇴 시 생년월일(개인정보)을 대체하는 익명화 값. birth_date가 NOT NULL이라 null 대신 상수로 마스킹한다. */
   private static final LocalDate WITHDRAWN_BIRTH_DATE = LocalDate.of(1900, 1, 1);
 
+  /**
+   * 생년월일을 입력받지 않는 가입 경로에서 쓰는 '미상' 센티넬. birth_date가 NOT NULL이라 null을 넣을 수 없어
+   * 상수로 채운다. {@link #WITHDRAWN_BIRTH_DATE}와 날짜는 같지만 의미가 달라(탈퇴 마스킹 vs 미입력) 별도
+   * 상수로 선언한다 — 한쪽 정책이 바뀌어도 다른 쪽이 따라 움직이지 않게 한다.
+   */
+  private static final LocalDate UNKNOWN_BIRTH_DATE = LocalDate.of(1900, 1, 1);
+
+  /** 성별을 입력받지 않는 가입 경로에서 쓰는 미입력 값. gender는 NOT NULL이지만 빈 문자열을 허용한다(V5). */
+  private static final String UNKNOWN_GENDER = "";
+
   @Id
   @GeneratedValue
   private UUID id;
@@ -108,6 +118,31 @@ public class User extends BaseEntity {
     user.role = role;
     user.status = UserStatus.ACTIVE;
     user.region = (region == null || region.isEmpty()) ? null : List.copyOf(region);
+    return user;
+  }
+
+  /**
+   * 프로필 입력(생년월일·성별·전화번호·지역)을 받지 않는 가입 경로용 정적 팩터리. 아이디·비밀번호
+   * 일반 로그인 가입(이슈 #389)이 쓴다. 상태는 ACTIVE로 시작하고 역할은 호출자가 지정한다.
+   *
+   * <p>NOT NULL 컬럼인 birth_date·gender는 비울 수 없어 '미상' 센티넬로 채운다
+   * ({@link #UNKNOWN_BIRTH_DATE}·{@link #UNKNOWN_GENDER}). 따라서 <b>사정사 검수 화면에 생년월일이
+   * 1900-01-01로 보이는 것은 버그가 아니라 의도된 미상 표기</b>다 — 생년월일을 읽는 곳은 그 화면뿐이고
+   * 나이 계산 없이 값을 그대로 표시하므로 센티넬이 로직을 깨지 않는다.
+   *
+   * <p>전화번호(와 짝인 HMAC 인덱스)·지역은 {@code null}로 둔다. 번호가 null이면 UNIQUE 제약에 걸리지
+   * 않으므로 프로필 미입력 회원이 여럿 생겨도 충돌하지 않으며, 이후 {@link #updateProfile}로 채운다.
+   */
+  public static User createWithoutProfile(String nickname, Role role) {
+    User user = new User();
+    user.nickname = nickname;
+    user.birthDate = UNKNOWN_BIRTH_DATE;
+    user.gender = UNKNOWN_GENDER;
+    user.phoneNumber = null;
+    user.phoneNumberHmac = null;
+    user.role = role;
+    user.status = UserStatus.ACTIVE;
+    user.region = null;
     return user;
   }
 
