@@ -2,7 +2,19 @@
 # 사용: 이 디렉터리를 서버 ~/backend/ 에 두고 docker compose --env-file .env.prod up -d
 # CD(main push)는 backend만 bounce: ... up -d --no-deps backend
 # 인프라(redis)는 최초 1회 full up 후 restart 정책으로 상주한다. OCR 트리거 브로커는 AWS SQS(관리형, 컨테이너 없음).
+# ⚠️ CD는 compose 파일을 서버에 동기화만 하고 report·redis는 다시 만들지 않는다. 두 서비스 설정을 바꾼 PR은
+# 머지 후 서버에서 docker compose --env-file .env.prod up -d redis report를 따로 실행해야 반영된다.
+# (CD에 넣지 않은 이유: report 이미지는 AI 레포가 올리므로 태그가 없으면 pull이 실패하고, set -e라 backend 배포까지 막힌다.)
 # dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시.
+#
+# 메모리 예산(t3.small, RAM 2GiB): 커널이 보이는 MemTotal은 1.9GB이고, 컨테이너 없이 OS·dockerd·containerd·snapd·
+# SSM agent만 450~550MB를 쓴다(prod 호스트 실측, 2026-11-11). 컨테이너 몫은 1.4GB 남짓이다.
+# 기본 up -d로 뜨는 건 backend·report·redis 셋이고 chatbot은 profile(chatbot)로 빼 두었다.
+# dev 실측(유휴): backend 596MB(heap 200 + nonheap 230) · report 104MB(처리 중 577MB) · redis 13MB.
+# 유휴 합은 700MB대라 여유가 있지만, backend가 부하로 800MB까지 오르고 report가 처리 중(577MB)이면 1.4GB에 붙고
+# 상한 합(1152+768+128)은 이를 넘는다. 그 순간을 받아낼 swap(2GB, vm.swappiness=10)을 호스트에 먼저 잡아 둔다 —
+# 성능용이 아니라 호스트 OOM killer 방지용이다. swap 사용이 상시로 보이면 t3.medium으로 올릴 신호다.
+# 인스턴스를 키우면(t3.medium 이상) backend mem_limit·JAVA_OPTS를 함께 다시 잡을 것.
 name: brbs
 
 services:
@@ -64,9 +76,19 @@ services:
       # 시크릿이라 레포에 커밋하지 않고 아래 volumes로 호스트 파일을 마운트한다.
       # ⚠️ 이 값을 켠 채 배포하면 키 파일이 호스트에 없을 때 앱이 부팅에 실패한다 — prod 인스턴스에 파일 배치가 선행돼야 함.
       FCM_SERVICE_ACCOUNT_PATH: /etc/secrets/firebase-adminsdk.json
-    # JVM은 -XX:MaxRAMPercentage=75.0(Dockerfile)이라 mem_limit 없으면 호스트 전체 메모리 기준으로 힙을 잡는다.
-    # 인스턴스 축소(t3.medium) 대비 컨테이너 몫을 명시해 report·redis와 공존 가능하게 고정.
-    mem_limit: 1536m
+      # Dockerfile 기본값(MaxRAMPercentage=75)을 덮는다. compose에서 JAVA_OPTS를 주면 Dockerfile 값이 통째로
+      # 대체되므로 G1·OOM 종료·힙덤프·GC 로그 플래그도 여기서 함께 유지한다.
+      # 75%가 안 되는 이유: 이 앱은 nonheap(metaspace·code cache)만 230~260MB를 쓴다. 75%면 힙 상한 + nonheap이
+      # mem_limit를 넘어, 힙이 다 차기 전에 cgroup에 먼저 OOMKilled된다(dev 1536Mi에서 실제로 겪음).
+      # 1152m의 60% = 힙 약 690MB(dev 실측 최대 200MB의 3배 이상). 초기 힙은 25%로 낮춰 유휴 RSS를 줄인다.
+      JAVA_OPTS: >-
+        -XX:MaxRAMPercentage=60.0 -XX:InitialRAMPercentage=25.0
+        -XX:+UseG1GC
+        -XX:+ExitOnOutOfMemoryError
+        -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/logs/heapdump.hprof
+        -Xlog:gc*:file=/app/logs/gc.log:time,uptime,level,tags:filecount=5,filesize=10m
+    # mem_limit이 없으면 JVM이 호스트 전체 메모리 기준으로 힙을 잡는다. t3.small 예산(파일 상단)에 맞춰 고정.
+    mem_limit: 1152m
     mem_reservation: 768m
     volumes:
       # 호스트의 service account JSON을 read-only로 마운트(컨테이너는 root 실행이라 600 파일도 읽힘).
@@ -89,7 +111,8 @@ services:
   # SQS 워커(OCR 트리거 소비 · LangGraph · RAG). AI 레포가 이미지 배포. HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
   # ⚠️ AI_BASE_URL(GPU 인스턴스) 연결 전에는 기동 실패할 수 있음 — backend는 --no-deps라 독립.
   report:
-    image: ${ECR_REGISTRY}/soma/report:${REPORT_TAG:-prod}
+    # 새 AWS 계정(2026-10 이전)의 ECR 리포는 brbs/report다(구 계정 soma/report는 없음).
+    image: ${ECR_REGISTRY}/brbs/report:${REPORT_TAG:-prod}
     container_name: brbs-report
     restart: unless-stopped
     environment:
@@ -132,7 +155,11 @@ services:
       - brbs-net
 
   # FastAPI WebSocket 챗봇(RAG+가드레일+LLM). SQS·S3 없음, Redis 필수.
+  # t3.small 메모리 예산에 들어가지 않아 기본 up에서 제외한다(profile). 이 호스트에 올릴 때만
+  # docker compose --env-file .env.prod --profile chatbot up -d chatbot — 그 전에 인스턴스를 키울 것.
+  # 이미지 경로는 구 계정 기준(soma/chatbot)이고 새 계정 ECR엔 chatbot 리포가 아직 없다.
   chatbot:
+    profiles: ["chatbot"]
     image: ${ECR_REGISTRY}/soma/chatbot:${CHATBOT_TAG:-prod}
     container_name: brbs-chatbot
     restart: unless-stopped
@@ -179,7 +206,12 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    # 담는 것은 refresh 토큰·블랙리스트·검수대기 count 캐시·채팅 pub/sub뿐이라 실사용이 작다(dev 실측 13MB).
+    # 캐시가 아니라 인증 저장소라 noeviction이다. 축출 정책(allkeys-lru 등)이면 상한에 닿았을 때 블랙리스트 키가
+    # 조용히 사라져 탈퇴 유저의 access 토큰이 다시 통과한다. noeviction은 쓰기를 OOM 에러로 거부할 뿐이라
+    # 실패가 드러난다(로그인은 에러, 블랙리스트 등록은 아웃박스 재시도, count 캐시는 실패를 삼키고 DB로 대체).
+    # 모든 키에 TTL이 있어 무한히 쌓이진 않지만, 실사용이 상한에 가까워지면 maxmemory를 올릴 것.
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     healthcheck:

@@ -272,3 +272,15 @@ aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
 - `.env.dev`는 이제 모니터링 인스턴스에서만 쓴다. 원본은 Secrets Manager `infra/monitoring-dev`이고 배포 때마다 다시
   쓰이므로 서버에서 직접 고치지 않는다. 키 목록은 `deploy/monitoring/.env.example` 참고.
 - prod는 아직 `deploy-prod.yml`의 SSM + `prod/docker-compose.yml` 방식이다.
+- prod 호스트(t3.small 기준) 준비: `deploy-prod.yml`은 Name 태그 `brbs-backend-prod`로 인스턴스를 찾는다. 컨테이너
+  메모리 상한 합이 RAM을 넘으므로 최초 기동 전에 swap을 잡는다. root 권한이 필요하니 `ubuntu` 사용자라면 아래처럼
+  `sudo`를 붙인다. 예산 근거는 compose 상단 주석.
+
+  ```bash
+  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swappiness.conf && sudo sysctl --system
+  ```
+
+  기본 `up -d`는 backend·report·redis만 띄우고 chatbot은 `--profile chatbot`일 때만 뜬다. CD는 backend만 다시
+  띄우므로 report·redis 설정을 바꾼 뒤에는 서버에서 `docker compose --env-file .env.prod up -d redis report`를 따로 실행한다.
