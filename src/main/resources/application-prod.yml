@@ -26,6 +26,10 @@ spring:
 
 management:
   tracing:
+    export:
+      # prod에는 수집기(Tempo)가 없다 — span 전송을 끈다(트레이싱·traceId 로그는 유지). prod compose는 backend에
+      # TRACING_ENABLED를 넘기지 않으므로 수집기를 붙일 때 compose에 이 키도 함께 추가한다.
+      enabled: ${TRACING_ENABLED:false}
     sampling:
       # 운영은 10%만 샘플링 — 부하·Tempo 저장량 관리. 필요 시 TRACING_SAMPLE_PROBABILITY env로 상향.
       probability: ${TRACING_SAMPLE_PROBABILITY:0.1}
