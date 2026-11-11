@@ -60,6 +60,9 @@ public enum ErrorCode {
   // Auth (도메인 특화)
   REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰을 찾을 수 없습니다."),
   UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 소셜 로그인 제공자입니다."),
+  // LOGIN_FAILED: 아이디·비밀번호 로그인 실패. 아이디 없음·비밀번호 불일치·탈퇴 계정을 모두 이 하나의
+  //   code·message로 묶는다 — 응답이 달라지면 "그 아이디는 존재한다"는 계정 열거 오라클이 된다.
+  LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "아이디 또는 비밀번호가 올바르지 않습니다."),
 
   // Adjuster (도메인 특화)
   ADJUSTER_NOT_FOUND(HttpStatus.NOT_FOUND, "손해사정사를 찾을 수 없습니다."),

@@ -3,6 +3,7 @@ package com.soma.backend.domain.user.service;
 import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +15,7 @@ import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
 import com.soma.backend.domain.user.entity.User;
+import com.soma.backend.domain.user.entity.event.UserWithdrawnEvent;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -38,6 +40,7 @@ public class UserService {
 
   private final UserRepository userRepository;
   private final SocialAccountRepository socialAccountRepository;
+  private final ApplicationEventPublisher eventPublisher;
   private final AuthTokenManager authTokenManager;
   private final OutboxEventPublisher outboxEventPublisher;
   private final S3ObjectStorage s3ObjectStorage;
@@ -89,6 +92,9 @@ public class UserService {
         .forEach(account -> outboxEventPublisher.publishAppleRevoke(
             userId, account.getProvider(), account.getProviderUserId(), account.getRefreshToken()));
     socialAccountRepository.deleteByUserId(userId);
+    // 아이디·비밀번호 자격증명 파기는 auth 컨텍스트 Aggregate라 직접 지우지 않고 사실만 발행한다(#389).
+    // 동기 리스너(PasswordCredentialEraser)가 이 트랜잭션에 합류해 지운다.
+    eventPublisher.publishEvent(new UserWithdrawnEvent(userId));
     outboxEventPublisher.publishAuthCleanup(userId);
     authTokenManager.expireCookies(response);
   }

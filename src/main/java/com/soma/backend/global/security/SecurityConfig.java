@@ -10,6 +10,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -75,6 +77,19 @@ public class SecurityConfig {
             .accessDeniedHandler(restAccessDeniedHandler))
         .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
+  }
+
+  /**
+   * 비밀번호 해싱기. 아이디·비밀번호 일반 로그인(이슈 #389)의 가입·대조에 쓴다. BCrypt 기본 강도(10)를
+   * 그대로 쓴다 — 로그인 응답에 수십 ms를 더하는 선에서 무차별 대입 비용을 올리는 균형점이고, 해시
+   * 문자열에 cost가 함께 박히므로 나중에 강도를 올려도 기존 해시 검증은 계속 동작한다.
+   *
+   * <p>이 빈은 해싱 유틸로만 쓰인다 — {@code AuthenticationManager}·{@code UserDetailsService}를 쓰는
+   * 폼 로그인 경로는 없고, 인증은 그대로 JWT 쿠키({@code JwtFilter}) 단일 경로다.
+   */
+  @Bean
+  public PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
   }
 
   /**

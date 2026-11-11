@@ -67,6 +67,10 @@ services:
       # prod는 HTTPS. 프론트(brbosang.com)·API(api.brbosang.com)는 same-site라 SameSite=Lax로 충분(None 불필요)
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
+      # 아이디·비밀번호 일반 로그인(POST /auth/password/signup·/login, #389) 사용 여부. 앱 기본값이 true라
+      # 비워 두면 열린 상태로 뜬다. 끌 때는 .env에 PASSWORD_LOGIN_ENABLED=false를 넣고 재배포한다 —
+      # 이 매핑이 없으면 .env에 값을 넣어도 컨테이너에 전달되지 않아 끌 수가 없다(compose는 명시 매핑).
+      PASSWORD_LOGIN_ENABLED: ${PASSWORD_LOGIN_ENABLED:-true}
       # ai.service.url은 현재 코드에서 읽는 곳이 없다(남은 설정). 비어 있어도 된다.
       AI_SERVICE_URL: ${AI_SERVICE_URL:-}
       # actuator 관리 포트 분리(9292). health·metrics·prometheus를 관리 포트로 격리
