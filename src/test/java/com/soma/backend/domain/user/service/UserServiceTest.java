@@ -21,17 +21,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import jakarta.servlet.http.HttpServletResponse;
 
 import com.soma.backend.domain.auth.entity.SocialAccount;
-import com.soma.backend.domain.auth.repository.PasswordCredentialRepository;
 import com.soma.backend.domain.auth.repository.SocialAccountRepository;
 import com.soma.backend.domain.user.dto.UserMeResponse;
 import com.soma.backend.domain.user.dto.UserUpdateRequest;
 import com.soma.backend.domain.user.entity.Role;
 import com.soma.backend.domain.user.entity.User;
 import com.soma.backend.domain.user.entity.UserStatus;
+import com.soma.backend.domain.user.entity.event.UserWithdrawnEvent;
 import com.soma.backend.domain.user.repository.UserRepository;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
@@ -57,7 +58,7 @@ class UserServiceTest {
   private SocialAccountRepository socialAccountRepository;
 
   @Mock
-  private PasswordCredentialRepository passwordCredentialRepository;
+  private ApplicationEventPublisher eventPublisher;
 
   @Mock
   private AuthTokenManager authTokenManager;
@@ -222,8 +223,8 @@ class UserServiceTest {
     assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     assertThat(user.getPhoneNumber()).isNull();
     then(socialAccountRepository).should().deleteByUserId(userId);
-    // 아이디·비밀번호 자격증명도 파기한다(#389) — 남기면 비밀번호 해시가 보존되고 login_id가 영구 점유된다.
-    then(passwordCredentialRepository).should().deleteByUserId(userId);
+    // 자격증명 파기는 auth 컨텍스트 리스너가 맡으므로 여기서는 사실 발행까지만 검증한다(#389).
+    then(eventPublisher).should().publishEvent(new UserWithdrawnEvent(userId));
     then(outboxEventPublisher).should().publishAuthCleanup(userId);
     then(authTokenManager).should().expireCookies(response);
   }
