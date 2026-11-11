@@ -286,6 +286,7 @@ aws rds reboot-db-instance --db-instance-identifier brbs-rds-dev
   띄우므로 report·redis 설정을 바꾼 뒤에는 서버에서 `docker compose --env-file .env.prod up -d redis report`를 따로 실행한다.
 - prod `.env.prod`는 서버에서 `sudo bash ~/backend/sync-env.sh`로 만든다. 설정은 Parameter Store `/brbs/prod/env/<키>`
   (String), 시크릿은 Secrets Manager `prod/backend`(JSON)에서 받고, FCM 키 파일(`prod/backend`의
-  `FCM_SERVICE_ACCOUNT_JSON`)과 RDS CA 번들도 함께 배치한다. 값을 바꿀 때는 서버 파일이 아니라 원본을 고치고 다시
+  `FCM_SERVICE_ACCOUNT_JSON`)과 RDS CA 번들도 함께 배치한다. FCM 키는 선택이라 없으면 backend가 stub 모드(푸시
+  미발송)로 뜨고, 나중에 키를 넣고 스크립트를 다시 돌린 뒤 backend만 재시작하면 실발송으로 바뀐다. 값을 바꿀 때는 서버 파일이 아니라 원본을 고치고 다시
   돌린다. 시크릿을 SecureString에 두지 않는 이유(인스턴스 관리형 정책이 모든 파라미터 읽기를 허용)는 스크립트 상단 주석에
   있다. 스크립트는 CD가 동기화하지 않으니 바뀌면 서버에 직접 올린다.

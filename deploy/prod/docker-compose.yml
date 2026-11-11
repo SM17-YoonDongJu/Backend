@@ -73,10 +73,12 @@ services:
       MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
       TZ: Asia/Seoul
       # FCM 푸시 발송용 Firebase service account 키 경로(컨테이너 내부). 이 값이 있어야 FcmConfig가
-      # FirebaseApp 빈을 만들어 실제로 발송한다 — 미설정이면 stub 모드로 발송을 건너뛴다. 키 파일 자체는
-      # 시크릿이라 레포에 커밋하지 않고 아래 volumes로 호스트 파일을 마운트한다.
-      # ⚠️ 이 값을 켠 채 배포하면 키 파일이 호스트에 없을 때 앱이 부팅에 실패한다 — prod 인스턴스에 파일 배치가 선행돼야 함.
-      FCM_SERVICE_ACCOUNT_PATH: /etc/secrets/firebase-adminsdk.json
+      # FirebaseApp 빈을 만들어 실제로 발송한다 — 미설정이면 stub 모드로 발송을 건너뛴다(FcmPushSender).
+      # 값을 비워 두면(키만 적음) .env.prod에 있을 때만 컨테이너로 넘어가고, 없으면 변수 자체가 빠진다.
+      # sync-env.sh가 prod/backend에 FCM 키가 있을 때만 파일을 배치하고 이 값을 .env.prod에 넣는다 — 키가
+      # 없으면 stub 모드로 기동한다. 빈 문자열로 넘기면 안 된다: @ConditionalOnProperty가 ""도 설정된 것으로 보고
+      # FileInputStream("")에서 기동이 실패한다.
+      FCM_SERVICE_ACCOUNT_PATH:
       # Dockerfile 기본값(MaxRAMPercentage=75)을 덮는다. compose에서 JAVA_OPTS를 주면 Dockerfile 값이 통째로
       # 대체되므로 G1·OOM 종료·힙덤프·GC 로그 플래그도 여기서 함께 유지한다.
       # 75%가 안 되는 이유: 이 앱은 nonheap(metaspace·code cache)만 230~260MB를 쓴다. 75%면 힙 상한 + nonheap이
@@ -92,9 +94,10 @@ services:
     mem_limit: 1152m
     mem_reservation: 768m
     volumes:
-      # 호스트의 service account JSON을 read-only로 마운트(컨테이너는 root 실행이라 600 파일도 읽힘).
-      # 호스트 경로는 FCM_SA_HOST_PATH로 덮어쓸 수 있고, 기본값은 prod 인스턴스 배치 위치다.
-      - ${FCM_SA_HOST_PATH:-/home/ubuntu/secrets/firebase-adminsdk.json}:/etc/secrets/firebase-adminsdk.json:ro
+      # 호스트의 시크릿 디렉터리를 read-only로 마운트(컨테이너는 root 실행이라 600 파일도 읽힘).
+      # 파일이 아니라 디렉터리를 거는 이유: 없는 파일을 바인드 마운트하면 docker가 그 경로에 빈 디렉터리를 만들어
+      # 버려서, 나중에 키 파일을 같은 경로에 둘 수 없게 된다. 호스트 경로는 FCM_SA_HOST_DIR로 덮어쓸 수 있다.
+      - ${FCM_SA_HOST_DIR:-/home/ubuntu/secrets}:/etc/secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9292/actuator/health/readiness | grep -q UP || exit 1"]
       interval: 30s

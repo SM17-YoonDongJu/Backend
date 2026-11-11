@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # prod EC2의 .env.prod를 새로 쓴다. 설정은 Parameter Store(/brbs/prod/env/, String), 시크릿은 Secrets Manager
 # (prod/backend)에서 받는다. backend가 읽는 FCM 키 파일과 report가 마운트하는 RDS CA 번들도 함께 준비한다.
+# FCM 키(prod/backend의 FCM_SERVICE_ACCOUNT_JSON)는 선택이다 — 있으면 파일을 배치하고 .env.prod에
+# FCM_SERVICE_ACCOUNT_PATH를 넣어 실발송, 없으면 넣지 않아 backend가 stub 모드(푸시 미발송)로 기동한다.
 # 이 디렉터리(서버 ~/backend)에서 root로 실행한다(SSM RunShellScript는 root, 직접 접속했다면 sudo bash sync-env.sh).
 #
 # 서버의 .env.prod는 언제든 이 스크립트로 다시 만들 수 있는 사본이다 — 직접 고치지 말고 원본을 고친 뒤 다시 돌린다.
@@ -19,6 +21,7 @@ CONFIG_PATH="/brbs/prod/env/"
 SECRET_ID="prod/backend"
 FCM_KEY="FCM_SERVICE_ACCOUNT_JSON"
 FCM_FILE="/home/ubuntu/secrets/firebase-adminsdk.json"
+FCM_CONTAINER_PATH="/etc/secrets/firebase-adminsdk.json"
 CA_FILE="/home/ubuntu/certs/rds-global-bundle.pem"
 CA_URL="https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem"
 REQUIRED_KEYS="ECR_REGISTRY DB_HOST DB_NAME DB_USER DB_PASSWORD DATABASE_URL JWT_SECRET APPLE_TOKEN_ENC_KEY
@@ -68,11 +71,8 @@ for key in $REQUIRED_KEYS; do
   fi
 done
 
-mv "$work/env" .env.prod
-echo ".env.prod 갱신(권한 600): $(cut -d= -f1 .env.prod | tr '\n' ' ')"
-
-# FCM 키 — compose가 FCM_SERVICE_ACCOUNT_PATH를 켜 두므로 파일이 없으면 backend가 기동하지 못한다.
-# 시크릿에 아직 없으면 경고만 남기고 넘어간다(env 갱신 자체는 유효).
+# FCM 키 — 있으면 파일을 배치하고 .env.prod에 경로를 넣는다. 없으면 경로를 넣지 않아 stub 모드로 기동한다
+# (compose의 FCM_SERVICE_ACCOUNT_PATH는 값 없이 적혀 있어 .env.prod에 없으면 컨테이너로 넘어가지 않는다).
 rc=0
 python3 - "$work" "$FCM_KEY" > "$work/fcm.json" <<'PY' || rc=$?
 import json
@@ -90,15 +90,19 @@ case "$rc" in
   0)
     install -d -m 700 "$(dirname "$FCM_FILE")"
     install -m 600 "$work/fcm.json" "$FCM_FILE"
-    echo "FCM 키 배치: ${FCM_FILE}"
+    echo "FCM_SERVICE_ACCOUNT_PATH='${FCM_CONTAINER_PATH}'" >> "$work/env"
+    echo "FCM 키 배치: ${FCM_FILE} (실발송)"
     ;;
   3)
-    echo "경고: ${SECRET_ID}에 ${FCM_KEY}가 없어 FCM 키를 배치하지 못했습니다 — 이대로면 backend가 기동하지 못합니다" >&2
+    echo "FCM 키 없음: ${SECRET_ID}에 ${FCM_KEY}가 없어 stub 모드(푸시 미발송)로 기동합니다"
     ;;
   *)
     exit 1
     ;;
 esac
+
+mv "$work/env" .env.prod
+echo ".env.prod 갱신(권한 600): $(cut -d= -f1 .env.prod | tr '\n' ' ')"
 
 # RDS CA 번들(공개 인증서) — 없을 때만 받는다.
 if [ ! -s "$CA_FILE" ]; then
