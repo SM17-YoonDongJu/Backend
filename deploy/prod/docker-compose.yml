@@ -2,6 +2,9 @@
 # 사용: 이 디렉터리를 서버 ~/backend/ 에 두고 docker compose --env-file .env.prod up -d
 # CD(main push)는 backend만 bounce: ... up -d --no-deps backend
 # 인프라(redis)는 최초 1회 full up 후 restart 정책으로 상주한다. OCR 트리거 브로커는 AWS SQS(관리형, 컨테이너 없음).
+# ⚠️ CD는 compose 파일을 서버에 동기화만 하고 report·redis는 다시 만들지 않는다. 두 서비스 설정을 바꾼 PR은
+# 머지 후 서버에서 docker compose --env-file .env.prod up -d redis report를 따로 실행해야 반영된다.
+# (CD에 넣지 않은 이유: report 이미지는 AI 레포가 올리므로 태그가 없으면 pull이 실패하고, set -e라 backend 배포까지 막힌다.)
 # dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시.
 #
 # 메모리 예산(t3.small, RAM 2GiB): OS·dockerd·SSM agent 약 300MB를 빼면 컨테이너 몫은 1.6GB 남짓이다.
@@ -202,8 +205,11 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
     # 담는 것은 refresh 토큰·블랙리스트·검수대기 count 캐시·채팅 pub/sub뿐이라 실사용이 작다(dev 실측 13MB).
-    # allkeys-lru라 maxmemory에 닿으면 refresh 토큰도 축출(=강제 로그아웃)되니, 실사용이 상한에 가까워지면 올릴 것.
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    # 캐시가 아니라 인증 저장소라 noeviction이다. 축출 정책(allkeys-lru 등)이면 상한에 닿았을 때 블랙리스트 키가
+    # 조용히 사라져 탈퇴 유저의 access 토큰이 다시 통과한다. noeviction은 쓰기를 OOM 에러로 거부할 뿐이라
+    # 실패가 드러난다(로그인은 에러, 블랙리스트 등록은 아웃박스 재시도, count 캐시는 실패를 삼키고 DB로 대체).
+    # 모든 키에 TTL이 있어 무한히 쌓이진 않지만, 실사용이 상한에 가까워지면 maxmemory를 올릴 것.
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     healthcheck:
