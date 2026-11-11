@@ -7,11 +7,13 @@
 # (CD에 넣지 않은 이유: report 이미지는 AI 레포가 올리므로 태그가 없으면 pull이 실패하고, set -e라 backend 배포까지 막힌다.)
 # dev와의 차이: 프로파일 prod · 이미지 태그 prod · actuator 9292를 ALB 헬스체크용으로 호스트 게시.
 #
-# 메모리 예산(t3.small, RAM 2GiB): OS·dockerd·SSM agent 약 300MB를 빼면 컨테이너 몫은 1.6GB 남짓이다.
+# 메모리 예산(t3.small, RAM 2GiB): 커널이 보이는 MemTotal은 1.9GB이고, 컨테이너 없이 OS·dockerd·containerd·snapd·
+# SSM agent만 450~550MB를 쓴다(prod 호스트 실측, 2026-11-11). 컨테이너 몫은 1.4GB 남짓이다.
 # 기본 up -d로 뜨는 건 backend·report·redis 셋이고 chatbot은 profile(chatbot)로 빼 두었다.
 # dev 실측(유휴): backend 596MB(heap 200 + nonheap 230) · report 104MB(처리 중 577MB) · redis 13MB.
-# 실사용 피크 합은 1.7GB 안쪽이지만 상한 합(1152+768+128)은 이를 넘으므로, 둘이 동시에 차오르는 경우를
-# 받아낼 swap(2GB, vm.swappiness=10)을 호스트에 먼저 잡아 둔다 — 성능용이 아니라 호스트 OOM killer 방지용이다.
+# 유휴 합은 700MB대라 여유가 있지만, backend가 부하로 800MB까지 오르고 report가 처리 중(577MB)이면 1.4GB에 붙고
+# 상한 합(1152+768+128)은 이를 넘는다. 그 순간을 받아낼 swap(2GB, vm.swappiness=10)을 호스트에 먼저 잡아 둔다 —
+# 성능용이 아니라 호스트 OOM killer 방지용이다. swap 사용이 상시로 보이면 t3.medium으로 올릴 신호다.
 # 인스턴스를 키우면(t3.medium 이상) backend mem_limit·JAVA_OPTS를 함께 다시 잡을 것.
 name: brbs
 
