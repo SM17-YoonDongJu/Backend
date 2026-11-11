@@ -43,8 +43,9 @@ spring:
 
 management:
   tracing:
-    # 테스트 컨텍스트는 Tempo가 없다 — 트레이싱을 꺼서 OTLP export·네트워크 시도를 막는다.
-    enabled: false
+    export:
+      # 테스트 컨텍스트는 Tempo가 없다 — span 전송을 꺼서 OTLP export·네트워크 시도를 막는다(Boot 4 키).
+      enabled: false
 
 logging:
   file:
