@@ -67,7 +67,8 @@ services:
       # prod는 HTTPS. 프론트(brbosang.com)·API(api.brbosang.com)는 same-site라 SameSite=Lax로 충분(None 불필요)
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
-      AI_SERVICE_URL: ${AI_SERVICE_URL}
+      # ai.service.url은 현재 코드에서 읽는 곳이 없다(남은 설정). 비어 있어도 된다.
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-}
       # actuator 관리 포트 분리(9292). health·metrics·prometheus를 관리 포트로 격리
       MANAGEMENT_SERVER_PORT: ${MANAGEMENT_SERVER_PORT:-9292}
       TZ: Asia/Seoul
@@ -109,7 +110,9 @@ services:
       - brbs-net
 
   # SQS 워커(OCR 트리거 소비 · LangGraph · RAG). AI 레포가 이미지 배포. HTTP 서버 없음 → 포트/HTTP 헬스체크 미노출.
-  # ⚠️ AI_BASE_URL(GPU 인스턴스) 연결 전에는 기동 실패할 수 있음 — backend는 --no-deps라 독립.
+  # LLM은 Claude(LLM_PROVIDER=anthropic, 키는 AI_API_KEY), 임베딩은 Voyage(EMBEDDING_PROVIDER=voyage)다 — dev
+  # (K8s-manifests envs/dev/report.values.yaml)와 같은 구성. AI_BASE_URL은 openai_compat(로컬 Ollama 등)일 때만 쓴다.
+  # 아래 environment에 없는 키는 .env.prod에 있어도 컨테이너로 넘어가지 않는다 — 새 키는 여기에도 추가할 것.
   report:
     # 새 AWS 계정(2026-10 이전)의 ECR 리포는 brbs/report다(구 계정 soma/report는 없음).
     image: ${ECR_REGISTRY}/brbs/report:${REPORT_TAG:-prod}
@@ -123,6 +126,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-2}
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      # RDS는 rds.force_ssl=1이라 SSL 필수다. 워커는 이 값이 비면 SSL을 꺼서 접속이 거부되므로, 아래 volumes로
+      # 마운트한 RDS CA 번들 경로를 넣는다(sync-env.sh가 호스트에 번들을 받아 둔다).
       RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
       # report-worker는 Backend의 OCR 트리거 큐를 직접 소비하지 않는다 — ocr-worker(별도 배포, 이 레포 밖)가
@@ -130,19 +135,33 @@ services:
       # (Backend → ocr-worker → report-worker 2홉). 변수명이 SQS_REPORT_JOB_QUEUE_URL인 이유.
       # (튜닝 후보: 롱폴링 wait-time·visibility-timeout·배치 max-messages. DLQ는 큐 redrive policy로 구성 — 앱 env 아님.)
       SQS_REPORT_JOB_QUEUE_URL: ${SQS_REPORT_JOB_QUEUE_URL}
+      # 리포트 생성이 길어 큐 기본값(30초)이 아니라 수신 시 가시성을 길게 잡는다(dev와 같은 1800초).
+      SQS_VISIBILITY_TIMEOUT: ${SQS_VISIBILITY_TIMEOUT:-1800}
+      SQS_MAX_RECEIVE_COUNT: ${SQS_MAX_RECEIVE_COUNT:-3}
       # SQS 접속·큐 URL 해석에 리전 필요 — 자격증명은 인스턴스 IAM Role 위임(정적 키 미주입)
       AWS_REGION: ${AWS_REGION}
-      AI_BASE_URL: ${AI_BASE_URL}
+      # PII 컬럼 복호화 — prod는 core.encryption_keys의 wrapped DEK를 이 CMK로 푼다(backend PII_KMS_KEY_ID와 같은 키).
+      # dev처럼 PII_ENC_KEY(raw DEK)를 넣지 않는다.
+      PII_KMS_KEY_ARN: ${PII_KMS_KEY_ARN}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL}
+      LLM_EFFORT: ${LLM_EFFORT:-high}
+      AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY}
       AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
-      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-voyage}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL}
+      # 임베딩 전용 키(Voyage). AI_API_KEY(Claude 키)와 분리한다 — 섞이면 Claude 키가 임베딩 업체로 나간다.
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       EMBEDDING_DIM: ${EMBEDDING_DIM}
       USE_NER: ${USE_NER:-false}
       NER_MODEL: ${NER_MODEL:-}
-      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-}
+      # 워커가 float로 파싱하므로 빈 문자열이면 기동에 실패한다 — 기본값을 둔다.
+      NER_SCORE_THRESHOLD: ${NER_SCORE_THRESHOLD:-0.5}
       TZ: Asia/Seoul
+    volumes:
+      - ${RDS_CA_HOST_PATH:-/home/ubuntu/certs/rds-global-bundle.pem}:/etc/ssl/rds/global-bundle.pem:ro
     # 자체 메모리 캡 메커니즘이 없는 프로세스라 하드 상한으로 보호(실측 안정 시 577MB 기준 여유분 포함).
     mem_limit: 768m
     mem_reservation: 384m
@@ -175,7 +194,7 @@ services:
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
       RDS_CA_PATH: ${RDS_CA_PATH:-}
       REDIS_URL: ${REDIS_URL}
-      AI_BASE_URL: ${AI_BASE_URL}
+      AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY}
       AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
       LLM_MODEL: ${LLM_MODEL}
