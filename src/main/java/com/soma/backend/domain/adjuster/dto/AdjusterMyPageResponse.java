@@ -50,6 +50,10 @@ public record AdjusterMyPageResponse(
   /**
    * 누적 통계 섹션. {@code averageRating}·{@code consultationConversionRate}는 미집계 시 0.0/0이다
    * (홈 대시보드 #144와 일관 — 프론트는 review_count로 평점 유무를 판별).
+   *
+   * <p>{@code ReviewedReportListResponse.Stats}와 스키마 이름이 겹쳐 문서에는 검수 이력 쪽 필드로 나간다.
+   * 그 응답 스키마가 문서에서 빠져 있어 지금은 프론트가 이 {@code Stats}로 검수 이력 타입을 맞추고 있으므로,
+   * 이름 분리는 검수 이력 스키마 누락을 고칠 때 같이 한다.
    */
   public record Stats(
       double averageRating,
@@ -65,9 +69,23 @@ public record AdjusterMyPageResponse(
       double averageRating) {
   }
 
-  /** 자격·등록 섹션. {@code createdAt}은 사정사 가입일(USERS.created_at). */
+  /**
+   * 자격·등록 섹션. {@code createdAt}은 사정사 가입일(USERS.created_at).
+   *
+   * <p>{@code registrationNo}·{@code verifiedAt}은 사정사 상세({@code AdjusterDetailResponse.Certification})와
+   * 필드명을 맞춘 것이다. 둘 다 미입력·미인증이면 null이다. 상세와 달리 등록번호를 ""로 바꾸지 않는다 — 프론트가
+   * null일 때 "미등록"을 표시한다. {@code licenseNo}는 {@code registrationNo}와 같은 값이며 하위 호환을 위해 남겨 둔다.
+   *
+   * <p>스키마 이름을 따로 지정한다. 상세 응답의 {@code Certification}과 이름이 겹쳐 문서에 상세 쪽만 남았고,
+   * 프론트 생성 zod가 그 스키마로 이 응답을 검증하다 실패했다.
+   */
+  @Schema(name = "AdjusterMyPageCertification")
   public record Certification(
-      @Nullable @Schema(nullable = true) String licenseNo,
+      @Nullable
+      @Schema(nullable = true, deprecated = true, description = "registration_no와 같은 값(하위 호환용)")
+      String licenseNo,
+      @Nullable @Schema(nullable = true, description = "등록/자격 번호(미입력이면 null)") String registrationNo,
+      @Nullable @Schema(nullable = true, description = "자격 인증 시각(미인증이면 null)") LocalDateTime verifiedAt,
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String activityRegion,
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
   }
@@ -104,8 +122,12 @@ public record AdjusterMyPageResponse(
     MonthlyActivity monthlyActivitySection =
         new MonthlyActivity(monthlyCompletedCount, monthlyConsultConvertedCount, rating.average());
 
-    Certification certificationSection =
-        new Certification(profile.getLicenseNo(), activityRegion, user.getCreatedAt());
+    Certification certificationSection = new Certification(
+        profile.getLicenseNo(),
+        profile.getLicenseNo(),
+        profile.getVerifiedAt(),
+        activityRegion,
+        user.getCreatedAt());
 
     return new AdjusterMyPageResponse(
         profileSection, statsSection, monthlyActivitySection, certificationSection);
