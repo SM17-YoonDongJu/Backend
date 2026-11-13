@@ -79,6 +79,20 @@ class ReportAnalysisMetricsOpenApiDocsTest {
     assertThat(((Map<?, ?>) valueSchema).get("type")).isEqualTo("integer");
   }
 
+  /**
+   * 중첩 객체의 nullable이 지금 생성기가 내는 {@code {"type": "null", "$ref": ...}} 모양인지 고정한다.
+   *
+   * <p><b>이 모양이 올바른 계약이라서 고정하는 게 아니다.</b> OpenAPI 3.1(JSON Schema 2020-12)에서는 {@code $ref}가
+   * 형제 키워드와 함께 적용되므로, 이 스키마는 객체를 거부하고 null만 통과시키는 모순이다. 올바른 모양은
+   * {@code anyOf: [{$ref}, {type: null}]}다. 그런데 swagger-core 2.2.47은 {@code $ref}로 참조하는 중첩 record의
+   * {@code nullable = true}를 이 모양으로만 내보내고, {@code anyOf} 애노테이션 조합으로도 바뀌지 않는다
+   * (CLAUDE.md OpenAPI 문서화 규칙의 "알려진 한계").
+   *
+   * <p>프론트는 코드 생성 단계의 {@code expandNullableRefs} 패치로 바로 이 모양을 {@code anyOf}로 펼쳐 쓴다. 이 테스트는
+   * 생성기 출력이 바뀌어 그 패치의 전제가 깨지는 순간을 잡으려고 둔 것이다. 문서 전체를 후처리해 {@code anyOf}로
+   * 바로잡는 일은 프론트 생성물 전체에 영향이 있어 OpenAPI 문서 정리 후속에서 프론트와 함께 한다. 그때 이 단언도
+   * {@code anyOf} 모양으로 바꾼다.
+   */
   @Test
   @DisplayName("중첩 객체 nullable은 현재 {type: null, $ref} 형태다(swagger-core 알려진 한계 — 프론트 패치의 전제)")
   void nestedNullableObjectShape() throws Exception {
