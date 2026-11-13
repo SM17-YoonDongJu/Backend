@@ -1,6 +1,11 @@
 package com.soma.backend.domain.report.dto;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 
 import org.jspecify.annotations.Nullable;
 
@@ -79,5 +84,38 @@ final class ReportResponseSupport {
   /** 리스트 응답 필드를 null 대신 빈 배열로 내린다(프론트 계약). */
   static <T> List<T> nullSafe(List<T> value) {
     return value == null ? List.of() : value;
+  }
+
+  /**
+   * {@code reports.confidence_level}을 프론트 계약(HIGH|MEDIUM|LOW)에 맞춰 대문자로 정규화한다. null이면 null.
+   * 상세·검수 화면·분석 근거 수치가 같은 값을 보여주도록 세 응답이 공유하는 단일 정규화 지점이다.
+   */
+  static @Nullable String confidenceLevel(@Nullable String confidenceLevel) {
+    return confidenceLevel == null ? null : confidenceLevel.toUpperCase(Locale.ROOT);
+  }
+
+  /**
+   * 배열 필드를 non-null로 정규화한다 — null이면 빈 배열, null 원소는 뺀다(순서는 보존). {@code List.copyOf}는 null
+   * 원소에서 NPE를 던지므로 쓰지 않는다. 외부 계약(AI 저장 JSON)을 그대로 옮길 때 zod 검증이 깨지지 않게 하는 용도다.
+   */
+  static <T> List<T> nonNullElements(@Nullable List<T> values) {
+    if (values == null) {
+      return List.of();
+    }
+    return values.stream().filter(Objects::nonNull).toList();
+  }
+
+  /** 맵 필드를 non-null로 정규화한다 — null이면 빈 맵, 키나 값이 null인 항목은 뺀다(입력 순서 보존, 수정 불가). */
+  static <K, V> Map<K, V> nonNullEntries(@Nullable Map<K, V> entries) {
+    if (entries == null) {
+      return Map.of();
+    }
+    Map<K, V> copy = new LinkedHashMap<>();
+    entries.forEach((key, value) -> {
+      if (key != null && value != null) {
+        copy.put(key, value);
+      }
+    });
+    return Collections.unmodifiableMap(copy);
   }
 }
