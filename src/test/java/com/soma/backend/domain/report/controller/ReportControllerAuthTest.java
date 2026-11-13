@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -33,10 +34,26 @@ import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
 import com.soma.backend.domain.report.dto.Pagination;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsCaseFunnel;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsClauseCitations;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsDisability;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsEvidence;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsInput;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsJudge;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsPiiMasked;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsPipeline;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsPipelineNode;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsReclassification;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsRetrieval;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsScoreStats;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.MetricsVerification;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse.UnavailableReason;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
 import com.soma.backend.domain.report.service.ProposalQueryService;
+import com.soma.backend.domain.report.service.ReportAnalysisMetricsQueryService;
 import com.soma.backend.domain.report.service.ReportAnalysisStatusQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
 import com.soma.backend.domain.report.service.ReportQueryService;
@@ -82,6 +99,9 @@ class ReportControllerAuthTest {
 
   @MockitoBean
   private ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
+
+  @MockitoBean
+  private ReportAnalysisMetricsQueryService reportAnalysisMetricsQueryService;
 
   @MockitoBean
   private TokenBlacklistRepository tokenBlacklistRepository;
@@ -313,6 +333,120 @@ class ReportControllerAuthTest {
         .willThrow(new BusinessException(ErrorCode.REPORT_NOT_FOUND));
 
     mockMvc.perform(get("/reports/{id}", UUID.randomUUID()).with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("REPORT_NOT_FOUND"));
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // GET /reports/{reportId}/analysis-metrics — AI 분석 근거 수치 (#396, design.md §11 T4)
+  // 응답 키는 Jackson 전역 SNAKE_CASE이고, retrieval.evidence의 판례 건수만 명시 이름 "case"다.
+  // -----------------------------------------------------------------------------------------
+
+  private static ReportAnalysisMetricsResponse availableMetrics() {
+    MetricsInput input = new MetricsInput(3, List.of("policy", "diagnosis", "medical_receipt"),
+        new MetricsScoreStats(0.93, 0.94), new MetricsScoreStats(0.8, 0.9),
+        new MetricsPiiMasked(6, Map.of("이름", 3, "전화번호", 2, "주민등록번호", 1), 4, 2));
+    MetricsRetrieval retrieval = new MetricsRetrieval(true, new MetricsEvidence(8, 5, 4),
+        new MetricsCaseFunnel(12, 9, 5, 4), "terms");
+    MetricsVerification verification = new MetricsVerification(
+        new MetricsDisability(2, 2, 20.0, "low", false,
+            List.of(new MetricsReclassification("추간판 탈출", 30.0, 20.0))),
+        new MetricsClauseCitations(3, 2, List.of("제99조"), 1),
+        new MetricsJudge(true, false, 1, 12000, 12480, 0.96, 14));
+    MetricsPipeline pipeline = new MetricsPipeline(12, List.of(), 73043,
+        List.of(new MetricsPipelineNode("load_context", 140, "ok")));
+    return ReportAnalysisMetricsResponse.available("medium",
+        List.of("가입금액 미보유 — 제시액 기준 어림 범위", "근거 미확인 주장 1건"),
+        input, retrieval, verification, pipeline);
+  }
+
+  @Test
+  @DisplayName("비로그인이면 GET /reports/{id}/analysis-metrics는 401 LOGIN_REQUIRED")
+  void unauthenticatedAnalysisMetricsReturns401() throws Exception {
+    mockMvc.perform(get("/reports/{id}/analysis-metrics", UUID.randomUUID()))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("LOGIN_REQUIRED"));
+  }
+
+  @Test
+  @DisplayName("로그인 사용자는 analysis-metrics 200 — snake_case로 직렬화하고 판례 건수 키는 case다")
+  void analysisMetricsSerializesSnakeCaseWithCaseKey() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(reportAnalysisMetricsQueryService.getAnalysisMetrics(any(), any(), any())).willReturn(availableMetrics());
+
+    mockMvc.perform(get("/reports/{id}/analysis-metrics", reportId).with(authenticatedAs(userId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("200"))
+        .andExpect(jsonPath("$.data.available").value(true))
+        .andExpect(jsonPath("$.data.unavailable_reason").value(nullValue()))
+        .andExpect(jsonPath("$.data.version").value(1))
+        .andExpect(jsonPath("$.data.confidence.level").value("MEDIUM"))
+        .andExpect(jsonPath("$.data.confidence.reasons[1]").value("근거 미확인 주장 1건"))
+        .andExpect(jsonPath("$.data.input.document_count").value(3))
+        .andExpect(jsonPath("$.data.input.doc_types[2]").value("medical_receipt"))
+        .andExpect(jsonPath("$.data.input.ocr_confidence.min").value(0.93))
+        .andExpect(jsonPath("$.data.input.doc_type_confidence.avg").value(0.9))
+        .andExpect(jsonPath("$.data.input.pii_masked.by_label['이름']").value(3))
+        .andExpect(jsonPath("$.data.input.pii_masked.free_text").value(2))
+        .andExpect(jsonPath("$.data.retrieval.policy_matched").value(true))
+        .andExpect(jsonPath("$.data.retrieval.evidence.case").value(4))
+        .andExpect(jsonPath("$.data.retrieval.evidence.case_law").doesNotExist())
+        .andExpect(jsonPath("$.data.retrieval.evidence.caseLaw").doesNotExist())
+        .andExpect(jsonPath("$.data.retrieval.case_funnel.kept").value(4))
+        .andExpect(jsonPath("$.data.retrieval.disability_schedule_source").value("terms"))
+        .andExpect(jsonPath("$.data.verification.disability.combined_rate").value(20.0))
+        .andExpect(jsonPath("$.data.verification.disability.pending_reeval").value(false))
+        .andExpect(jsonPath("$.data.verification.disability.reclassified[0].injury").value("추간판 탈출"))
+        .andExpect(jsonPath("$.data.verification.disability.reclassified[0].from").value(30.0))
+        .andExpect(jsonPath("$.data.verification.disability.reclassified[0].to").value(20.0))
+        .andExpect(jsonPath("$.data.verification.clause_citations.ungrounded[0]").value("제99조"))
+        .andExpect(jsonPath("$.data.verification.clause_citations.statute_mentions").value(1))
+        .andExpect(jsonPath("$.data.verification.judge.checked_chars").value(12000))
+        .andExpect(jsonPath("$.data.verification.judge.evidence_chunks").value(14))
+        .andExpect(jsonPath("$.data.pipeline.node_count").value(12))
+        .andExpect(jsonPath("$.data.pipeline.failed_nodes").isEmpty())
+        .andExpect(jsonPath("$.data.pipeline.total_ms").value(73043))
+        .andExpect(jsonPath("$.data.pipeline.nodes[0].node").value("load_context"))
+        // camelCase 키가 새어 나가지 않는다(Jackson 전역 SNAKE_CASE).
+        .andExpect(jsonPath("$.data.unavailableReason").doesNotExist())
+        .andExpect(jsonPath("$.data.input.documentCount").doesNotExist())
+        .andExpect(jsonPath("$.data.input.piiMasked").doesNotExist())
+        .andExpect(jsonPath("$.data.verification.clauseCitations").doesNotExist())
+        .andExpect(jsonPath("$.data.pipeline.totalMs").doesNotExist());
+
+    then(reportAnalysisMetricsQueryService).should().getAnalysisMetrics(userId, "USER", reportId);
+  }
+
+  @Test
+  @DisplayName("수치를 내릴 수 없으면 200 + available=false — 사유만 non-null이고 나머지 키는 null로 존재한다")
+  void analysisMetricsUnavailableKeepsNullKeys() throws Exception {
+    given(reportAnalysisMetricsQueryService.getAnalysisMetrics(any(), any(), any()))
+        .willReturn(ReportAnalysisMetricsResponse.unavailable(UnavailableReason.NO_DRAFT));
+
+    mockMvc.perform(get("/reports/{id}/analysis-metrics", UUID.randomUUID()).with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.available").value(false))
+        .andExpect(jsonPath("$.data.unavailable_reason").value("NO_DRAFT"))
+        .andExpect(jsonPath("$.data.version").value(nullValue()))
+        .andExpect(jsonPath("$.data.confidence").value(nullValue()))
+        .andExpect(jsonPath("$.data.input").value(nullValue()))
+        .andExpect(jsonPath("$.data.retrieval").value(nullValue()))
+        .andExpect(jsonPath("$.data.verification").value(nullValue()))
+        .andExpect(jsonPath("$.data.pipeline").value(nullValue()));
+  }
+
+  @Test
+  @DisplayName("analysis-metrics — 서비스가 던진 403 FORBIDDEN·404 REPORT_NOT_FOUND를 그대로 전달한다")
+  void analysisMetricsPassesThroughForbiddenAndNotFound() throws Exception {
+    given(reportAnalysisMetricsQueryService.getAnalysisMetrics(any(), any(), any()))
+        .willThrow(new BusinessException(ErrorCode.FORBIDDEN))
+        .willThrow(new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+
+    mockMvc.perform(get("/reports/{id}/analysis-metrics", UUID.randomUUID()).with(authenticatedAs(UUID.randomUUID())))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mockMvc.perform(get("/reports/{id}/analysis-metrics", UUID.randomUUID()).with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("REPORT_NOT_FOUND"));
   }

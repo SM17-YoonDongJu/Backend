@@ -82,3 +82,20 @@ CREATE TABLE IF NOT EXISTS ai.ocr_results (
     doc_index    int,
     ocr_quality  text NOT NULL
 );
+
+-- =====================================================================
+-- ai.report_drafts 테스트 부트스트랩 (AI 워커 소유 계약 테이블의 미러) — 리포트 초안(draft jsonb).
+--
+-- 원본: AI 레포 migrations/ai/007_report_drafts.sql (동기화 일자: 2026-11-12, AI#92 머지 후 dev 사본)
+-- ⚠️ 사본이다. 원본이 바뀌면 함께 갱신하고 리뷰 시 원본과 대조한다. pgaudit·GRANT DO 블록은 테스트에
+--    필요 없어 옮기지 않았다(테스트 롤이 테이블 소유자다). Backend는 draft -> 'metrics'만 읽는다.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ai.report_drafts (
+    report_id   uuid PRIMARY KEY,
+    draft       jsonb       NOT NULL,
+    status      text        NOT NULL DEFAULT 'draft',
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz,
+    CONSTRAINT report_drafts_status_check
+        CHECK (status IN ('draft', 'signed', 'rejected'))
+);

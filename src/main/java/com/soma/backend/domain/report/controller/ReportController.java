@@ -21,9 +21,11 @@ import com.soma.backend.domain.report.dto.CustomerReportDetailResponse;
 import com.soma.backend.domain.report.dto.ProposalDecisionRequest;
 import com.soma.backend.domain.report.dto.ProposalDecisionResponse;
 import com.soma.backend.domain.report.dto.ProposalListResponse;
+import com.soma.backend.domain.report.dto.ReportAnalysisMetricsResponse;
 import com.soma.backend.domain.report.dto.ReportAnalysisStatusResponse;
 import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.service.ProposalQueryService;
+import com.soma.backend.domain.report.service.ReportAnalysisMetricsQueryService;
 import com.soma.backend.domain.report.service.ReportAnalysisStatusQueryService;
 import com.soma.backend.domain.report.service.ReportCommandService;
 import com.soma.backend.domain.report.service.ReportQueryService;
@@ -47,6 +49,7 @@ public class ReportController {
   private final ReportQueryService reportQueryService;
   private final ProposalQueryService proposalQueryService;
   private final ReportAnalysisStatusQueryService reportAnalysisStatusQueryService;
+  private final ReportAnalysisMetricsQueryService reportAnalysisMetricsQueryService;
 
   /**
    * 사건 정보 입력
@@ -107,6 +110,19 @@ public class ReportController {
       @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
     ReportAnalysisStatusResponse data =
         reportAnalysisStatusQueryService.getAnalysisStatus(principal.getUserId(), reportId);
+    return ApiResponse.ok(data);
+  }
+
+  /**
+   * 리포트 AI 분석 근거 수치 조회(입력 품질·검색 근거·검증 결과·처리 경로와 신뢰도 등급의 사유).
+   * <p>인가는 상세 조회와 같다 — 소유자 또는 사정사만 조회 가능(그 외 403), 없으면 404. {@code ai.report_drafts}
+   * 조회·해석이 실패해도 500이 아니라 200 + {@code available=false}·{@code UNAVAILABLE}로 응답한다.
+   */
+  @GetMapping("/reports/{reportId}/analysis-metrics")
+  public ApiResponse<ReportAnalysisMetricsResponse> analysisMetrics(
+      @AuthenticationPrincipal CustomUserDetails principal, @PathVariable UUID reportId) {
+    ReportAnalysisMetricsResponse data = reportAnalysisMetricsQueryService.getAnalysisMetrics(
+        principal.getUserId(), principal.getRole(), reportId);
     return ApiResponse.ok(data);
   }
 
