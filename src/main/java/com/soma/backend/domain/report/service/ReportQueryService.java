@@ -75,8 +75,8 @@ public class ReportQueryService {
   public CustomerReportDetailResponse getReportDetail(UUID userId, String role, UUID reportId) {
     Report report = reportRepository.findById(reportId)
         .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
-    //인가
-    if (!report.isOwnedBy(userId) && !isAdjuster(role)) {
+    // 인가 — 규칙은 Report.isViewableBy 한 곳에 있다(분석 근거 수치 API와 공유).
+    if (!report.isViewableBy(userId, role)) {
       throw new BusinessException(ErrorCode.FORBIDDEN);
     }
 
@@ -129,12 +129,6 @@ public class ReportQueryService {
     return reportReviewRepository.findById(acceptedReviewId)
         .map(ReportReview::adjusterOpinionsByIssue)
         .orElse(Map.of());
-  }
-
-  // 도메인 엔티티로
-  /** 사정사 역할(자격 유무 무관)이면 임의 리포트 상세 조회를 허용한다(파트너 draft-preview 부분집합 소비). */
-  private boolean isAdjuster(String role) {
-    return "CERTIFICATED_ADJUSTER".equals(role) || "UNCERTIFICATED_ADJUSTER".equals(role);
   }
 
   /** size 하한 1(PageRequest.of 예외 방지)·상한 MAX_PAGE_SIZE로 클램프. page 클램프와 동일한 방어 톤. */

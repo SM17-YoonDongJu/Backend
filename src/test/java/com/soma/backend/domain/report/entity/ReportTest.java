@@ -9,6 +9,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.BeanUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -388,5 +390,60 @@ class ReportTest {
     report.reopenForAdoptionIfNoCounselingLeft(false);
 
     assertThat(report.getStatus()).isEqualTo(ReportStatus.AWAITING_ADOPTION);
+  }
+
+  // --- isViewableBy: 상세·분석 근거 수치 공용 열람 권한 ---
+
+  private static Report reportOwnedBy(UUID ownerId) {
+    Report report = BeanUtils.instantiateClass(Report.class);
+    ReflectionTestUtils.setField(report, "userId", ownerId);
+    return report;
+  }
+
+  @Test
+  @DisplayName("isViewableBy: 소유자는 역할과 무관하게 열람할 수 있다(사정사·ADMIN 계정이 만든 리포트 포함)")
+  void ownerCanViewRegardlessOfRole() {
+    UUID ownerId = UUID.randomUUID();
+    Report report = reportOwnedBy(ownerId);
+
+    assertThat(report.isViewableBy(ownerId, "USER")).isTrue();
+    assertThat(report.isViewableBy(ownerId, "CERTIFICATED_ADJUSTER")).isTrue();
+    assertThat(report.isViewableBy(ownerId, "ADMIN")).isTrue();
+  }
+
+  @Test
+  @DisplayName("isViewableBy: 사정사는 자격 유무와 무관하게 남의 리포트도 열람할 수 있다")
+  void adjustersCanViewOthersReport() {
+    Report report = reportOwnedBy(UUID.randomUUID());
+
+    assertThat(report.isViewableBy(UUID.randomUUID(), "CERTIFICATED_ADJUSTER")).isTrue();
+    assertThat(report.isViewableBy(UUID.randomUUID(), "UNCERTIFICATED_ADJUSTER")).isTrue();
+  }
+
+  @Test
+  @DisplayName("isViewableBy: 다른 USER·소유자가 아닌 ADMIN·역할 없음은 열람할 수 없다")
+  void othersCannotView() {
+    Report report = reportOwnedBy(UUID.randomUUID());
+
+    assertThat(report.isViewableBy(UUID.randomUUID(), "USER")).isFalse();
+    assertThat(report.isViewableBy(UUID.randomUUID(), "ADMIN")).isFalse();
+    assertThat(report.isViewableBy(UUID.randomUUID(), null)).isFalse();
+    assertThat(report.isViewableBy(null, null)).isFalse();
+  }
+
+  // --- isReportGenerationSkipped: AI가 리포트 생성을 건너뛴 종료 상태 ---
+
+  @ParameterizedTest
+  @EnumSource(value = ReportStatus.class, names = {"BLOCKED", "NEEDS_REUPLOAD"})
+  @DisplayName("isReportGenerationSkipped: BLOCKED·NEEDS_REUPLOAD는 AI가 리포트 생성을 건너뛴 종료 상태다")
+  void blockedAndNeedsReuploadAreSkipped(ReportStatus status) {
+    assertThat(reportWithStatus(status).isReportGenerationSkipped()).isTrue();
+  }
+
+  @ParameterizedTest
+  @EnumSource(value = ReportStatus.class, names = {"BLOCKED", "NEEDS_REUPLOAD"}, mode = EnumSource.Mode.EXCLUDE)
+  @DisplayName("isReportGenerationSkipped: 그 밖의 상태는 리포트 생성을 건너뛴 상태가 아니다")
+  void otherStatusesAreNotSkipped(ReportStatus status) {
+    assertThat(reportWithStatus(status).isReportGenerationSkipped()).isFalse();
   }
 }

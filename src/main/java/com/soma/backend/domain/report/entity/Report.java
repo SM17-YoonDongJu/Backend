@@ -24,6 +24,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import com.soma.backend.domain.common.entity.BaseEntity;
+import com.soma.backend.domain.user.entity.Role;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.global.security.crypto.converter.ReportQuestionConverter;
@@ -244,6 +245,16 @@ public class Report extends BaseEntity {
   }
 
   /**
+   * AI가 리포트 생성을 건너뛰고 끝낸 종료 상태(입력 차단·LLM 거절 {@link ReportStatus#BLOCKED}, OCR 품질 미달
+   * {@link ReportStatus#NEEDS_REUPLOAD})인지. 두 상태는 AI 워커가 직접 세팅하는 최신 신호라 AI 초안이 남아
+   * 있는지보다 먼저 본다({@link ReportAnalysis}의 판정 순서와 같다) — 이전 실행의 초안이 남아 있어도 그 초안은
+   * 지금 리포트의 결과가 아니다.
+   */
+  public boolean isReportGenerationSkipped() {
+    return status == ReportStatus.BLOCKED || status == ReportStatus.NEEDS_REUPLOAD;
+  }
+
+  /**
    * 분석 실패 알림 발송을 1회만 기록한다(단방향 가드: null → 시각). 이미 통지된 리포트는 다시 통지하지 않는다.
    * 재업로드는 새 리포트를 만들므로(POST /reports) 리포트당 1회여도 새 실패는 자연히 새로 통지된다.
    *
@@ -289,6 +300,21 @@ public class Report extends BaseEntity {
   /** 리포트 소유자(요청 사용자) 여부 — 상세/제안/decide 인가 가드에 사용(design.md §8). */
   public boolean isOwnedBy(UUID userId) {
     return this.userId != null && this.userId.equals(userId);
+  }
+
+  /**
+   * 상세·분석 근거 수치 공용 열람 권한 — 소유자이거나 사정사 역할(자격 유무 무관)이면 허용한다. ADMIN은 소유자일
+   * 때만 열람할 수 있다. 소유자 전용 API(analysis-status 등)는 이 규칙이 아니라 {@link #isOwnedBy}를 쓴다.
+   *
+   * @param viewerRole principal의 역할 문자열({@link Role#name()} 값)
+   */
+  public boolean isViewableBy(UUID viewerId, String viewerRole) {
+    return isOwnedBy(viewerId) || isAdjusterRole(viewerRole);
+  }
+
+  /** 사정사 역할(CERTIFICATED·UNCERTIFICATED) 여부. 파트너 앱 draft-preview가 임의 리포트를 열람한다. */
+  private static boolean isAdjusterRole(String role) {
+    return Role.CERTIFICATED_ADJUSTER.name().equals(role) || Role.UNCERTIFICATED_ADJUSTER.name().equals(role);
   }
 
   /**

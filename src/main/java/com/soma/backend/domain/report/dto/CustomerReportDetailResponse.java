@@ -2,7 +2,6 @@ package com.soma.backend.domain.report.dto;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -89,7 +88,7 @@ public record CustomerReportDetailResponse(
         issueItems,
         report.getQuestion(),
         report.getAdjusterId(),
-        normalizeConfidence(report.getConfidenceLevel()),
+        ReportResponseSupport.confidenceLevel(report.getConfidenceLevel()),
         report.getCaseNo(),
         accepted ? row.reviewComment() : null,
         accepted ? row.reviewedAt() : null,
@@ -97,11 +96,6 @@ public record CustomerReportDetailResponse(
         ReportResponseSupport.analysisState(analysis),
         ReportResponseSupport.analysisFailureReason(analysis),
         ReportResponseSupport.analysisFailureMessage(analysis));
-  }
-
-  /** confidence_level을 대문자로 정규화한다(LOW|MEDIUM|HIGH). null이면 null 유지. */
-  private static String normalizeConfidence(String value) {
-    return value == null ? null : value.toUpperCase(Locale.ROOT);
   }
 
   /**

@@ -212,6 +212,8 @@ class AdjusterProfileControllerTest {
         .andExpect(jsonPath("$.data.monthly_activity.consultation_converted_count").value(2))
         .andExpect(jsonPath("$.data.monthly_activity.average_rating").value(4.9))
         .andExpect(jsonPath("$.data.certification.license_no").value("제2026-0412호"))
+        .andExpect(jsonPath("$.data.certification.registration_no").value("제2026-0412호"))
+        .andExpect(jsonPath("$.data.certification.verified_at").value("2026-01-02T09:30:00"))
         .andExpect(jsonPath("$.data.certification.created_at").value("2026-01-01T00:00:00"));
 
     verify(adjusterProfileQueryService).getMyPage(PRINCIPAL_ID);
@@ -231,7 +233,12 @@ class AdjusterProfileControllerTest {
         .andExpect(jsonPath("$.data.stats.total_completed_count").value(0))
         .andExpect(jsonPath("$.data.monthly_activity.completed_count").value(0))
         .andExpect(jsonPath("$.data.monthly_activity.consultation_converted_count").value(0))
-        .andExpect(jsonPath("$.data.monthly_activity.average_rating").value(0.0));
+        .andExpect(jsonPath("$.data.monthly_activity.average_rating").value(0.0))
+        // 등록번호·인증 시각이 없어도 키는 내려야 한다 — 프론트 zod가 키 없음(undefined)을 거부한다.
+        .andExpect(jsonPath("$.data.certification", hasKey("registration_no")))
+        .andExpect(jsonPath("$.data.certification", hasKey("verified_at")))
+        .andExpect(jsonPath("$.data.certification.registration_no").doesNotExist())
+        .andExpect(jsonPath("$.data.certification.verified_at").doesNotExist());
   }
 
   // ---------- 픽스처 ----------
@@ -274,7 +281,8 @@ class AdjusterProfileControllerTest {
         new AdjusterMyPageResponse.Stats(4.9, 12, 10L, 60),
         new AdjusterMyPageResponse.MonthlyActivity(3L, 2L, 4.9),
         new AdjusterMyPageResponse.Certification(
-            "제2026-0412호", "서울·경기", LocalDateTime.of(2026, 1, 1, 0, 0)));
+            "제2026-0412호", "제2026-0412호", LocalDateTime.of(2026, 1, 2, 9, 30),
+            "서울·경기", LocalDateTime.of(2026, 1, 1, 0, 0)));
   }
 
   private static AdjusterMyPageResponse emptyMyPage() {
@@ -283,7 +291,7 @@ class AdjusterProfileControllerTest {
             "새사정", null, null, null, List.of(), null, "", "UNCERTIFICATED_ADJUSTER"),
         new AdjusterMyPageResponse.Stats(0.0, 0, 0L, 0),
         new AdjusterMyPageResponse.MonthlyActivity(0L, 0L, 0.0),
-        new AdjusterMyPageResponse.Certification(null, "", LocalDateTime.of(2026, 2, 1, 0, 0)));
+        new AdjusterMyPageResponse.Certification(null, null, null, "", LocalDateTime.of(2026, 2, 1, 0, 0)));
   }
 
   /**

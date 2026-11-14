@@ -72,6 +72,7 @@ class AdjusterProfileQueryServiceTest {
     given(profile.getReviewCount()).willReturn(12);
     given(profile.getRatingMean()).willReturn(new BigDecimal("4.90"));
     given(profile.getLicenseNo()).willReturn("제2026-0412호");
+    given(profile.getVerifiedAt()).willReturn(LocalDateTime.of(2026, 1, 2, 9, 30));
     given(profile.getActivityRegion()).willReturn(List.of("서울", "경기"));
 
     User user = mock(User.class);
@@ -102,6 +103,9 @@ class AdjusterProfileQueryServiceTest {
     assertThat(response.monthlyActivity().consultationConvertedCount()).isEqualTo(2L);
     assertThat(response.monthlyActivity().averageRating()).isEqualTo(4.9);
     assertThat(response.certification().licenseNo()).isEqualTo("제2026-0412호");
+    // 사정사 상세와 같은 필드명 — 프론트 마이페이지 스키마가 registration_no·verified_at을 읽는다.
+    assertThat(response.certification().registrationNo()).isEqualTo("제2026-0412호");
+    assertThat(response.certification().verifiedAt()).isEqualTo(LocalDateTime.of(2026, 1, 2, 9, 30));
     assertThat(response.certification().activityRegion()).isEqualTo("서울·경기");
     assertThat(response.certification().createdAt()).isEqualTo(LocalDateTime.of(2026, 1, 1, 0, 0));
   }
