@@ -33,9 +33,12 @@ jobs:
 
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
+        # preset 10.x는 conventional-changelog-writer 9 이상을 요구하는데, semantic-release 24·25의
+        # release-notes-generator 14는 writer 8을 써서 노트 생성이 실패한다(#403). writer 9를 쓰는
+        # release-notes-generator가 정식 출시되기 전까지 9로 고정한다.
         with:
           extra_plugins: |
-            conventional-changelog-conventionalcommits
+            conventional-changelog-conventionalcommits@9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
