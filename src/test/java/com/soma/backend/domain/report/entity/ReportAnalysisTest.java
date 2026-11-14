@@ -8,11 +8,14 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.BeanUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -26,6 +29,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 class ReportAnalysisTest {
 
   private static final LocalDateTime FAILED_AT = LocalDateTime.of(2026, 8, 12, 14, 3, 11);
+  private static final ReuploadCause DOMAIN_MISMATCH = ReuploadCause.from("off_domain", List.of());
+  private static final String GENERIC_REUPLOAD_MESSAGE = "업로드하신 문서를 알아보기 어려워요. 더 선명하게 다시 올려주세요.";
 
   private static Report reportWithoutDraft() {
     return BeanUtils.instantiateClass(Report.class);
@@ -457,8 +462,119 @@ class ReportAnalysisTest {
   @Test
   @DisplayName("documents에 null을 넘겨도 빈 리스트로 정규화된다(응답 계약: null 아님)")
   void nullDocumentsNormalizedToEmptyList() {
-    ReportAnalysis analysis = new ReportAnalysis(AnalysisState.PROCESSING, null, null, null);
+    ReportAnalysis analysis = new ReportAnalysis(AnalysisState.PROCESSING, null, null, null, null);
 
     assertThat(analysis.documents()).isNotNull().isEmpty();
+  }
+
+  // ---- #401 재업로드 사유(ai.claim_readiness) ----
+
+  @Test
+  @DisplayName("#401 — NEEDS_REUPLOAD + 재업로드 사유면 사유별 문구이고 상태·안내·실패 필드·문서 목록은 그대로다")
+  void needsReuploadWithCauseUsesCauseMessage() {
+    // Given: 저널·품질 게이트 문서까지 있는 모순 상태여도 문서 목록은 그대로 실린다(§10-3)
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    UUID fanInAttachmentId = UUID.randomUUID();
+    UUID qualityGateAttachmentId = UUID.randomUUID();
+    OcrJobFailureView fanInFailure =
+        OcrJobFailureViewFixture.terminal(UUID.randomUUID(), fanInAttachmentId, "unreadable_file", FAILED_AT);
+    OcrResultView qualityGateDocument =
+        OcrResultViewFixture.needsReupload(UUID.randomUUID(), qualityGateAttachmentId, "diagnosis");
+
+    // When
+    ReportAnalysis analysis = ReportAnalysis.of(
+        report, List.of(fanInFailure), List.of(), List.of(qualityGateDocument), DOMAIN_MISMATCH);
+
+    // Then
+    assertThat(analysis.state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(analysis.reason()).isNull();
+    assertThat(analysis.reuploadCause()).isEqualTo(DOMAIN_MISMATCH);
+    assertThat(analysis.failureMessage()).isEqualTo(ReuploadCauseTest.DOMAIN_MESSAGE);
+    assertThat(analysis.reuploadGuidance()).isEqualTo(ReuploadGuidance.RECOMMENDED);
+    assertThat(analysis.failedAt()).isNull();
+    assertThat(analysis.isFailed()).isFalse();
+    assertThat(analysis.documents()).extracting(ReportAnalysis.FailedDocument::attachmentId)
+        .containsExactlyInAnyOrder(fanInAttachmentId, qualityGateAttachmentId);
+  }
+
+  @Test
+  @DisplayName("#401 — 필수 서류 미확인 사유는 확인하지 못한 서류를 짚는 문구다")
+  void needsReuploadWithMissingRequiredNamesDocument() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    ReuploadCause cause = ReuploadCause.from("missing_required", List.of("policy"));
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(), List.of(), cause);
+
+    assertThat(analysis.failureMessage()).isEqualTo(ReuploadCauseTest.POLICY_MESSAGE);
+    assertThat(analysis.documents()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("#401 — 재업로드 원인이 없고 문서도 없으면 지금과 같은 값(일반 문구 싱글턴)이다")
+  void needsReuploadWithoutCauseIsUnchanged() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+
+    ReportAnalysis analysis = ReportAnalysis.of(report, List.of(), List.of(), List.of(), null);
+
+    assertThat(analysis).isSameAs(ReportAnalysis.needsReupload());
+    assertThat(analysis.reuploadCause()).isNull();
+    assertThat(analysis.failureMessage()).isEqualTo(GENERIC_REUPLOAD_MESSAGE);
+  }
+
+  static Stream<Arguments> nonReuploadReports() {
+    return Stream.of(
+        Arguments.of("BLOCKED", reportWithStatus(ReportStatus.BLOCKED), List.of()),
+        Arguments.of("COMPLETED", reportWithAiDraft(), List.of()),
+        Arguments.of("FAILED", reportWithoutDraft(), List.of(
+            OcrJobFailureViewFixture.terminal(UUID.randomUUID(), UUID.randomUUID(), "ocr_error", FAILED_AT))),
+        Arguments.of("PROCESSING", reportWithoutDraft(), List.of()));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("nonReuploadReports")
+  @DisplayName("#401 우선순위 — NEEDS_REUPLOAD가 아닌 판정은 재업로드 원인을 넘겨도 무시한다(응답 불변)")
+  void otherStatesIgnoreReuploadCause(String expectedState, Report report, List<OcrJobFailureView> ocrJobFailures) {
+    ReportAnalysis withCause = ReportAnalysis.of(report, ocrJobFailures, List.of(), List.of(), DOMAIN_MISMATCH);
+    ReportAnalysis withoutCause = ReportAnalysis.of(report, ocrJobFailures, List.of(), List.of());
+
+    assertThat(withCause.state().name()).isEqualTo(expectedState);
+    assertThat(withCause.reuploadCause()).isNull();
+    assertThat(withCause).isEqualTo(withoutCause);
+    assertThat(withCause.failureMessage()).isEqualTo(withoutCause.failureMessage());
+  }
+
+  @Test
+  @DisplayName("#401 — needsReupload(cause)는 판정 경로(of)와 같은 문구를 낸다(푸시·조회 단일 진실), null이면 기존 값")
+  void needsReuploadFactoryMatchesOfPath() {
+    Report report = reportWithStatus(ReportStatus.NEEDS_REUPLOAD);
+    ReuploadCause both = ReuploadCause.from("missing_required", List.of("diagnosis", "policy"));
+
+    assertThat(ReportAnalysis.needsReupload(both).failureMessage())
+        .isEqualTo(ReportAnalysis.of(report, List.of(), List.of(), List.of(), both).failureMessage())
+        .isEqualTo(ReuploadCauseTest.BOTH_MESSAGE);
+    assertThat(ReportAnalysis.needsReupload(both).state()).isEqualTo(AnalysisState.NEEDS_REUPLOAD);
+    assertThat(ReportAnalysis.needsReupload(null)).isSameAs(ReportAnalysis.needsReupload());
+  }
+
+  @ParameterizedTest(name = "status={0}")
+  @EnumSource(value = ReportStatus.class, names = "NEEDS_REUPLOAD", mode = EnumSource.Mode.EXCLUDE)
+  @DisplayName("#401 — 재업로드 입력(품질 미달 문서·재업로드 원인)은 NEEDS_REUPLOAD 리포트만 쓴다")
+  void requiresReuploadInputsOnlyForNeedsReupload(ReportStatus status) {
+    assertThat(ReportAnalysis.requiresReuploadInputs(reportWithStatus(status))).isFalse();
+    assertThat(ReportAnalysis.requiresReuploadInputs(reportWithStatus(ReportStatus.NEEDS_REUPLOAD))).isTrue();
+    assertThat(ReportAnalysis.requiresReuploadInputs(null)).isFalse();
+  }
+
+  @Test
+  @DisplayName("#401 불변식 — 생성자는 NEEDS_REUPLOAD가 아닌 판정의 재업로드 원인을 null로 정규화한다")
+  void constructorDropsCauseOutsideNeedsReupload() {
+    ReportAnalysis failed = new ReportAnalysis(
+        AnalysisState.FAILED, AnalysisFailureReason.UNKNOWN, FAILED_AT, List.of(), DOMAIN_MISMATCH);
+    ReportAnalysis needsReupload = new ReportAnalysis(
+        AnalysisState.NEEDS_REUPLOAD, null, null, List.of(), DOMAIN_MISMATCH);
+
+    assertThat(failed.reuploadCause()).isNull();
+    assertThat(failed.failureMessage()).isEqualTo("처리에 실패했어요 — 확인 중입니다");
+    assertThat(needsReupload.reuploadCause()).isEqualTo(DOMAIN_MISMATCH);
   }
 }

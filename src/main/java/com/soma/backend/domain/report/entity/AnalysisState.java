@@ -38,6 +38,9 @@ public enum AnalysisState {
    * <p>{@link #FAILED}로 뭉치지 않는다 — FAILED는 계약상 대표 사유(failure_reason)와 실패 시각이 non-null인데
    * 둘 다 저널 파생값이라 채울 수 없고, 무엇보다 사용자 액션이 정반대다(FAILED의 대표 사유는 대부분 재업로드가
    * 무의미한 HOLD·NOT_SUPPORTED인 반면 이 상태는 재업로드가 유일한 해결책이다).
+   *
+   * <p>이 상태도 사유 코드를 가질 수 있다 — 저널이 아니라 {@code ai.claim_readiness.reupload_reason}(AI 013)에서
+   * 오며 별도 ACL {@link ReuploadReason}이 번역한다(확인되지 않으면 null). 실패 시각은 여전히 null이다.
    */
   NEEDS_REUPLOAD
 }

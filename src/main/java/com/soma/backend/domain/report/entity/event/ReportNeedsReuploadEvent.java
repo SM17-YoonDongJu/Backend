@@ -11,9 +11,9 @@ import java.util.UUID;
  *
  * <p>발행 지점은 {@code ReportNeedsReuploadNotificationSweeper}이며, 수신은 {@code AFTER_COMMIT}이라 알림 발송이
  * 실패해도 이미 커밋된 통지 시각 기록에는 영향이 없다. {@link AnalysisFailedEvent}와 달리 사유(reason)를
- * 안 담는다 — 이 신호는 OCR '실패'가 아니라 '품질 판정'이라 {@code ai.ocr_job_failures}(실패 저널)에 행이
- * 남지 않고, 따라서 {@code AnalysisFailureReason}으로 번역할 저널 사유 자체가 존재하지 않는다
- * ({@code ReportAnalysis#needsReupload()}가 문구 하나로 통일하는 것과 같은 이유).
+ * 안 담는다 — 이 신호는 OCR '실패'가 아니라 '품질 판정'이라 저널 사유({@code AnalysisFailureReason})는 없다.
+ * 재업로드 사유는 있지만({@code ai.claim_readiness.reupload_reason}) 이벤트에 싣지 않는다 — 리스너가 조회 응답과 같은
+ * 메서드({@code ReportAnalysisResolver#reuploadCausesOrEmpty})로 읽어 문구를 고른다(이벤트 계약·스윕을 바꾸지 않는다).
  *
  * @param userId   수신자(리포트 소유자) — reports.user_id
  * @param reportId 딥링크·컨텍스트용 리포트 식별자

@@ -18,6 +18,7 @@ import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportAttachment;
 import com.soma.backend.domain.report.entity.ReportJobFailureView;
+import com.soma.backend.domain.report.entity.ReuploadCause;
 import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
@@ -69,6 +70,10 @@ public class ReportAnalysisStatusQueryService {
    * report 워커가 기동할 때 환경별로 적용하므로 Backend가 먼저 배포된 환경에선 테이블이 없을 수 있는데, 거기서
    * 500을 내면 그동안 모든 리포트의 폴링이 막힌다. 그때는 리포트 생성 단계 실패만 이 저널이 생기기 전처럼
    * PROCESSING으로 보인다. 테이블이 있는데도 못 읽으면 OCR 저널과 같은 이유로 삼키지 않는다.
+   *
+   * <p>재업로드 원인({@code ai.claim_readiness}) 조회는 품질 미달 문서와 같은 이유로 <b>어떤 원인이든 삼킨다</b> — 상태는
+   * 이미 정확하고 문구만 세분하므로, 못 읽으면 기존 일반 안내를 낸다. 두 조회 모두 NEEDS_REUPLOAD 리포트일 때만 한다
+   * ({@link ReportAnalysis#requiresReuploadInputs}) — 판정이 그 상태에서만 두 입력을 쓰기 때문이다.
    */
   public ReportAnalysisStatusResponse getAnalysisStatus(UUID userId, UUID reportId) {
     Report report = reportRepository.findById(reportId)
@@ -81,9 +86,15 @@ public class ReportAnalysisStatusQueryService {
     List<OcrJobFailureView> ocrJobFailures = ocrJobFailureViewRepository.findAllByReportIdInAndTerminalIsTrue(target);
     List<ReportJobFailureView> reportJobFailures =
         reportAnalysisResolver.reportJobFailuresOrEmptyIfJournalMissing(target).getOrDefault(reportId, List.of());
-    List<OcrResultView> needsReuploadDocuments =
-        reportAnalysisResolver.needsReuploadDocumentsOrEmpty(target).getOrDefault(reportId, List.of());
-    ReportAnalysis analysis = ReportAnalysis.of(report, ocrJobFailures, reportJobFailures, needsReuploadDocuments);
+    boolean reuploadInputsNeeded = ReportAnalysis.requiresReuploadInputs(report);
+    List<OcrResultView> needsReuploadDocuments = reuploadInputsNeeded
+        ? reportAnalysisResolver.needsReuploadDocumentsOrEmpty(target).getOrDefault(reportId, List.of())
+        : List.of();
+    ReuploadCause reuploadCause = reuploadInputsNeeded
+        ? reportAnalysisResolver.reuploadCausesOrEmpty(target).get(reportId)
+        : null;
+    ReportAnalysis analysis =
+        ReportAnalysis.of(report, ocrJobFailures, reportJobFailures, needsReuploadDocuments, reuploadCause);
     return ReportAnalysisStatusResponse.of(reportId, analysis, attachmentNames(reportId, analysis));
   }
 

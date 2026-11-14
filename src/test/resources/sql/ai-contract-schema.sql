@@ -99,3 +99,31 @@ CREATE TABLE IF NOT EXISTS ai.report_drafts (
     CONSTRAINT report_drafts_status_check
         CHECK (status IN ('draft', 'signed', 'rejected'))
 );
+
+-- =====================================================================
+-- ai.claim_readiness 테스트 부트스트랩 (AI 워커 소유 계약 테이블의 미러) — 청구 fan-in 판정·재업로드 사유.
+--
+-- 원본: AI 레포 migrations/ai/010_claim_readiness.sql + 013_claim_readiness_reupload_reason.sql
+--       (동기화 일자: 2026-11-14, AI#105)
+-- ⚠️ 사본이다. 원본이 바뀌면 함께 갱신하고 리뷰 시 원본과 대조한다. GRANT·pgaudit DO 블록은 옮기지 않았다
+--    (테스트 롤이 테이블 소유자다). 운영 GRANT는 컬럼 한정(claim_id, report_id, missing_doc_types,
+--    reupload_reason)이라 ClaimReadinessView가 다른 컬럼을 고르면 운영에서만 42501이 난다 — 소유자 롤로는 그냥
+--    통과하므로 ClaimReadinessViewSubselectTest(컬럼 목록 고정)와 ReuploadReasonGrantIntegrationTest(컬럼 한정
+--    GRANT 재현, superuser 접속이면 건너뜀)가 막는다.
+--    reupload_reason은 013이 ALTER로 붙인 컬럼이라 맨 뒤에 둔다. CHECK 이름은 013과 같다.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ai.claim_readiness (
+    claim_id           text PRIMARY KEY,
+    report_id          uuid NOT NULL,
+    doc_total          int  NOT NULL,
+    terminal_job_ids   text[] NOT NULL DEFAULT '{}',
+    docs_terminal      int GENERATED ALWAYS AS (cardinality(terminal_job_ids)) STORED,
+    missing_doc_types  text[] NOT NULL DEFAULT '{}',
+    status             text NOT NULL DEFAULT 'pending'
+                       CHECK (status IN ('pending','blocked','published')),
+    judged_at          timestamptz,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    reupload_reason    text,
+    CONSTRAINT claim_readiness_reupload_reason_check
+        CHECK (reupload_reason IN ('unreadable', 'off_domain', 'missing_required'))
+);

@@ -23,6 +23,9 @@ import com.soma.backend.domain.report.repository.OcrResultViewRepository;
  * 목록으로 degrade하므로 NEEDS_REUPLOAD 판정 자체({@code reports.status} 기반)는 영향받지 않는다 — 이
  * 조회는 "어느 문서인지"를 보강할 뿐 상태 판정에는 관여하지 않는다. GRANT가 배포되면 Backend 재배포 없이
  * 자동으로 문서가 채워지기 시작한다.
+ *
+ * <p>NEEDS_REUPLOAD 리포트에만 호출된다({@code ReportAnalysis.requiresReuploadInputs}) — 판정이 그 상태에서만 이 문서를
+ * 쓰므로, 다른 리포트에 조회해 봐야 응답은 같고 실패 쿼리와 커넥션 획득만 는다.
  */
 @Component
 @RequiredArgsConstructor

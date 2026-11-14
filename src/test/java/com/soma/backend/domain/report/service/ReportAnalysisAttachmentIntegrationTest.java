@@ -2,11 +2,15 @@ package com.soma.backend.domain.report.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +21,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,7 +36,9 @@ import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
+import com.soma.backend.domain.report.repository.ClaimReadinessViewRepository;
 import com.soma.backend.domain.report.repository.OcrJobFailureViewRepository;
+import com.soma.backend.domain.report.repository.OcrResultViewRepository;
 import com.soma.backend.domain.report.repository.ReportJobFailureViewRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
 
@@ -67,6 +74,11 @@ class ReportAnalysisAttachmentIntegrationTest {
   private OcrJobFailureViewRepository ocrJobFailureViewRepository;
   @MockitoSpyBean
   private ReportJobFailureViewRepository reportJobFailureViewRepository;
+  /** #401 — 재업로드 입력(ai.claim_readiness·ai.ocr_results)이 NEEDS_REUPLOAD 리포트에만 조회되는지 세는 스파이. */
+  @MockitoSpyBean
+  private ClaimReadinessViewRepository claimReadinessViewRepository;
+  @MockitoSpyBean
+  private OcrResultViewRepository ocrResultViewRepository;
 
   private UUID ownerId;
 
@@ -77,6 +89,9 @@ class ReportAnalysisAttachmentIntegrationTest {
 
   @AfterEach
   void cleanUp() {
+    // ai.claim_readiness는 이 테스트 소유자의 리포트에 단 행만 지운다(리포트를 지우기 전에).
+    jdbcTemplate.update(
+        "DELETE FROM ai.claim_readiness WHERE report_id IN (SELECT id FROM reports WHERE user_id = ?)", ownerId);
     jdbcTemplate.update("DELETE FROM ai.ocr_job_failures");
     jdbcTemplate.update("DELETE FROM ai.report_job_failures");
     jdbcTemplate.update("DELETE FROM ai.ocr_results");
@@ -124,6 +139,14 @@ class ReportAnalysisAttachmentIntegrationTest {
         """,
         UUID.randomUUID(), reportId, attachmentId);
     return attachmentId;
+  }
+
+  /** 청구 판정 행 삽입 — ai.claim_readiness(AI 010·013). */
+  private void insertReadiness(UUID reportId, String reuploadReason) {
+    jdbcTemplate.update("""
+        INSERT INTO ai.claim_readiness (claim_id, report_id, doc_total, missing_doc_types, status, reupload_reason)
+        VALUES (?, ?, 2, '{}', 'blocked', ?)
+        """, UUID.randomUUID().toString(), reportId, reuploadReason);
   }
 
   /** AI 워커가 원시 SQL로 세팅하는 종료 상태를 같은 값으로 만든다(전이표를 거치지 않는 진입). */
@@ -304,5 +327,65 @@ class ReportAnalysisAttachmentIntegrationTest {
       assertThat(document.attachmentId()).isEqualTo(attachmentId);
       assertThat(document.reason()).isNull();
     });
+  }
+
+  @Test
+  @DisplayName("#401 — NEEDS_REUPLOAD가 아닌 리포트만 있으면 목록·상세·폴링 어디서도 재업로드 입력을 조회하지 않고 응답은 그대로다")
+  void nonReuploadReportsNeverQueryReuploadInputs() {
+    // Given: PROCESSING·FAILED·COMPLETED·BLOCKED, 그중 BLOCKED에는 조회되면 안 되는 off_domain 행까지 둔다
+    UUID processing = saveReport(false);
+    UUID failed = saveReport(false);
+    UUID completed = saveReport(true);
+    UUID blocked = saveReport(false);
+    insertFailure(failed, "unreadable_file", true);
+    markStatus(blocked, "BLOCKED");
+    insertReadiness(blocked, "off_domain");
+
+    // When
+    Map<UUID, ReportCardListResponse.Card> cards = cardsByReportId();
+    CustomerReportDetailResponse detail = reportQueryService.getReportDetail(ownerId, "USER", blocked);
+    List<ReportAnalysisStatusResponse> polls = List.of(processing, failed, completed, blocked).stream()
+        .map(reportId -> reportAnalysisStatusQueryService.getAnalysisStatus(ownerId, reportId))
+        .toList();
+
+    // Then: 두 ai 입력은 한 번도 조회되지 않고(커넥션 획득·dev의 실패 쿼리 제거), 사유·상태는 지금과 같다
+    verify(claimReadinessViewRepository, never()).findAllByReportIdIn(anyCollection());
+    verify(ocrResultViewRepository, never()).findAllByReportIdInAndOcrQuality(anyCollection(), anyString());
+    assertThat(cards.get(failed).analysisFailureReason()).isEqualTo("UNREADABLE_FILE");
+    assertThat(cards.get(blocked).analysisState()).isEqualTo("BLOCKED");
+    assertThat(cards.get(blocked).analysisFailureReason()).isNull();
+    assertThat(cards.get(completed).analysisFailureReason()).isNull();
+    assertThat(cards.get(processing).analysisFailureReason()).isNull();
+    assertThat(detail.analysisState()).isEqualTo("BLOCKED");
+    assertThat(detail.analysisFailureReason()).isNull();
+    assertThat(polls).extracting(ReportAnalysisStatusResponse::analysisState)
+        .containsExactly("PROCESSING", "FAILED", "COMPLETED", "BLOCKED");
+    assertThat(polls).extracting(ReportAnalysisStatusResponse::failureReason)
+        .containsExactly(null, "UNREADABLE_FILE", null, null);
+  }
+
+  @Test
+  @DisplayName("#401 — NEEDS_REUPLOAD 1건이 섞인 페이지는 두 재업로드 입력을 각 1회, 그 리포트 id 하나로만 조회한다")
+  @SuppressWarnings("unchecked")
+  void mixedPageQueriesReuploadInputsOnlyForNeedsReupload() {
+    // Given
+    UUID processing = saveReport(false);
+    UUID needsReupload = saveReport(false);
+    markStatus(needsReupload, "NEEDS_REUPLOAD");
+    insertReadiness(needsReupload, "off_domain");
+
+    // When
+    Map<UUID, ReportCardListResponse.Card> cards = cardsByReportId();
+
+    // Then
+    ArgumentCaptor<Collection<UUID>> readinessIds = ArgumentCaptor.forClass(Collection.class);
+    ArgumentCaptor<Collection<UUID>> documentIds = ArgumentCaptor.forClass(Collection.class);
+    verify(claimReadinessViewRepository, times(1)).findAllByReportIdIn(readinessIds.capture());
+    verify(ocrResultViewRepository, times(1))
+        .findAllByReportIdInAndOcrQuality(documentIds.capture(), eq("needs_reupload"));
+    assertThat(readinessIds.getValue()).containsExactly(needsReupload);
+    assertThat(documentIds.getValue()).containsExactly(needsReupload);
+    assertThat(cards.get(needsReupload).analysisFailureReason()).isEqualTo("DOMAIN_MISMATCH");
+    assertThat(cards.get(processing).analysisFailureReason()).isNull();
   }
 }
