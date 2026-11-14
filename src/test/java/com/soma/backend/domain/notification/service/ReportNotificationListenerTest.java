@@ -24,6 +24,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.InvalidDataAccessResourceUsageException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import com.soma.backend.domain.notification.entity.NotificationType;
 import com.soma.backend.domain.report.entity.AnalysisFailureReason;
@@ -31,18 +32,23 @@ import com.soma.backend.domain.report.entity.OcrJobFailureViewFixture;
 import com.soma.backend.domain.report.entity.OcrResultViewFixture;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.entity.ReportAttachment;
+import com.soma.backend.domain.report.entity.ReuploadCause;
 import com.soma.backend.domain.report.entity.event.AnalysisFailedEvent;
 import com.soma.backend.domain.report.entity.event.ReportBlockedEvent;
 import com.soma.backend.domain.report.entity.event.ReportNeedsReuploadEvent;
 import com.soma.backend.domain.report.entity.event.ReviewProposalReceivedEvent;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.service.NeedsReuploadDocumentReader;
+import com.soma.backend.domain.report.service.ReportAnalysisResolver;
 import com.soma.backend.domain.report.service.TerminalFailureJournalReader;
 
 /**
  * ReportNotificationListener 단위 테스트.
  * AFTER_COMMIT 리스너는 record()로 인앱 저장·토글을 위임하고, 토글 ON일 때만 푸시하며,
  * 부수효과 실패(record·push 예외)는 삼켜 원 트랜잭션(이미 커밋)에 전파하지 않는다.
+ *
+ * <p>{@link ReportAnalysisResolver}는 스텁하지 않으면 빈 맵(재업로드 원인 없음)을 돌려주므로 기존 NEEDS_REUPLOAD
+ * 테스트는 문서 특정·일반 문구 경로를 그대로 탄다(#401).
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReportNotificationListener 단위 테스트")
@@ -63,6 +69,8 @@ class ReportNotificationListenerTest {
   private NeedsReuploadDocumentReader needsReuploadDocumentReader;
   @Mock
   private ReportAttachmentRepository reportAttachmentRepository;
+  @Mock
+  private ReportAnalysisResolver reportAnalysisResolver;
 
   @Test
   @DisplayName("record가 true면 sendToUser로 푸시하며 data{type,reportId}를 담아 보낸다")
@@ -369,5 +377,109 @@ class ReportNotificationListenerTest {
     assertThatCode(() ->
         listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(UUID.randomUUID(), UUID.randomUUID())))
         .doesNotThrowAnyException();
+  }
+
+  // ---- #401 재업로드 사유별 푸시 본문 ----
+
+  @Test
+  @DisplayName("#401 — 재업로드 사유가 DOMAIN_MISMATCH면 조회 응답과 같은 문구로 보내고 문서 조회는 하지 않는다")
+  void onReportNeedsReuploadUsesCauseMessageForDomainMismatch() {
+    // Given
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    ReuploadCause cause = ReuploadCause.from("off_domain", List.of());
+    given(reportAnalysisResolver.reuploadCausesOrEmpty(List.of(reportId))).willReturn(Map.of(reportId, cause));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    // When
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    // Then: 본문은 조회 응답(failure_message)과 같은 메서드에서 나오고, 사유 코드는 data에 싣지 않는다
+    ArgumentCaptor<Map<String, String>> dataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(notificationRecorder).record(eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD),
+        eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload(cause).failureMessage()));
+    verify(pushNotifier).sendToUser(eq(userId), eq("문서를 다시 올려주세요"),
+        eq("업로드하신 문서에서 보험 청구 서류를 찾지 못했어요. 보험증권·진단서 같은 청구 서류를 올려주세요."),
+        dataCaptor.capture());
+    assertThat(dataCaptor.getValue()).containsOnlyKeys("type", "reportId")
+        .containsEntry("type", "REPORT_NEEDS_REUPLOAD")
+        .containsEntry("reportId", reportId.toString());
+    verify(terminalFailureJournalReader, never()).findTerminalOcrJobFailures(any());
+    verify(needsReuploadDocumentReader, never()).findNeedsReuploadDocuments(any());
+  }
+
+  @Test
+  @DisplayName("#401 — 필수 서류 미확인({policy})이면 보험증권을 짚는 문구로 보낸다")
+  void onReportNeedsReuploadNamesMissingRequiredDocument() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(reportAnalysisResolver.reuploadCausesOrEmpty(List.of(reportId))).willReturn(
+        Map.of(reportId, ReuploadCause.from("missing_required", List.of("policy"))));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    verify(pushNotifier).sendToUser(eq(userId), eq("문서를 다시 올려주세요"),
+        eq("업로드하신 문서에서 보험증권을 확인하지 못했어요. 보험증권을 다시 올려주세요."), any());
+  }
+
+  @Test
+  @DisplayName("#401 회귀 — 재업로드 원인이 없으면 기존대로 문서 1건을 특정한 문구로 보낸다")
+  void onReportNeedsReuploadWithoutCauseKeepsDocumentSpecificCopy() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    UUID attachmentId = UUID.randomUUID();
+    given(reportAnalysisResolver.reuploadCausesOrEmpty(List.of(reportId))).willReturn(Map.of());
+    given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willReturn(
+        Map.of(reportId, List.of(OcrResultViewFixture.needsReupload(reportId, attachmentId, "diagnosis"))));
+    ReportAttachment attachment = ReportAttachment.of(reportId, "진단서.pdf", "https://example.test/doc",
+        "pdf", "diagnosis");
+    ReflectionTestUtils.setField(attachment, "id", attachmentId);
+    given(reportAttachmentRepository.findById(attachmentId)).willReturn(Optional.of(attachment));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId));
+
+    verify(pushNotifier).sendToUser(eq(userId), eq("문서를 다시 올려주세요"),
+        eq("업로드하신 [진단서.pdf] 문서를 알아보기 어려워요. 다시 촬영해서 올려주세요."), any());
+  }
+
+  @Test
+  @DisplayName("#401 하드닝 — 문서 리더가 커넥션을 못 얻어도(TransactionException) 일반 문구로 푸시가 나간다")
+  void onReportNeedsReuploadFallsBackToGenericWhenReadersCannotStartTransaction() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    CannotCreateTransactionException noConnection =
+        new CannotCreateTransactionException("Could not open JPA EntityManager for transaction");
+    given(terminalFailureJournalReader.findTerminalOcrJobFailures(List.of(reportId))).willThrow(noConnection);
+    given(needsReuploadDocumentReader.findNeedsReuploadDocuments(List.of(reportId))).willThrow(noConnection);
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    assertThatCode(() -> listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId)))
+        .doesNotThrowAnyException();
+
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
+  }
+
+  @Test
+  @DisplayName("#401 격리 — 재업로드 사유 조회에서 예상 밖 예외가 나도 푸시는 기존 문구로 나간다(1회성 푸시 유실 방지)")
+  void onReportNeedsReuploadFallsBackWhenCauseLookupThrowsUnexpectedly() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = UUID.randomUUID();
+    given(reportAnalysisResolver.reuploadCausesOrEmpty(List.of(reportId)))
+        .willThrow(new IllegalStateException("enrichment defect"));
+    given(notificationRecorder.record(
+        eq(userId), eq(NotificationType.REPORT_NEEDS_REUPLOAD), anyString(), anyString())).willReturn(true);
+
+    assertThatCode(() -> listener.onReportNeedsReupload(new ReportNeedsReuploadEvent(userId, reportId)))
+        .doesNotThrowAnyException();
+
+    verify(pushNotifier).sendToUser(
+        eq(userId), eq("문서를 다시 올려주세요"), eq(ReportAnalysis.needsReupload().failureMessage()), any());
   }
 }

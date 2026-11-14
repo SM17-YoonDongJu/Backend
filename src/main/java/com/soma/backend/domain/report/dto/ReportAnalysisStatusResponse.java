@@ -35,13 +35,17 @@ public record ReportAnalysisStatusResponse(
     String analysisState,
 
     @Schema(nullable = true,
-        description = "대표 실패 사유. analysis_state가 FAILED일 때만 non-null"
-            + "(BLOCKED·NEEDS_REUPLOAD는 저널 기반 사유가 없어 null). 리포트 생성 단계 실패는 UNKNOWN이다. "
-            + "MASKING_RESIDUAL | SCHEMA_INVALID | OCR_ERROR | UNKNOWN | UNREADABLE_FILE")
+        description = "분석 실패·재업로드 사유 코드. analysis_state가 FAILED면 대표 실패 사유(MASKING_RESIDUAL "
+            + "| SCHEMA_INVALID | OCR_ERROR | UNKNOWN | UNREADABLE_FILE — 리포트 생성 단계 실패는 UNKNOWN), "
+            + "NEEDS_REUPLOAD면 재업로드 사유가 확인된 경우에만 DOMAIN_MISMATCH(청구 서류를 찾지 못함) "
+            + "| MISSING_REQUIRED_DOCUMENTS(필수 서류인 보험증권·진단서 중 확인하지 못한 서류가 있음)다. 그 밖(사유를 "
+            + "확인하지 못한 NEEDS_REUPLOAD·BLOCKED·PROCESSING·COMPLETED)은 null. 값은 늘어날 수 있다 — 모르는 값은 "
+            + "null처럼 다루고 failure_message를 보여준다")
     String failureReason,
 
     @Schema(nullable = true,
-        description = "사용자 노출 문구. analysis_state가 FAILED·BLOCKED·NEEDS_REUPLOAD일 때만 non-null")
+        description = "사용자 노출 문구. analysis_state가 FAILED·BLOCKED·NEEDS_REUPLOAD일 때만 non-null. "
+            + "NEEDS_REUPLOAD는 재업로드 사유별로 문구가 다르다")
     String failureMessage,
 
     @Schema(nullable = true,

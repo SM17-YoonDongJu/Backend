@@ -52,17 +52,31 @@ final class ReportResponseSupport {
     return analysis == null ? AnalysisState.PROCESSING.name() : analysis.state().name();
   }
 
-  /** 대표 실패 사유. 실패(FAILED)가 아니면 null. */
+  /**
+   * 분석 실패·재업로드 사유 코드 — 목록 카드·상세·폴링 세 응답의 단일 매핑 지점이다. FAILED면 대표 실패 사유
+   * ({@code AnalysisFailureReason}), NEEDS_REUPLOAD면 확인된 재업로드 사유({@code ReuploadReason}), 그 밖(사유를 확인하지
+   * 못한 NEEDS_REUPLOAD 포함)은 null이다. 두 출처는 상태로 배타적이다 — {@code reason}은 FAILED에만,
+   * {@code reuploadCause}는 NEEDS_REUPLOAD에만 있다. 응답 코드는 각 enum의 상수 이름이다.
+   */
   static @Nullable String analysisFailureReason(@Nullable ReportAnalysis analysis) {
-    return analysis == null || analysis.reason() == null ? null : analysis.reason().name();
+    if (analysis == null) {
+      return null;
+    }
+    if (analysis.reason() != null) {
+      return analysis.reason().name();
+    }
+    if (analysis.reuploadCause() != null) {
+      return analysis.reuploadCause().reason().name();
+    }
+    return null;
   }
 
-  /** 사용자 노출 실패 문구. 실패(FAILED)가 아니면 null. */
+  /** 사용자 노출 문구. FAILED·BLOCKED·NEEDS_REUPLOAD가 아니면 null(NEEDS_REUPLOAD는 재업로드 사유별 문구). */
   static @Nullable String analysisFailureMessage(@Nullable ReportAnalysis analysis) {
     return analysis == null ? null : analysis.failureMessage();
   }
 
-  /** 재업로드 안내. 실패(FAILED)가 아니면 null. */
+  /** 재업로드 안내. FAILED·BLOCKED·NEEDS_REUPLOAD가 아니면 null. */
   static @Nullable String reuploadGuidance(@Nullable ReportAnalysis analysis) {
     ReuploadGuidance guidance = analysis == null ? null : analysis.reuploadGuidance();
     return guidance == null ? null : guidance.name();

@@ -1,5 +1,6 @@
 package com.soma.backend.domain.report.controller;
 
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasItems;
@@ -107,5 +108,46 @@ class AnalysisStatusOpenApiDocsTest {
     mockMvc.perform(get("/v3/api-docs"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.paths['/reports/{reportId}/analysis-status'].get").exists());
+  }
+
+  @Test
+  @DisplayName("#401 — 세 응답의 사유 필드는 재업로드 사유 값까지 description에 싣고 enum(allowableValues)은 없다")
+  void reasonFieldsDescribeReuploadReasonsWithoutEnum() throws Exception {
+    String[] reasonFields = {
+      CARD + ".properties.analysis_failure_reason",
+      DETAIL + ".properties.analysis_failure_reason",
+      ANALYSIS_STATUS + ".properties.failure_reason"
+    };
+    String[] messageFields = {
+      CARD + ".properties.analysis_failure_message",
+      DETAIL + ".properties.analysis_failure_message",
+      ANALYSIS_STATUS + ".properties.failure_message"
+    };
+
+    for (String field : reasonFields) {
+      mockMvc.perform(get("/v3/api-docs"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath(field + ".description", allOf(containsString("FAILED"),
+              containsString("NEEDS_REUPLOAD"), containsString("DOMAIN_MISMATCH"),
+              containsString("MISSING_REQUIRED_DOCUMENTS"))))
+          // enum으로 닫으면 프론트 생성 zod가 enum이 되어 미래 값 추가 때 검증이 깨진다.
+          .andExpect(jsonPath(field + ".enum").doesNotExist())
+          .andExpect(jsonPath(field + ".type", hasItem("null")));
+    }
+    for (String field : messageFields) {
+      mockMvc.perform(get("/v3/api-docs"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath(field + ".description", containsString("재업로드 사유별")));
+    }
+  }
+
+  @Test
+  @DisplayName("#401 — 문서별 failure_reason(FailedDocument)은 재업로드 사유와 무관하다(설명 불변)")
+  void failedDocumentReasonIsUnchanged() throws Exception {
+    mockMvc.perform(get("/v3/api-docs"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.components.schemas.FailedDocument.properties.failure_reason.description",
+            not(containsString("DOMAIN_MISMATCH"))))
+        .andExpect(jsonPath("$.components.schemas.FailedDocument.properties.failure_reason.enum").doesNotExist());
   }
 }

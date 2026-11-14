@@ -1,5 +1,7 @@
 package com.soma.backend.domain.report.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,6 +22,8 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
+import io.micrometer.core.instrument.MeterRegistry;
 
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
@@ -51,6 +55,8 @@ class AnalysisStatusDegradeIntegrationTest {
   private MockMvc mockMvc;
   @Autowired
   private ReportRepository reportRepository;
+  @Autowired
+  private MeterRegistry meterRegistry;
 
   private UUID ownerId;
   private UUID reportId;
@@ -105,6 +111,9 @@ class AnalysisStatusDegradeIntegrationTest {
    * 전혀 필요 없다. {@code ReportAnalysisResolver.resolveAll}이 저널 조회 실패를 리포트 단위
    * 판정까지 버리지 않고 흡수하므로, GRANT 미적용 환경에서도 두 상태는 목록·상세에서 그대로 노출돼야
    * 한다 — 그래야 이 기능이 없애려던 "무음 정지"가 degrade 상황에서 재현되지 않는다.
+   *
+   * <p>#401 — 재업로드 사유({@code ai.claim_readiness})도 못 읽지만(스키마째 없음 = 42P01) 지금과 같은 응답(사유 null·일반
+   * 문구)이고, 과도기 원인({@code schema_missing})으로 센다.
    */
   @Test
   @DisplayName("E13 — 저널이 안 읽혀도 NEEDS_REUPLOAD는 목록에서 그대로 노출된다(PROCESSING으로 낮아지지 않는다)")
@@ -115,13 +124,20 @@ class AnalysisStatusDegradeIntegrationTest {
         "DEG-" + UUID.randomUUID().toString().substring(0, 12));
     ReflectionTestUtils.setField(report, "status", ReportStatus.NEEDS_REUPLOAD);
     UUID needsReuploadId = reportRepository.save(report).getId();
+    double schemaMissingBefore = meterRegistry.get("analysis.reupload_reason.degraded")
+        .tag("cause", "schema_missing").counter().count();
 
     // When & Then: 상태 필터로 해당 리포트만 좁혀 본다(필터 자체는 enum 추가만으로 동작한다 — E7).
     mockMvc.perform(get("/reports").param("status", "NEEDS_REUPLOAD").with(authenticatedAsOwner()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.list[0].report_id").value(needsReuploadId.toString()))
         .andExpect(jsonPath("$.data.list[0].status").value("NEEDS_REUPLOAD"))
-        .andExpect(jsonPath("$.data.list[0].analysis_state").value("NEEDS_REUPLOAD"));
+        .andExpect(jsonPath("$.data.list[0].analysis_state").value("NEEDS_REUPLOAD"))
+        .andExpect(jsonPath("$.data.list[0].analysis_failure_reason").value(nullValue()))
+        .andExpect(jsonPath("$.data.list[0].analysis_failure_message")
+            .value("업로드하신 문서를 알아보기 어려워요. 더 선명하게 다시 올려주세요."));
+    assertThat(meterRegistry.get("analysis.reupload_reason.degraded").tag("cause", "schema_missing").counter()
+        .count() - schemaMissingBefore).isEqualTo(1.0);
   }
 
   @Test
