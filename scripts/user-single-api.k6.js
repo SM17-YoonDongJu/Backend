@@ -7,7 +7,9 @@
 //   export DEV_LOGIN_KEY='<app/backend-dev의 DEV_LOGIN_SECRET>' BASE_URL=http://10.0.137.77:30080 K6_USERS=600 K6_STATSD_ENABLE_TAGS=true K6_STATSD_ADDR=127.0.0.1:8125
 //   k6 run --out output-statsd --tag profile=user-single -e TARGET=reports_list -e RPS=20 -e DURATION=120s user-single-api.k6.js
 //
-// 읽는 env: BASE_URL · DEV_LOGIN_KEY · TARGET · RPS · DURATION · K6_USERS · MAX_VUS
+// 읽는 env: BASE_URL · DEV_LOGIN_KEY · TARGET · RPS · DURATION · K6_USERS · MAX_VUS · NICKNAMES
+// NICKNAMES: 로그인할 닉네임 목록 파일(한 줄에 하나, 스크립트 기준 상대 경로). 시드 닉네임이 시연용으로 바뀌어
+//   k6-user-N이 없을 때 쓴다. 없으면 k6-user-1~K6_USERS로 로그인한다
 // TARGET: TARGETS 표의 키(reports_list·report_detail·analysis_status·analysis_metrics·proposals_list·dashboard·me·
 //   notifications·adjusters_list·chats_list·chat_room·chat_read·chat_messages·create_report)
 //
@@ -34,6 +36,10 @@ const ACCIDENT_TYPES = ['medical_indemnity', 'traffic', 'disability', 'cancer_di
 // setup 데이터는 VU마다 복사되므로 계정당 보관량을 작게 둔다(풀별 리포트 2건, 방 4개)
 const REPORTS_PER_POOL = 2;
 const ROOMS_PER_ACCOUNT = 4;
+// open()은 init 단계에서만 부를 수 있다. setup만 쓰지만 VU마다 한 번씩 읽힌다(수 KB라 무시할 만하다).
+const NICKNAMES = __ENV.NICKNAMES
+  ? open(__ENV.NICKNAMES).split('\n').map((line) => line.trim()).filter(Boolean)
+  : null;
 
 // 대상별 준비물(needs)과 요청. 준비물은 setup이 계정마다 미리 확보한다 — 이터레이션 안에서 조회하면 단독 측정이 깨진다.
 // needs: report = 계정의 리포트 목록, room = 활성 채팅방 목록, durableRoom = 메시지 41건짜리 M 풀 방
@@ -100,9 +106,10 @@ export function setup() {
   if (!SPEC) {
     throw new Error(`알 수 없는 TARGET: ${TARGET} (${Object.keys(TARGETS).join(', ')})`);
   }
+  const names = nicknames();
   const accounts = [];
-  for (let i = 1; i <= USERS; i += 1) {
-    const res = http.post(`${BASE}/auth/dev/login`, JSON.stringify({ nickname: `k6-user-${i}` }), {
+  for (const nickname of names) {
+    const res = http.post(`${BASE}/auth/dev/login`, JSON.stringify({ nickname }), {
       headers: { 'Content-Type': 'application/json', 'X-Dev-Login-Key': DEV_KEY },
       responseType: 'text',
       tags: { phase: 'setup' },
@@ -127,11 +134,24 @@ export function setup() {
   if (accounts.length === 0) {
     throw new Error('쓸 수 있는 계정이 0개 — BASE_URL·dev-login 게이트·DEV_LOGIN_KEY·시드를 확인할 것');
   }
-  console.log(`setup 완료: 계정 ${accounts.length}/${USERS}개, TARGET=${TARGET}, ${RPS} RPS / ${DURATION}`);
+  console.log(`setup 완료: 계정 ${accounts.length}/${names.length}개(닉네임 ${NICKNAMES ? __ENV.NICKNAMES : 'k6-user-N'}), `
+    + `TARGET=${TARGET}, ${RPS} RPS / ${DURATION}`);
   return accounts;
 }
 
-// 계정의 리포트를 시드 풀별로 몇 개씩 모은다(case_no 접두어 K6-P/D/M/I, 응답 필드는 report_no).
+function nicknames() {
+  if (NICKNAMES) {
+    return NICKNAMES.slice(0, USERS);
+  }
+  const names = [];
+  for (let i = 1; i <= USERS; i += 1) {
+    names.push(`k6-user-${i}`);
+  }
+  return names;
+}
+
+// 계정의 리포트를 그룹별로 몇 개씩 모은다. 그룹은 시드 풀(case_no 접두어 K6-P/D/M/I, 응답 필드는 report_no)이고,
+// 시연용으로 case_no가 바뀐 시드면 리포트 상태로 나눈다. 제안 목록 대상은 제안이 2건 이상인 리포트(P 풀)로 고른다.
 // 목록은 제안 단위로 펼쳐져 계정당 약 123행이라 100행씩 최대 2페이지를 본다.
 function reportsOf(token) {
   const params = { headers: authHeaders(token), responseType: 'text', tags: { phase: 'setup' } };
@@ -140,21 +160,26 @@ function reportsOf(token) {
   if (json(firstPage, 'data.pagination.has_next') === true) {
     cards.push(...(json(http.get(`${BASE}/reports?page=2&size=100`, params), 'data.list') || []));
   }
-  const pools = {};
+  const groups = {};
+  const proposalReports = [];
   const seen = {};
   for (const card of cards) {
     if (!card.report_id || seen[card.report_id]) {
       continue;
     }
     seen[card.report_id] = true;
-    const pool = typeof card.report_no === 'string' && card.report_no.startsWith('K6-') ? card.report_no.charAt(3) : 'X';
-    pools[pool] = pools[pool] || [];
-    if (pools[pool].length < REPORTS_PER_POOL) {
-      pools[pool].push(card.report_id);
+    const reportNo = card.report_no;
+    const group = typeof reportNo === 'string' && reportNo.startsWith('K6-') ? reportNo.charAt(3) : (card.status || 'X');
+    groups[group] = groups[group] || [];
+    if (groups[group].length < REPORTS_PER_POOL) {
+      groups[group].push(card.report_id);
+    }
+    if (card.proposal_count >= 2 && proposalReports.length < REPORTS_PER_POOL) {
+      proposalReports.push(card.report_id);
     }
   }
-  const reports = [].concat(...Object.values(pools));
-  return { reports, proposalReports: pools.P && pools.P.length ? pools.P : reports };
+  const reports = [].concat(...Object.values(groups));
+  return { reports, proposalReports: proposalReports.length ? proposalReports : reports };
 }
 
 function roomsOf(token) {

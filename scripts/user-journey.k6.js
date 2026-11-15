@@ -15,10 +15,13 @@
 // - MIX: 화면 비중(기본 home:30,report_detail:20,chat_room:15,chat_list:10,reports_list:10,adjusters:7,proposals:5,mypage:3)
 // - SESSION_START: 세션 첫 화면 비율(기본 0.2). 첫 화면이면 공통 레이아웃의 내 정보·알림 호출이 같이 나간다
 //   (프론트가 30분 캐시하므로 그 뒤 화면에서는 나가지 않는다)
+// - NICKNAMES: 로그인할 닉네임 목록 파일(한 줄에 하나, 스크립트 기준 상대 경로). 시드 닉네임이 시연용으로 바뀌어
+//   k6-user-N이 없을 때 쓴다. 없으면 k6-user-1~K6_USERS로 로그인한다
 //
 // 주의
-// - 시드(k6-user-1~K6_USERS)가 있어야 한다. dev-login은 없는 닉네임이면 빈 계정을 만들고, 리포트·방이 없는 계정은
-//   setup에서 버린다. setup 로그의 "계정 N/600"이 600보다 한참 작으면 시드부터 확인할 것
+// - 시드가 있어야 한다. dev-login은 없는 닉네임이면 빈 계정을 만들고, 리포트·방이 없는 계정은 setup에서 버린다.
+//   setup 로그의 "계정 N/M"이 M보다 한참 작으면 시드부터 확인할 것. 닉네임이 바뀐 시드에서 k6-user-N으로 돌리면
+//   빈 계정이 생기니 NICKNAMES를 빼먹지 말 것
 // - 데이터를 바꾸는 요청은 채팅방 진입 화면의 읽음 처리(POST /chats/{id}/read, 읽음 커서 갱신)뿐이다. 시드는 소모하지 않는다
 // - 폴링은 시드 리포트(분석 완료 상태)를 부른다. 서버가 하는 일은 분석 중인 리포트 상세와 같다
 // - 사정사 시나리오와 동시에 돌리지 않는다
@@ -40,6 +43,10 @@ const DEFAULT_MIX = 'home:30,report_detail:20,chat_room:15,chat_list:10,reports_
 // setup 데이터는 VU마다 복사되므로 계정당 보관량을 작게 둔다(풀별 리포트 2건, 방 4개)
 const REPORTS_PER_POOL = 2;
 const ROOMS_PER_ACCOUNT = 4;
+// open()은 init 단계에서만 부를 수 있다. setup만 쓰지만 VU마다 한 번씩 읽힌다(수 KB라 무시할 만하다).
+const NICKNAMES = __ENV.NICKNAMES
+  ? open(__ENV.NICKNAMES).split('\n').map((line) => line.trim()).filter(Boolean)
+  : null;
 
 // 엔드포인트 이름(name 태그). 단일 API 스크립트(user-single-api.k6.js)의 TARGET 이름과 맞췄다.
 const ENDPOINTS = [
@@ -157,10 +164,11 @@ function buildThresholds() {
 }
 
 export function setup() {
+  const names = nicknames();
   const accounts = [];
   let dropped = 0;
-  for (let i = 1; i <= USERS; i += 1) {
-    const token = login(`k6-user-${i}`);
+  for (const nickname of names) {
+    const token = login(nickname);
     if (!token) {
       dropped += 1;
       continue; // 무인증 계정이 섞이면 1ms 401로 이터레이션을 삼켜 측정이 왜곡된다(#297 원인 3)
@@ -176,9 +184,20 @@ export function setup() {
     throw new Error('쓸 수 있는 계정이 0개 — BASE_URL·dev-login 게이트·DEV_LOGIN_KEY·시드를 확인할 것');
   }
   const adjusterIds = discoverAdjusters(accounts[0].token);
-  console.log(`setup 완료: 계정 ${accounts.length}/${USERS}개(버림 ${dropped}), 사정사 ${adjusterIds.length}명, `
-    + `화면 ${RATE}/s, 폴링 ${POLL_USERS}명, ${DURATION}, 비중 ${__ENV.MIX || DEFAULT_MIX}`);
+  console.log(`setup 완료: 계정 ${accounts.length}/${names.length}개(버림 ${dropped}, 닉네임 ${NICKNAMES ? __ENV.NICKNAMES : 'k6-user-N'}), `
+    + `사정사 ${adjusterIds.length}명, 화면 ${RATE}/s, 폴링 ${POLL_USERS}명, ${DURATION}, 비중 ${__ENV.MIX || DEFAULT_MIX}`);
   return { accounts, adjusterIds };
+}
+
+function nicknames() {
+  if (NICKNAMES) {
+    return NICKNAMES.slice(0, USERS);
+  }
+  const names = [];
+  for (let i = 1; i <= USERS; i += 1) {
+    names.push(`k6-user-${i}`);
+  }
+  return names;
 }
 
 function login(nickname) {
@@ -191,7 +210,9 @@ function login(nickname) {
   return cookie ? cookie.value : null;
 }
 
-// 계정의 리포트를 시드 풀별로(case_no 접두어 K6-P/D/M/I, 응답 필드는 report_no), 방을 메시지 많은 M 방 우선으로 모은다.
+// 계정의 리포트를 그룹별로 몇 개씩, 방을 메시지 많은 M 방 우선으로 모은다. 그룹은 시드 풀(case_no 접두어 K6-P/D/M/I,
+// 응답 필드는 report_no)이고, 시연용으로 case_no가 바뀐 시드면 리포트 상태로 나눈다. 제안 비교 대상은 제안이 2건 이상인
+// 리포트(P 풀)로 고른다.
 function discover(token) {
   const params = { headers: authHeaders(token), responseType: 'text', tags: { phase: 'setup', name: 'setup_discover' } };
   const [firstPage, chats] = http.batch([
@@ -202,26 +223,30 @@ function discover(token) {
   if (json(firstPage, 'data.pagination.has_next') === true) {
     cards.push(...(json(http.get(`${BASE}/reports?page=2&size=100`, params), 'data.list') || []));
   }
-  const pools = {};
+  const groups = {};
+  const proposalReports = [];
   const seen = {};
   for (const card of cards) {
     if (!card.report_id || seen[card.report_id]) {
       continue; // 목록은 제안 단위로 펼쳐져 같은 리포트가 여러 행으로 나온다
     }
     seen[card.report_id] = true;
-    const pool = poolOf(card.report_no);
-    pools[pool] = pools[pool] || [];
-    if (pools[pool].length < REPORTS_PER_POOL) {
-      pools[pool].push(card.report_id);
+    const group = groupOf(card);
+    groups[group] = groups[group] || [];
+    if (groups[group].length < REPORTS_PER_POOL) {
+      groups[group].push(card.report_id);
+    }
+    if (card.proposal_count >= 2 && proposalReports.length < REPORTS_PER_POOL) {
+      proposalReports.push(card.report_id);
     }
   }
-  const reports = [].concat(...Object.values(pools));
+  const reports = [].concat(...Object.values(groups));
   const activeRooms = (json(chats, 'data.rooms') || []).filter((room) => room.room_status === 'ACTIVE');
   const rooms = activeRooms.filter((room) => room.match_status === 'ACCEPTED')
     .concat(activeRooms.filter((room) => room.match_status !== 'ACCEPTED'))
     .slice(0, ROOMS_PER_ACCOUNT)
     .map((room) => room.chat_room_id);
-  return { reports, proposalReports: pools.P && pools.P.length ? pools.P : reports, rooms };
+  return { reports, proposalReports: proposalReports.length ? proposalReports : reports, rooms };
 }
 
 function discoverAdjusters(token) {
@@ -285,9 +310,13 @@ function authHeaders(token) {
   return { 'Content-Type': 'application/json', Cookie: `access_token=${token}` };
 }
 
-function poolOf(reportNo) {
-  // 시드 case_no 형식: K6-{P|D|M|I}-{userSeq:04d}-{idx:03d}. 그 밖(직접 만든 리포트 등)은 X로 모은다
-  return typeof reportNo === 'string' && reportNo.startsWith('K6-') ? reportNo.charAt(3) : 'X';
+function groupOf(card) {
+  // 시드 case_no 형식: K6-{P|D|M|I}-{userSeq:04d}-{idx:03d}. 접두어가 없으면(시연용으로 바뀐 시드 등) 리포트 상태로 나눈다
+  const reportNo = card.report_no;
+  if (typeof reportNo === 'string' && reportNo.startsWith('K6-')) {
+    return reportNo.charAt(3);
+  }
+  return card.status || 'X';
 }
 
 function parseMix(text) {
