@@ -11,13 +11,14 @@
 // NICKNAMES: 로그인할 닉네임 목록 파일(한 줄에 하나, 스크립트 기준 상대 경로). 시드 닉네임이 시연용으로 바뀌어
 //   k6-user-N이 없을 때 쓴다. 없으면 k6-user-1~K6_USERS로 로그인한다
 // TARGET: TARGETS 표의 키(reports_list·report_detail·analysis_status·analysis_metrics·proposals_list·dashboard·me·
-//   notifications·adjusters_list·chats_list·chat_room·chat_read·chat_messages·create_report)
+//   notifications·adjusters_list·chats_list·chat_room·chat_read·chat_send·chat_messages·create_report)
 //
 // 주의
 // - K6_USERS는 시드된 고객 수(k6-user-1~600) 이하로 둔다. dev-login은 없는 닉네임이면 빈 계정을 새로 만든다.
 // - 리포트 대상(report_detail·analysis_status·analysis_metrics·proposals_list)은 계정마다 시드 풀(P·D·M·I)에서 리포트를
 //   몇 개씩 모아 매번 섞어 고른다. 풀마다 상세 경로가 다르다(M은 채택 리뷰가 있어 쿼리가 더 붙는다).
-// - chat_read(POST /chats/{id}/read)는 읽음 커서만 갱신한다. 시드는 소모하지 않는다.
+// - chat_read(POST /chats/{id}/read)는 읽음 커서만 갱신한다. chat_send(POST /chats/{id}/messages)는 방마다 메시지를
+//   쌓는다(메시지 INSERT + 방 행 UPDATE + 커밋 뒤 Redis 발행). 둘 다 시드는 소모하지 않는다.
 // - create_report는 맨 마지막에 단독으로 돌린다. 실행할 때마다 리포트가 쌓이고(case_no가 K6- 형식이 아니라
 //   시드 정리 SQL에 안 걸린다) 아웃박스 → SQS 발행도 실제로 일어난다.
 // - 사정사 시나리오와 동시에 돌리지 않는다. backend·RDS를 같이 써서 서로의 측정을 오염시킨다.
@@ -59,6 +60,11 @@ const TARGETS = {
   chats_list: { call: () => ['GET', '/chats'] },
   chat_room: { needs: 'room', call: (acc) => ['GET', `/chats/${pick(acc.rooms)}`] },
   chat_read: { needs: 'room', call: (acc) => ['POST', `/chats/${pick(acc.rooms)}/read`, ''] },
+  chat_send: {
+    needs: 'room',
+    call: (acc) => ['POST', `/chats/${pick(acc.rooms)}/messages`, JSON.stringify({ content: 'k6 부하테스트 메시지입니다.' })],
+    expected: 201,
+  },
   chat_messages: { needs: 'durableRoom', call: (acc) => ['GET', `/chats/${acc.durableRoom}/messages?size=30`] },
   create_report: { call: () => ['POST', '/reports', JSON.stringify(reportBody())], expected: 202 },
 };
