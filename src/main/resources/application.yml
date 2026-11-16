@@ -28,11 +28,12 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      # 10 → 15: ReportAnalysisResolver.resolveAll이 REQUIRES_NEW라, 목록/상세 조회
-      # 요청 하나가 바깥 트랜잭션 커넥션을 쥔 채로 그 안에서 잠깐 커넥션을 하나 더 잡는다(degrade 격리를
-      # 위해 필요 — 같은 트랜잭션에서 예외를 잡으면 Hibernate가 세션을 rollback-only로 표시해 커밋 시점에
-      # 다시 실패한다). 동시 요청이 몰리면 실효 동시성이 사실상 절반이 되어 10에서는 connection-timeout이
-      # 날 수 있어 여유를 뒀다.
+      # 15 유지(#406에서 근거를 고쳐 씀). 10 → 15 증설(2026-08)은 목록·상세 조회가 바깥 readOnly 트랜잭션을
+      # 쥔 채 resolveAll(REQUIRES_NEW)로 커넥션을 하나 더 잡아 요청 하나가 2개를 쥐던 때의 것이고, 다음 날 저널
+      # 리더(REQUIRES_NEW)가 붙으면서 최대 3개가 됐다. 풀이 "동시 요청 수 × (요청당 동시 점유 − 1) + 1"보다
+      # 작으면 서로 다음 커넥션을 기다리며 교착할 수 있다(요청당 3개면 풀 15에서 동시 8건 — 2026-11 dev
+      # 부하테스트에서 재현). #406에서 그 바깥 트랜잭션을 없애 이 조회들은 요청당 1개만 쥔다. 쓰기 경로 일부(REQUIRES_NEW Writer)·분석 실패 알림 스윕·AFTER_COMMIT
+      # 리스너는 아직 스레드당 2개를 쥘 수 있어 15를 유지한다.
       maximum-pool-size: 15
       minimum-idle: 5
       connection-timeout: 30000

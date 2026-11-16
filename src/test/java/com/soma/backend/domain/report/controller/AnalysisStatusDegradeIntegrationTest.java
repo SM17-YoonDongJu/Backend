@@ -35,7 +35,7 @@ import com.soma.backend.global.security.CustomUserDetails;
  * Q12 — {@code ai.ocr_job_failures}를 읽을 수 없을 때의 degrade 검증(design.md §8 E14).
  *
  * <p>GRANT 미적용·AI 마이그레이션 미배포 상황을 <b>스키마를 실제로 삭제해</b> 재현한다(모킹이 아니라 진짜
- * SQL 실패라야 {@code REQUIRES_NEW} 분리가 의미 있는지 확인된다 — 같은 트랜잭션에서 JDBC 예외를 삼키면
+ * SQL 실패라야 리더의 {@code REQUIRES_NEW} 분리가 의미 있는지 확인된다 — 트랜잭션 안에서 JDBC 예외를 삼키면
  * 커밋 시 {@code UnexpectedRollbackException}으로 목록이 통째로 500이 된다).
  *
  * <p>검증 대상은 넷이다: <b>앱은 기동하고</b>({@code @Subselect}라 부팅 검증 대상이 아님) 저널이 필요한

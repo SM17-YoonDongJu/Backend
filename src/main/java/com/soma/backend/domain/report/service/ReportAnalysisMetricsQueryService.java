@@ -22,7 +22,8 @@ import com.soma.backend.global.exception.ErrorCode;
  * 10 RPS에 Hikari 풀 전체를 잡고 교착했다. 트랜잭션 없이 순차로 실행하면 ① {@code reportRepository.findById}
  * (Spring Data 기본 readOnly 트랜잭션 — 끝나면 커넥션 반납) ② 인가(DB 없음) ③ 리더(REQUIRES_NEW — 새 커넥션
  * 1개)가 서로 겹치지 않아, 요청 하나가 동시에 쥐는 커넥션은 최대 1개다. 잃는 일관성도 없다 — PostgreSQL 기본
- * READ COMMITTED에서는 바깥 트랜잭션이 있어도 문장마다 스냅샷이 다르다.
+ * READ COMMITTED에서는 바깥 트랜잭션이 있어도 문장마다 스냅샷이 다르다. #406에서 목록·상세·폴링 조회도 같은 방식으로
+ * 정리했다({@code ReportQueryService}·{@code ReportAnalysisStatusQueryService}).
  *
  * <p>이 회귀는 {@code ReportAnalysisMetricsConnectionBudgetTest}(Hikari 풀 1개)가 잡는다 — 여기나 Resolver에
  * 트랜잭션을 붙이면 리더가 두 번째 커넥션을 기다리다 타임아웃되고, 응답이 UNAVAILABLE로 떨어져 테스트가 깨진다.

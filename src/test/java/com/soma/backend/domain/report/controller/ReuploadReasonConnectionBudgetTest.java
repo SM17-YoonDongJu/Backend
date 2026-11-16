@@ -34,24 +34,26 @@ import com.soma.backend.domain.report.repository.ReportRepository;
 import com.soma.backend.global.security.CustomUserDetails;
 
 /**
- * #401 커넥션 예산 회귀 고정(design.md §9-2 I5) — 재업로드 원인 조회를 더해도 목록·상세 요청 하나가 동시에 쥐는 커넥션은
- * 최대 3개(바깥 조회 트랜잭션 + {@code resolveAll} REQUIRES_NEW + 리더 REQUIRES_NEW 1개씩 순차)다.
+ * #401 커넥션 예산 회귀 고정(design.md §9-2 I5), #406에서 풀 3개 → 1개로 조였다 — 재업로드 원인 조회를 더해도 목록·상세·
+ * 폴링 요청 하나가 동시에 쥐는 커넥션은 1개다. 바깥 트랜잭션이 없고, 본 조회·리포트 재조회·리더 REQUIRES_NEW가 차례로
+ * 하나씩 커넥션을 얻고 반납한다(재업로드 리포트라 리더가 4개까지 돈다).
  *
- * <p>Hikari 풀을 3개로 줄인 컨텍스트에서도 사유가 나와야 한다. 누가 리더를 한 단계 더 중첩하면(예: 리더 안에서 또
- * REQUIRES_NEW) 네 번째 커넥션을 5초 기다리다 리더가 시작에 실패하고, 재업로드 원인이 일반 문구로 degrade돼 이 테스트가
- * 깨진다(2026-11-11 커넥션 풀 교착과 같은 구조). 폴링(바깥 트랜잭션 + 리더 1개씩 = 최대 2)은 같은 풀에서 함께 확인한다.
+ * <p>Hikari 풀을 1개로 줄인 컨텍스트에서도 사유가 나와야 한다. 누가 리더 안에서 REQUIRES_NEW를 한 단계 더 중첩하거나
+ * 조회 서비스·{@code resolveAll}에 트랜잭션을 다시 붙이면 두 번째 커넥션을 5초 기다리다 실패해, 응답이 500이 되거나
+ * 재업로드 원인이 일반 문구로 degrade돼 이 테스트가 깨진다(2026-11-11·11-16 커넥션 풀 교착과 같은 구조).
  *
- * <p>풀 설정이 달라 컨텍스트가 하나 더 뜬다. 그 컨텍스트를 정리하겠다고 {@code @DirtiesContext}를 붙이지 말 것 — test
- * 프로파일이 {@code ddl-auto: create-drop}이라 컨텍스트가 닫히면 공유 test_db의 테이블이 전부 DROP된다.
+ * <p>풀 설정이 {@code ReportQueryConnectionBudgetTest}·{@code ReportAnalysisMetricsConnectionBudgetTest}와 같아
+ * 컨텍스트를 공유한다. 그 컨텍스트를 정리하겠다고 {@code @DirtiesContext}를 붙이지 말 것 — test 프로파일이
+ * {@code ddl-auto: create-drop}이라 컨텍스트가 닫히면 공유 test_db의 테이블이 전부 DROP된다.
  */
 @SpringBootTest(properties = {
-  "spring.datasource.hikari.maximum-pool-size=3",
+  "spring.datasource.hikari.maximum-pool-size=1",
   "spring.datasource.hikari.connection-timeout=5000"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Sql(scripts = "/sql/ai-contract-schema.sql", executionPhase = Sql.ExecutionPhase.BEFORE_TEST_CLASS)
-@DisplayName("재업로드 사유 조회 커넥션 예산(풀 3개) 테스트")
+@DisplayName("재업로드 사유 조회 커넥션 예산(풀 1개) 테스트")
 class ReuploadReasonConnectionBudgetTest {
 
   private static final String DOMAIN_MESSAGE =
@@ -73,9 +75,9 @@ class ReuploadReasonConnectionBudgetTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    // 전제 확인 — 풀이 정말 3개여야 "동시 3커넥션"을 검증한다(프로퍼티 이름이 바뀌면 조용히 기본 풀 크기로 돈다).
+    // 전제 확인 — 풀이 정말 1개여야 "동시 1커넥션"을 검증한다(프로퍼티 이름이 바뀌면 조용히 기본 풀 크기로 돈다).
     // DataSource는 JDBC 관측 프록시로 감싸져 있을 수 있어 캐스트가 아니라 unwrap으로 꺼낸다.
-    assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isEqualTo(3);
+    assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isEqualTo(1);
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY,
         "질문", "RCB-" + UUID.randomUUID().toString().substring(0, 12))).getId();
@@ -102,8 +104,8 @@ class ReuploadReasonConnectionBudgetTest {
   }
 
   @Test
-  @DisplayName("풀이 3개여도 목록·상세·폴링이 커넥션을 기다리지 않고 DOMAIN_MISMATCH를 낸다(degrade 없음)")
-  void servesReuploadReasonWithinThreeConnections() throws Exception {
+  @DisplayName("풀이 1개여도 목록·상세·폴링이 커넥션을 기다리지 않고 DOMAIN_MISMATCH를 낸다(degrade 없음)")
+  void servesReuploadReasonWithinSingleConnection() throws Exception {
     double queryFailedBefore = queryFailedCount();
 
     mockMvc.perform(get("/reports").with(authenticatedAsOwner()))

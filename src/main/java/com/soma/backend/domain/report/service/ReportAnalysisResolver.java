@@ -13,8 +13,6 @@ import org.springframework.core.NestedRuntimeException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.TransactionException;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -35,8 +33,9 @@ import com.soma.backend.domain.report.repository.ReportRepository;
  * {@link #reuploadCausesOrEmpty}로 같은 재업로드 원인을 읽는다 — 판정 규칙 자체는 {@link ReportAnalysis}가 소유하고,
  * 여기는 판정에 필요한 저널·문서·재업로드 원인 조회와 그 실패 흡수(degrade)만 맡는다.
  *
- * <p>유스케이스 서비스끼리 서로 부르지 않도록 {@code ReportAnalysisStatusQueryService}에서 떼어냈다. 별도 Bean이라
- * {@link #resolveAll}의 {@code REQUIRES_NEW}가 호출 위치와 무관하게 항상 적용된다.
+ * <p>유스케이스 서비스끼리 서로 부르지 않도록 {@code ReportAnalysisStatusQueryService}에서 떼어냈다. 이 클래스에는
+ * 트랜잭션이 없다(#406, 이유는 {@link #resolveAll}) — 실패를 격리해야 하는 {@code ai} 스키마 조회는 리더(별도 Bean,
+ * REQUIRES_NEW)가 맡고, 여기는 그 실패를 받아 판정을 낮춘다.
  *
  * <p><b>관측성:</b> 실패 저널을 못 읽어 판정을 낮출 때마다 {@code analysis.journal.degraded{journal}}
  * (Prometheus {@code analysis_journal_degraded_total})을 올린다. degrade는 응답을 200으로 지키는 대신 FAILED를
@@ -112,27 +111,46 @@ public class ReportAnalysisResolver {
    *
    * <p><b>리포트를 먼저 읽는다.</b> 품질 미달 문서({@code ai.ocr_results})와 재업로드 원인({@code ai.claim_readiness})은
    * NEEDS_REUPLOAD 판정에서만 쓰이므로({@link ReportAnalysis#requiresReuploadInputs}) 그 리포트 id만 조회한다 — 다른
-   * 리포트만 있는 페이지는 두 조회와 그 커넥션 획득을 아예 하지 않는다. 리포트 조회는 이 메서드의 트랜잭션 커넥션으로
-   * 하므로 순서를 바꿔도 동시 점유 커넥션은 늘지 않는다.
+   * 리포트만 있는 페이지는 두 조회와 그 커넥션 획득을 아예 하지 않는다. 리포트 조회도 커넥션을 얻었다가 바로 반납하므로
+   * 순서를 바꿔도 동시에 쥐는 커넥션은 늘지 않는다.
    *
-   * <p><b>{@code REQUIRES_NEW}인 이유(중요):</b> {@code ai} 스키마는 다른 팀 소유라 GRANT 미적용·테이블 부재로
-   * 조회가 실패할 수 있는데, 그 실패를 호출자의 트랜잭션 안에서 잡으면 Hibernate가 JDBC 예외 시 세션을
-   * rollback-only로 표시해 커밋 시점에 {@code UnexpectedRollbackException}이 터진다(= degrade가 무의미해지고
-   * 목록/상세가 통째로 500). 별도 트랜잭션으로 떼어내 실패 반경을 이 조회로 가둔다.
+   * <p><b>⚠️ 트랜잭션을 두지 않는다 — 어떤 {@code @Transactional}도 붙이지 말 것(#406).</b> 호출자(목록·상세)에도
+   * 트랜잭션이 없어서, 리포트 재조회({@code findAllByIdIn})는 공유 EntityManager가 그 조회 하나만을 위해 열고 닫으며
+   * 커넥션도 그동안만 쓴다. 이어서 리더가 REQUIRES_NEW로 하나씩 차례로 커넥션을 얻고 반납하므로, 요청 하나가 동시에
+   * 쥐는 커넥션은 1개다. 애노테이션을 붙이면 전파에 따라 이렇게 깨진다.
+   * <ul>
+   *   <li>REQUIRES_NEW·REQUIRED: 이 메서드의 트랜잭션이 커넥션을 쥔 채로 리더가 하나를 더 요구한다. #406 전에는
+   *       REQUIRES_NEW였고 호출자의 트랜잭션까지 겹쳐 요청 하나가 3개를 쥐었다 — Hikari 풀 15개에서 동시 요청 8건이면
+   *       서로 다음 커넥션을 기다리며 교착했다.</li>
+   *   <li>SUPPORTS·NEVER: 실제 트랜잭션 없이 트랜잭션 동기화 범위만 연다. 그 범위 안에서 나간 조회의 EntityManager가
+   *       메서드가 끝날 때까지 남고, spring-orm {@code HibernateJpaVendorAdapter}가 넣는
+   *       {@code DELAYED_ACQUISITION_AND_HOLD} 때문에 커넥션도 함께 쥔 채로 리더가 두 번째를 잡는다.</li>
+   * </ul>
+   * 리포트 재조회가 실패하면(커넥션을 못 얻으면 {@code DataAccessResourceFailureException}) 여기서 삼키지 않고 그대로
+   * 던진다. 호출자({@code ReportQueryService.analysesOrDegrade})가 받아서 판정을 낮춘다. 또 <b>트랜잭션
+   * 안에서 부르지 말 것</b> — 리포트 재조회가 그 트랜잭션에 참여했다가 실패하면 rollback-only가 남고, 리더는 바깥
+   * 커넥션을 쥔 채 하나를 더 잡는다(테스트 트랜잭션 안에서 부르는 테스트만 예외다).
+   *
+   * <p><b>예외 하나 — 운영 KMS의 콜드 스타트(#406에서 받아들인 위험).</b> {@code reports.question}은 엔티티를 읽을 때
+   * 복호화되는데, 그 키 버전의 데이터 키가 아직 캐시에 없으면 {@code EncryptionKeyStore}가 JdbcTemplate으로 커넥션을
+   * 하나 더 잡는다. 트랜잭션 밖이라 Hibernate가 결과셋 커넥션을 쥔 채이므로 그 순간만 2개가 된다. 범위는 prod(KMS)에서
+   * JVM이 뜬 뒤 그 키 버전을 처음 복호화하기 전, 목록·받은 제안 경로뿐이다 — 카드 쿼리는 {@code question}을 고르지 않고,
+   * 상세는 Reader 트랜잭션 안의 {@code findById}가, 폴링은 {@code findById}의 트랜잭션이 먼저 캐시를 채운다. 캐시는 빈
+   * 수명 동안 유지되고 리포트 생성(암호화)도 캐시를 채운다. 그 순간 커넥션을 못 얻으면 복호화 실패가
+   * {@code DataAccessException}으로 올라와 목록은 판정만 낮춘다. test·local은 raw 키라 테스트로는 재현되지 않는다.
+   * 기동할 때 데이터 키를 미리 적재해 이 구간을 없애는 일은 후속 과제로 남긴다.
    *
    * <p><b>저널 조회 실패는 리포트 단위 판정까지 버리지 않는다.</b> {@link TerminalFailureJournalReader}가
-   * 별도 Bean·별도 REQUIRES_NEW로 저널만 조회한다. 그 조회가 실패하면(GRANT 미적용 등) 예외가 이 메서드
-   * 호출 지점까지 올라오지만, 실패한 건 이미 롤백까지 끝난 별개의 트랜잭션이라 <b>여기서 잡아도 이 메서드
-   * 자신의 트랜잭션은 오염되지 않는다</b>(자가 호출이 아니라 별도 Bean 경유라 가능 — 같은 트랜잭션 안에서
-   * 예외만 삼키면 Postgres가 이후 문장을 전부 "aborted transaction"으로 막는다). 예외를 잡으면 빈 실패
-   * 목록으로 계속 진행한다 — {@code BLOCKED}·{@code NEEDS_REUPLOAD}는 {@code reports.status}만으로
+   * 별도 Bean·별도 REQUIRES_NEW로 저널만 조회한다. 그 조회가 실패하면(GRANT 미적용 등) 예외가 이 메서드까지
+   * 올라오지만, 실패한 건 이미 롤백까지 끝난 별개의 트랜잭션이라 잡고 계속 진행해도 된다(같은 트랜잭션 안에서
+   * 예외만 삼키면 Postgres가 이후 문장을 전부 "aborted transaction"으로 막는다 — 리더를 별도 Bean으로 뺀 이유다).
+   * 예외를 잡으면 빈 실패 목록으로 계속 진행한다 — {@code BLOCKED}·{@code NEEDS_REUPLOAD}는 {@code reports.status}만으로
    * 판정되고 저널이 전혀 필요 없으므로 {@link ReportAnalysis#of}가 그대로 두 상태를 살려낸다. 저널에 의존하는
    * {@code FAILED} 판정만 실질적으로 {@code PROCESSING}으로 낮아진다 — 저널 없이는 확정 실패 여부를 알 수
    * 없기 때문이다. 두 저널은 따로 조회·흡수하므로 한쪽(예: 아직 012가 없는 리포트 생성 저널)이 실패해도 다른
    * 쪽의 FAILED는 그대로 살아남는다. 호출자(예: {@code ReportQueryService.analysesOrDegrade})의 빈 맵 폴백은
-   * 이 메서드 자체가 실패하는(예: 리포트 배치 조회 실패) 더 드문 경우를 위한 마지막 방어선으로만 남는다.
+   * 이 메서드 자체가 실패하는(예: 리포트 재조회 실패) 더 드문 경우를 위한 마지막 방어선으로만 남는다.
    */
-  @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
   public Map<UUID, ReportAnalysis> resolveAll(Collection<UUID> reportIds) {
     if (reportIds == null || reportIds.isEmpty()) {
       return Map.of();
@@ -166,8 +184,8 @@ public class ReportAnalysisResolver {
 
   /**
    * 목록·상세용 — OCR 확정 실패 저널 조회가 실패하면 빈 맵으로 degrade한다. 리더의 REQUIRES_NEW 시작(커넥션
-   * 획득)이 실패하는 {@link TransactionException}도 흡수한다 — 시작 실패는 이 메서드의 트랜잭션을 되살린 뒤
-   * 던져지므로 이어지는 조회에 영향이 없다.
+   * 획득)이 실패하는 {@link TransactionException}도 흡수한다 — 바깥 트랜잭션이 없으니 되살릴 것도 없고 이어지는 조회에
+   * 영향이 없다. 요청 하나가 커넥션을 1개만 쥐므로 이 실패는 전역 풀 고갈일 때만 난다.
    */
   private Map<UUID, List<OcrJobFailureView>> ocrJobFailuresOrEmpty(List<UUID> targets) {
     try {
@@ -232,8 +250,9 @@ public class ReportAnalysisResolver {
   /**
    * 품질 미달 문서 조회 실패는 항상 빈 맵으로 degrade한다(GRANT 미배포면 매번 실패). NEEDS_REUPLOAD 상태
    * 판정 자체는 {@code reports.status}만으로 이미 정확하므로, 이 조회는 문서 특정만 못 할 뿐이다. 리더의
-   * REQUIRES_NEW 시작(커넥션 획득)이 실패하는 {@link TransactionException}도 같은 이유로 흡수한다 — 시작 실패는 호출자의
-   * 트랜잭션을 되살린 뒤 던져지므로 흡수해도 안전하다(형제 조회 {@link #reuploadCausesOrEmpty}와 같은 기준).
+   * REQUIRES_NEW 시작(커넥션 획득)이 실패하는 {@link TransactionException}도 같은 이유로 흡수한다 — 시작 실패는 리더
+   * 트랜잭션이 열리기도 전에 나고(호출자에게 트랜잭션이 있으면 그것을 되살린 뒤 던져진다) 흡수해도 안전하다(형제 조회
+   * {@link #reuploadCausesOrEmpty}와 같은 기준).
    *
    * @param needsReuploadReportIds NEEDS_REUPLOAD 리포트 id만 넘긴다({@link ReportAnalysis#requiresReuploadInputs}).
    *                               비어 있으면 조회하지 않는다

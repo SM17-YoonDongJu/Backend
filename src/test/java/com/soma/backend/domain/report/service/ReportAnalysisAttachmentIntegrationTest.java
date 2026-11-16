@@ -45,9 +45,9 @@ import com.soma.backend.domain.report.repository.ReportRepository;
 /**
  * 목록·상세에 분석 상태를 붙이는 경로의 통합 검증(design.md §15 Q3·Q13).
  *
- * <p><b>{@code @Transactional}을 쓰지 않는다</b> — 분석 상태 배치 조회({@code resolveAll})가
- * {@code REQUIRES_NEW}라 별도 커넥션의 새 트랜잭션에서 돌기 때문에, 테스트 트랜잭션에 갇힌(미커밋) 시드는
- * 아예 보이지 않는다. 실제 운영과 같은 커밋 경로로 검증하고 커밋한 데이터는 {@code @AfterEach}에서 지운다.
+ * <p><b>{@code @Transactional}을 쓰지 않는다</b> — 실패 저널·재업로드 입력을 읽는 리더가 {@code REQUIRES_NEW}라
+ * 별도 커넥션의 새 트랜잭션에서 돌기 때문에, 테스트 트랜잭션에 갇힌(미커밋) 시드는 아예 보이지 않는다. 실제 운영과
+ * 같은 커밋 경로로 검증하고 커밋한 데이터는 {@code @AfterEach}에서 지운다.
  */
 @SpringBootTest
 @ActiveProfiles("test")

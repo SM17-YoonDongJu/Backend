@@ -26,16 +26,20 @@ import com.soma.backend.domain.report.repository.ReportJobFailureViewRepository;
  * (REQUIRES_NEW)으로 격리한다.
  *
  * <p>PostgreSQL은 트랜잭션 안에서 문장 하나가 실패하면 커밋·롤백 전까지 같은 트랜잭션의 이후 모든 문장이
- * "current transaction is aborted"로 연쇄 실패한다. {@link ReportAnalysisResolver#resolveAll}이
- * 같은 트랜잭션 안에서 이 조회를 직접 하고 예외를 잡기만 하면, 저널 조회는 실패해도 그 뒤에 이어지는
- * {@code reportRepository.findAllByIdIn} 호출까지 같은 트랜잭션이라 함께 실패해 버린다(자가 호출이라
- * {@code @Transactional} 재적용도 안 된다 — 별도 Bean으로 빼야 실제로 새 트랜잭션·새 커넥션이 열린다).
+ * "current transaction is aborted"로 연쇄 실패하고, Hibernate는 그 세션을 rollback-only로 표시한다. 그래서 호출자의
+ * 트랜잭션 안에서 이 조회를 직접 하고 예외만 잡으면, 저널 조회 뒤에 이어지는 문장까지 함께 실패하거나 커밋 시점에
+ * {@code UnexpectedRollbackException}이 터진다(자가 호출이라 {@code @Transactional} 재적용도 안 된다 — 별도 Bean으로
+ * 빼야 실제로 새 트랜잭션·새 커넥션이 열린다).
  *
- * <p><b>예외를 여기서 삼키지 않는다.</b> 삼기면 Spring이 "메서드가 정상 종료했다"고 보고 이 REQUIRES_NEW
+ * <p><b>이 격리가 실제로 지키는 호출자.</b> 바깥 트랜잭션을 가진 분석 실패 알림 스윕(쓰기 트랜잭션)과, 원래 트랜잭션의
+ * 자원이 아직 묶여 있는 AFTER_COMMIT 리스너다. 목록·상세·폴링 조회는 #406 이후 바깥 트랜잭션이 없어서, 여기서는 새
+ * 트랜잭션 하나를 차례로 쓸 뿐이다(요청 하나가 동시에 쥐는 커넥션 1개 — {@link ReportAnalysisResolver#resolveAll}
+ * 참고). 그쪽에 다시 바깥 트랜잭션을 두면 이 REQUIRES_NEW가 바깥 커넥션을 쥔 채 하나를 더 잡는다.
+ *
+ * <p><b>예외를 여기서 삼키지 않는다.</b> 삼키면 Spring이 "메서드가 정상 종료했다"고 보고 이 REQUIRES_NEW
  * 트랜잭션을 커밋하려 드는데, 이미 Postgres 세션이 aborted 상태라 커밋 자체가 실패한다. 예외를 그대로
- * 던져야 Spring이 이 트랜잭션을 롤백하고 커넥션을 정상 상태로 되돌린다 — 호출자({@link
- * ReportAnalysisResolver#resolveAll})가 자신의 트랜잭션 바깥(= 이 메서드 호출이 끝난 뒤)에서
- * 예외를 잡아야 자기 트랜잭션은 오염되지 않는다.
+ * 던져야 Spring이 이 트랜잭션을 롤백하고 커넥션을 정상 상태로 되돌린다 — 호출자는 이 메서드 호출이 끝난 뒤
+ * (= 이 트랜잭션이 롤백까지 마친 뒤) 예외를 잡아 판정을 낮춘다.
  *
  * <p><b>두 저널을 메서드 단위로 따로 격리한다.</b> 리포트 생성 저널(012)은 AI report 워커가 기동할 때 환경별로
  * 적용하므로, OCR 저널(008)은 있는데 012는 아직 없는 환경이 생긴다. 한 트랜잭션으로 묶으면 012 부재가 OCR

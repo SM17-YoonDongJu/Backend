@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.sql.SQLException;
 import java.sql.SQLTransientConnectionException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.BeanUtils;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.InvalidDataAccessResourceUsageException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.CannotCreateTransactionException;
@@ -172,6 +174,37 @@ class ReportAnalysisResolverTest {
     assertThatThrownBy(() -> resolver.reportJobFailuresOrEmptyIfJournalMissing(List.of(reportId)))
         .isInstanceOf(CannotCreateTransactionException.class);
     assertThat(degraded("report_job")).isZero();
+  }
+
+  @Test
+  @DisplayName("#406 — 리포트 재조회가 커넥션을 못 얻으면 삼키지 않고 던지며(호출자가 흡수) 리더를 부르지 않는다")
+  void resolveAllRethrowsWhenReportReloadCannotGetConnection() {
+    // Given: 트랜잭션 없는 파생 쿼리가 풀 고갈로 실패할 때의 실제 예외 — DataAccessException이라
+    //        ReportQueryService.analysesOrDegrade가 흡수한다
+    given(reportRepository.findAllByIdIn(anyList())).willThrow(new DataAccessResourceFailureException(
+        "Unable to acquire JDBC Connection",
+        new SQLTransientConnectionException("HikariPool-1 - Connection is not available, request timed out")));
+
+    // When & Then
+    assertThatThrownBy(() -> resolver.resolveAll(List.of(UUID.randomUUID())))
+        .isInstanceOf(DataAccessResourceFailureException.class);
+    verifyNoInteractions(terminalFailureJournalReader, needsReuploadDocumentReader, claimReadinessReader);
+    assertThat(degraded("ocr_job")).isZero();
+    assertThat(degraded("report_job")).isZero();
+  }
+
+  @Test
+  @DisplayName("#406 — 대상이 비어 있으면 리포트 재조회도 리더도 부르지 않는다(빈 페이지는 DB를 건드리지 않는다)")
+  void resolveAllSkipsDatabaseForEmptyInput() {
+    List<UUID> onlyNull = new ArrayList<>();
+    onlyNull.add(null);
+
+    assertThat(resolver.resolveAll(List.of())).isEmpty();
+    assertThat(resolver.resolveAll(null)).isEmpty();
+    assertThat(resolver.resolveAll(onlyNull)).isEmpty();
+
+    verifyNoInteractions(reportRepository, terminalFailureJournalReader, needsReuploadDocumentReader,
+        claimReadinessReader);
   }
 
   @Test
