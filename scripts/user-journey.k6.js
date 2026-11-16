@@ -12,7 +12,8 @@
 // - RATE: 초당 화면 진입 수(기본 10). 기본 비중이면 화면 1번에 요청이 평균 3개쯤이라 RATE=10은 약 30 RPS다
 // - DURATION: 유지 시간(기본 5m)
 // - MAX_VUS: 화면 scenario VU 수(기본 200). 처음부터 전부 띄운다(아래 '계정 나눠 갖기')
-// - POLL_USERS: 분석 결과를 기다리는 사용자 수(기본 0 = 끔). 1명이 5초에 1번 상세를 부른다(100명이면 약 20 RPS)
+// - POLL_USERS: 분석 결과를 기다리는 사용자 수(기본 0 = 끔). 1명이 5초에 1번 상세를 부른다(100명이면 약 20 RPS).
+//   출발 시점은 처음 5초 안에 무작위로 흩는다(poll 참고)
 // - MIX: 화면 비중(기본 home:28,report_detail:18,chat_room:14,chat_talk:10,chat_list:8,reports_list:10,adjusters:6,proposals:4,mypage:2)
 // - SESSION_START: 세션 첫 화면 비율(기본 0.2). 첫 화면이면 공통 레이아웃의 내 정보·알림 호출이 같이 나간다
 //   (프론트가 30분 캐시하므로 그 뒤 화면에서는 나가지 않는다)
@@ -182,6 +183,11 @@ function buildScenarios() {
 function buildThresholds() {
   const thresholds = {
     'http_req_failed{phase:main}': ['rate<0.01'],
+    // 아래 두 줄은 판정용이다. 서버 커넥션 풀이 잠겨도 실패율·p95만 보면 통과할 수 있다 — 30초씩 밀린 요청은
+    // 소수라 p95에 안 잡히고, 끝까지 응답을 못 받은 이터레이션은 graceful stop에서 끊겨 실패로 세지 않는다.
+    // 그래서 VU가 모자라 못 보낸 화면이나 10초 넘게 걸린 요청이 하나라도 있으면 실패로 본다.
+    dropped_iterations: ['count<1'],
+    'http_req_duration{phase:main}': ['max<10000'],
   };
   for (const name of Object.keys(SCREENS)) {
     thresholds[`screen_duration{screen:${name}}`] = ['p(95)<1500'];
@@ -380,7 +386,13 @@ export function screen(data) {
 }
 
 export function poll(data) {
-  // 대기 사용자 1명 = VU 1개. 자기 계정의 리포트 하나를 띄워 두고 5초마다 상세를 다시 부른다
+  // 대기 사용자 1명 = VU 1개. 자기 계정의 리포트 하나를 띄워 두고 5초마다 상세를 다시 부른다.
+  // 첫 회에만 0~5초를 무작위로 쉬고 출발한다. constant-vus는 VU를 한꺼번에 시작하므로, 이게 없으면 POLL_USERS명이
+  // 같은 순간에 상세를 부르고 그 뒤로도 5초마다 함께 몰린다. 실제 사용자는 상세 화면을 연 시점이 제각각이다.
+  // (POLL_USERS=24로 돌렸을 때 이 몰림 때문에 본 측정 첫 1초에 서버 커넥션 풀이 잠겼다.)
+  if (exec.vu.iterationInScenario === 0) {
+    sleep(Math.random() * POLL_INTERVAL_SECONDS);
+  }
   const acc = myAccounts(data)[0];
   const token = accessToken(acc);
   const id = acc.reports[exec.vu.idInTest % acc.reports.length];
