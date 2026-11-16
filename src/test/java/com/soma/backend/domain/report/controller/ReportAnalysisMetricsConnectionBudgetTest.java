@@ -41,10 +41,11 @@ import com.soma.backend.global.security.CustomUserDetails;
  * 리더(REQUIRES_NEW)가 두 번째 커넥션을 기다리다 타임아웃되고, 응답이 {@code UNAVAILABLE}로 떨어져 이 테스트가
  * 깨진다(2026-11-11 커넥션 풀 교착과 같은 구조). 짧은 대기 시간(5초)은 스케줄러 등의 순간 점유를 흡수하는 여유다.
  *
- * <p>이 클래스는 상세·목록 API를 부르지 않는다 — 그쪽은 바깥 트랜잭션 + REQUIRES_NEW 구조라 풀 1개에서 실패하는
- * 것이 정상이다. 풀 설정이 달라 컨텍스트가 하나 더 뜬다. 그 컨텍스트를 정리하겠다고 {@code @DirtiesContext}를
- * 붙이지 말 것 — test 프로파일이 {@code ddl-auto: create-drop}이라 컨텍스트가 닫히면 공유 test_db의 테이블이 전부
- * DROP돼 뒤에 도는 테스트 클래스가 깨진다.
+ * <p>목록·받은 제안·상세·분석 상태 폴링도 #406부터 같은 예산(요청당 1개)을 지키며, 같은 풀 설정의
+ * {@code ReportQueryConnectionBudgetTest}·{@code ReuploadReasonConnectionBudgetTest}가 이 컨텍스트를 공유해 잡는다. 풀
+ * 설정이 기본과 달라 컨텍스트가 하나 더 뜬다. 그 컨텍스트를 정리하겠다고 {@code @DirtiesContext}를 붙이지 말 것 — test
+ * 프로파일이 {@code ddl-auto: create-drop}이라 컨텍스트가 닫히면 공유 test_db의 테이블이 전부 DROP돼 뒤에 도는 테스트
+ * 클래스가 깨진다.
  */
 @SpringBootTest(properties = {
   "spring.datasource.hikari.maximum-pool-size=1",

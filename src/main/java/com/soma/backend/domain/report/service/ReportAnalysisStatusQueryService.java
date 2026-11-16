@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,11 +31,18 @@ import com.soma.backend.global.exception.ErrorCode;
  *
  * <p>상태는 저장하지 않고 매번 파생한다: AI 초안 존재 여부(reports) + 확정 실패 행({@code ai.ocr_job_failures}·
  * {@code ai.report_job_failures}).
+ *
+ * <p><b>⚠️ 의도적으로 {@code @Transactional}이 없다 — 붙이지 말 것(#406).</b> {@code ReportQueryService}와 같은 이유다.
+ * 리포트 생성 저널·품질 미달 문서·재업로드 사유 리더가 REQUIRES_NEW라, 바깥 트랜잭션이 있으면 그 커넥션을 쥔 채 하나를 더
+ * 요구한다(#406 전에는 요청 하나가 최대 2개를 쥐었다). 지금은 {@code findById}(Spring Data 기본 readOnly 트랜잭션 —
+ * 끝나면 반납), OCR 저널·첨부 이름 조회(트랜잭션 없이 조회마다 얻고 반납), 리더(하나씩 차례로)가 서로 겹치지 않아 요청
+ * 하나가 동시에 쥐는 커넥션은 1개다. 실패 정책(OCR 저널 오류는 500, 리포트 생성 저널은 테이블이 없을 때만 낮춤)은 아래 메서드
+ * javadoc 그대로다. 이 회귀는 {@code ReportQueryConnectionBudgetTest}·{@code ReuploadReasonConnectionBudgetTest}(Hikari 풀
+ * 1개)가 잡는다.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class ReportAnalysisStatusQueryService {
 
   private final ReportRepository reportRepository;

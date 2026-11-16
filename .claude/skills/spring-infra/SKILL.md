@@ -76,7 +76,13 @@ spring:
       connection-timeout: 30000   # 커넥션 대기 30초 초과 시 예외
 ```
 
-- **10 → 15로 올린 이유(실제 사례):** `ReportAnalysisResolver.resolveAll`이 `REQUIRES_NEW`로 별도 트랜잭션을 쓴다 — 호출자(목록/상세 조회)의 트랜잭션 안에서 예외를 잡으면 Hibernate가 세션을 rollback-only로 표시해 커밋 시 `UnexpectedRollbackException`이 다시 터지기 때문에(degrade 로직이 성립하려면 REQUIRES_NEW가 필수) 격리를 택했다. 그런데 Spring이 `REQUIRES_NEW` 진입 시 바깥 트랜잭션의 커넥션을 반납하지 않고 그대로 쥔 채 새 커넥션을 하나 더 받으므로, **요청 하나가 순간적으로 커넥션 2개를 점유**한다. 동시 요청이 몰리면 실효 동시성이 절반으로 줄어 10에서는 `connection-timeout`이 날 수 있어 여유를 뒀다(design.md `feat/ocr-failure-status` §14 I4). **같은 함정을 피하려면:** `REQUIRES_NEW`를 캐치-앤-디그레이드 용도로 쓸 때마다 풀 크기를 이 배율만큼 다시 계산할 것 — 무조건 늘리기보다, 가능하면 그 조회를 호출자의 트랜잭션 밖(비-트랜잭션 컨텍스트)에서 실행해 애초에 이중 점유를 피하는 구조도 함께 검토한다(이번엔 `open-in-view: false`상 DTO 조립이 트랜잭션 안에서 끝나야 해서 구조 변경 대신 풀 크기 증설을 택했다).
+- **15인 이유와 #406 정리(실제 사례)**
+  - **이력:** 처음 10 → 15로 올린 건 목록·상세 조회가 바깥 readOnly 트랜잭션을 쥔 채 `ReportAnalysisResolver.resolveAll`(REQUIRES_NEW)로 커넥션을 하나 더 잡았기 때문이다. 실패 저널 조회의 degrade를 격리하려고 REQUIRES_NEW를 썼는데, Spring은 `REQUIRES_NEW` 진입 시 바깥 트랜잭션의 커넥션을 반납하지 않고 쥔 채 새 커넥션을 하나 더 받는다(design.md `feat/ocr-failure-status` §14 I4).
+  - **증설로 풀리는 문제가 아니었다:** 그 뒤 리더(REQUIRES_NEW)가 한 단계 더 붙어 요청 하나가 최대 3개를 쥐게 됐다. 풀이 `동시 요청 수 × (요청당 동시 점유 − 1) + 1`보다 작으면 각 요청이 커넥션을 쥔 채 다음 것을 기다리며 아무도 진행하지 못한다 — 요청당 3개면 풀 15에서 동시 8건이다. dev 부하테스트에서 그대로 재현됐다(2026-11-11 콜드 10 RPS에서 727건 중 3건 성공, 11-16 약 130 RPS에서 5분째 교착).
+  - **#406의 해결:** 조회 서비스의 클래스 트랜잭션과 `resolveAll`의 애노테이션을 없애고, 지연 로딩이 필요한 상세 본 조회만 짧은 readOnly Reader(`CustomerReportDetailReader`, 기본 전파)로 떼어 요청당 1개로 줄였다. `open-in-view: false`라 DTO 조립을 트랜잭션 안에서 끝내야 한다는 제약도 이 Reader가 맡는다.
+  - **규칙:** REQUIRES_NEW 리더를 부르는 조회 경로에는 바깥 트랜잭션을 두지 않는다. `Propagation.SUPPORTS`·`NEVER`도 안 된다 — 동기화 범위가 열리면 spring-orm `HibernateJpaVendorAdapter`가 넣는 `DELAYED_ACQUISITION_AND_HOLD` 때문에 그 안의 조회가 커넥션을 메서드가 끝날 때까지 쥔다. 회귀는 Hikari 풀을 1개로 줄인 `*ConnectionBudgetTest`로 고정한다(`ReportQueryConnectionBudgetTest`·`ReuploadReasonConnectionBudgetTest`·`ReportAnalysisMetricsConnectionBudgetTest`). 같은 패턴을 새로 쓸 때는 풀을 늘리기 전에 그 조회를 바깥 트랜잭션 밖으로 빼는 구조부터 검토한다.
+  - **15를 유지하는 이유:** 쓰기 경로 일부(REQUIRES_NEW Writer)·분석 실패 알림 스윕·AFTER_COMMIT 리스너는 아직 스레드당 2개를 쥘 수 있다.
+  - **남은 예외:** 운영(KMS)에서 데이터 키 캐시가 빈 콜드 스타트 구간에는 목록 경로가 `reports.question` 복호화 때문에 순간 2개를 쥔다(`ReportAnalysisResolver#resolveAll` javadoc, 기동 시 DEK 선적재는 후속 과제).
 
 **하드닝 TODO(아직 미적용 — 권장 추가값):**
 ```yaml
