@@ -212,7 +212,7 @@ AI는 구현과 검증을 자동화하지만, 저장소 히스토리와 외부 �
 구현 원칙:
 
 - JPA 엔티티를 추가하면 반드시 Flyway migration도 추가한다.
-- 조회 서비스는 기본적으로 `@Transactional(readOnly = true)`를 사용한다.
+- 조회 서비스는 기본적으로 `@Transactional(readOnly = true)`를 사용한다. 단, REQUIRES_NEW 협력 객체(리더)를 부르는 조회 유스케이스는 트랜잭션을 두지 않는다 — 바깥 트랜잭션이 커넥션을 쥔 채 리더가 하나를 더 잡아, 동시 요청이 몰리면 커넥션 풀이 교착할 수 있다(#406). 지연 로딩이 필요한 본 조회만 짧은 readOnly `*Reader`(별도 Bean, 기본 전파)로 떼어낸다(`ReportQueryService`·`CustomerReportDetailReader` 참고).
 - 비즈니스 예외는 `BusinessException(ErrorCode)` 패턴을 따른다.
 - 응답 필드는 Jackson 설정을 이용해 snake_case로 직렬화한다.
 - 보안이 필요한 엔드포인트는 SecurityConfig 또는 `@PreAuthorize`로 명시한다.

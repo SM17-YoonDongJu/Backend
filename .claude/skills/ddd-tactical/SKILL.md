@@ -168,17 +168,18 @@ public class MatchService {
 }
 ```
 
-- 조회 메서드는 `@Transactional(readOnly = true)`.
+- 조회 메서드는 `@Transactional(readOnly = true)`. 예외: REQUIRES_NEW 협력 객체(리더)를 부르는 조회 유스케이스는 트랜잭션을 두지 않는다(아래 REQUIRES_NEW 항목과 함정 3, #406).
 - 서비스는 **얇게** — 흐름(조회→도메인 메서드 호출→저장)만 조율하고, 규칙 판단은 엔티티에 위임한다. `if`로 상태를 검사해서 값을 바꾸고 있다면 그 로직은 엔티티로 내려야 한다는 신호다(anemic domain 경고).
 - 컨텍스트 간 협력은 상대 컨텍스트의 `service`를 주입해 쓰되, 순환 의존이 생기면 도메인 이벤트로 끊는다.
-- **다른 팀 소유 테이블 조회를 `try/catch`로 degrade시킬 땐 `REQUIRES_NEW`가 필수다.** 호출자의 `@Transactional` 메서드 안에서 그 조회가 `DataAccessException`을 던지고 그걸 그 자리에서 잡아도, Hibernate는 이미 세션을 rollback-only로 표시해버려 커밋 시점에 `UnexpectedRollbackException`이 다시 터진다(degrade가 무의미해짐). 격리하려면 그 조회 메서드에 `@Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)`를 붙이고 호출자가 그 메서드 호출만 `catch (DataAccessException)`한다. 대가는 있다 — Spring이 `REQUIRES_NEW` 진입 시 바깥 트랜잭션의 커넥션을 반납하지 않고 쥔 채로 새 커넥션을 하나 더 받으므로, **요청 하나가 순간적으로 HikariCP 커넥션 2개를 점유**한다. 이 패턴을 쓸 때마다 풀 크기(`spring.datasource.hikari.maximum-pool-size`)를 다시 검토할 것(spring-infra 스킬 §3 실제 사례 참고).
+- **다른 팀 소유 테이블 조회를 `try/catch`로 degrade시킬 땐 `REQUIRES_NEW`가 필수다.** 호출자의 `@Transactional` 메서드 안에서 그 조회가 `DataAccessException`을 던지고 그걸 그 자리에서 잡아도, Hibernate는 이미 세션을 rollback-only로 표시해버려 커밋 시점에 `UnexpectedRollbackException`이 다시 터진다(degrade가 무의미해짐). 격리하려면 그 조회 메서드에 `@Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)`를 붙이고 호출자가 그 메서드 호출만 `catch (DataAccessException | TransactionException)`한다. 커넥션을 못 얻어 새 트랜잭션 시작 자체가 실패하면 `CannotCreateTransactionException`(`TransactionException`이지 `DataAccessException`이 아니다)이 나므로, `DataAccessException`만 잡으면 풀 고갈 때 그대로 500이 된다. 실패를 500으로 드러내야 하는 경로(분석 상태 폴링의 리포트 생성 저널)만 예외다. 대가는 있다 — Spring이 `REQUIRES_NEW` 진입 시 바깥 트랜잭션의 커넥션을 반납하지 않고 쥔 채로 새 커넥션을 하나 더 받는다. 그래서 **이 리더를 부르는 조회 유스케이스는 바깥 트랜잭션 없이 부른다** — 유스케이스 서비스에 `@Transactional`을 두지 않고, 지연 로딩이 필요한 본 조회만 짧은 readOnly Reader(별도 Bean, 기본 전파)로 떼어낸다(`ReportQueryService`·`CustomerReportDetailReader`·`ReportAnalysisMetricsQueryService` 참고). 그러면 요청 하나가 동시에 쥐는 커넥션은 1개다. 바깥 트랜잭션을 그대로 둔 채 풀 크기를 늘리는 건 답이 아니다(spring-infra 스킬 §3 실제 사례 참고). 바깥 트랜잭션이 원래 있는 호출자(쓰기 트랜잭션 안의 스윕, AFTER_COMMIT 리스너)는 여전히 스레드당 2개를 쥘 수 있어 풀 크기를 함께 검토한다.
 
 ### REQUIRES_NEW로 실패를 격리할 때 흔한 함정
 
-다른 팀 소유 스키마 조회(`ai.*`)처럼 실패할 수 있는 조회를 `@Transactional(propagation = REQUIRES_NEW)`로 감싸는 이유는 그 실패가 호출자 트랜잭션을 오염시키지 않게 하기 위해서다. 아래 둘을 지키지 않으면 격리가 무의미해진다(NEEDS_REUPLOAD degrade 버그, PR #251에서 실제로 겪음).
+다른 팀 소유 스키마 조회(`ai.*`)처럼 실패할 수 있는 조회를 `@Transactional(propagation = REQUIRES_NEW)`로 감싸는 이유는 그 실패가 호출자 트랜잭션을 오염시키지 않게 하기 위해서다. 1·2를 지키지 않으면 격리가 무의미해지고(NEEDS_REUPLOAD degrade 버그, PR #251에서 실제로 겪음), 3을 지키지 않으면 동시 요청이 몰릴 때 커넥션 풀이 교착할 수 있다(#406).
 
 1. **같은 클래스 안에서 자가 호출(self-invocation)하면 `@Transactional`이 안 걸린다.** Spring AOP 프록시는 외부에서 들어오는 호출만 가로채므로, `this.foo()`로 부르면 새 트랜잭션이 열리지 않고 호출자의 트랜잭션을 그대로 쓴다. 격리하려면 **별도 Bean**(`@Component`/`@Service`)으로 분리해 주입해서 호출해야 한다(`ReportHoldWriter`·`TerminalFailureJournalReader` 참고).
 2. **격리된 트랜잭션 안에서 예외를 삼키면 안 된다.** PostgreSQL은 트랜잭션 안에서 문장 하나가 실패하면 커밋·롤백 전까지 이후 모든 문장이 "current transaction is aborted"로 연쇄 실패한다. `REQUIRES_NEW` 메서드 **안에서** try/catch로 예외를 삼키면, Spring은 메서드가 정상 종료했다고 보고 그 트랜잭션을 커밋하려 드는데 DB 세션은 이미 aborted 상태라 커밋 자체가 실패한다. 예외는 메서드 밖으로 그대로 던져 Spring이 트랜잭션을 롤백하게 하고, **호출자가 그 호출 지점에서(자기 트랜잭션 안에서) 잡아야** 한다.
+3. **조회 경로에서 바깥 트랜잭션 안에 두면 커넥션 예산이 깨진다.** `REQUIRES_NEW`는 바깥 커넥션을 쥔 채 하나를 더 받는다. 목록·상세·폴링 같은 조회 유스케이스가 클래스 `@Transactional(readOnly = true)`를 쥔 채 리더를 부르면 요청 하나가 2개 이상을 쥐고, 풀이 "동시 요청 수 × (요청당 동시 점유 − 1) + 1"보다 작으면 서로 다음 커넥션을 기다리며 교착할 수 있다(#406 — 요청당 3개, 풀 15에서 동시 8건). 리더를 부르는 쪽은 트랜잭션 없이 부른다. `Propagation.SUPPORTS`·`NEVER`로 바꾸는 것도 답이 아니다 — 실제 트랜잭션 없이 동기화 범위를 열어, 그 안에서 나간 조회의 EntityManager가 메서드가 끝날 때까지 커넥션을 쥔다(spring-orm `HibernateJpaVendorAdapter`의 `DELAYED_ACQUISITION_AND_HOLD`). 이 예산은 Hikari 풀을 1개로 줄인 테스트(`ReportQueryConnectionBudgetTest`)로 고정한다.
 
 ## 6. Controller · DTO 매핑
 

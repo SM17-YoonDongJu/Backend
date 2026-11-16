@@ -23,6 +23,7 @@ description: "Spring Boot 코드 리뷰, 테스트 작성(JUnit5·Mockito·@Spri
 - 보안 리뷰에서 인증 쿠키(`access_token`) 누락·검증, 권한 상승, 민감정보 노출을 중점 확인한다
 - 조회 로직의 native query(`nativeQuery = true`) 사용을 점검한다 — 동적 조회는 QueryDSL, 단순 조회는 Spring Data 파생 쿼리·JPQL이 원칙이며, 사유 주석이 달린 '문서화된 예외'(미매핑 테이블 조인 등) 외의 native는 WARNING으로 지적한다
 - 실패 격리용 `@Transactional(REQUIRES_NEW)`가 **같은 클래스 안에서 자가 호출**되고 있으면 CRITICAL로 지적한다 — Spring AOP 프록시는 자가 호출을 가로채지 못해 새 트랜잭션이 열리지 않는다(별도 Bean으로 분리해야 함, `TerminalFailureJournalReader` 참고). 그 메서드 **안에서** 예외를 삼키고 있어도 지적한다 — PostgreSQL은 트랜잭션 중 한 문장이 실패하면 롤백 전까지 이후 문장이 전부 aborted라, 삼키면 커밋 시점에 실패한다(예외는 밖으로 던지고 호출자가 자기 트랜잭션에서 잡아야 한다)
+- REQUIRES_NEW 리더·라이터를 부르는 **조회 경로**가 바깥 `@Transactional` 안에 있으면 CRITICAL로 지적한다 — 요청 하나가 커넥션을 2개 이상 쥐고, 풀이 "동시 요청 수 × (요청당 동시 점유 − 1) + 1"보다 작으면 서로 다음 커넥션을 기다리며 교착한다(#406 — 요청당 3개, 풀 15에서 동시 8건). `Propagation.SUPPORTS`·`NEVER`도 같다(실제 트랜잭션 없이 동기화 범위를 열어 그 안의 조회가 커넥션을 메서드 끝까지 쥔다). 지연 로딩이 필요한 본 조회만 짧은 readOnly `*Reader`(기본 전파 — REQUIRES_NEW 아님)로 분리했는지, Hikari 풀 1개 `*ConnectionBudgetTest`로 고정했는지 확인한다(`ReportQueryService`·`CustomerReportDetailReader`·`ReportQueryConnectionBudgetTest` 참고)
 - 신규 `NotificationType` 값이 형제 값(`ANALYSIS_FAILED`·`REPORT_BLOCKED`·`REPORT_NEEDS_REUPLOAD`)과 접두어 관례(도메인_사유)를 지키는지 확인한다 — 접두어 없이 `reports.status`/`AnalysisState`와 동일한 문자열을 쓰면 FE가 `notifications.type`/FCM `data.type`을 응답 필드와 같은 네임스페이스로 오인할 수 있다
 
 ## 테스트 우선순위
