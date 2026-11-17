@@ -430,7 +430,7 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 | `needs_reupload_notified_at` | timestamp(nullable) | NEEDS_REUPLOAD 알림 발송 시각(V43). NULL=미통지, 별도 스윕(`ReportNeedsReuploadNotificationSweeper`)의 멱등 가드 |
 | `claimed_min_amount` | bigint | 최소 청구 금액 (단정 표현 금지 — 범위로 표현) |
 | `claimed_max_amount` | bigint | 최대 청구 금액 |
-| `offered_amount` | bigint | 보험사 지급 금액 |
+| `offered_amount` | integer | 보험사 지급 금액(제시액, nullable) — 접수 시 사용자 입력. 생성 시 Spring(`Report.createPending`)이 `POST /reports`의 `offered_amount`로 채우며 같은 요청의 `user_claims.offered_amount`와 같은 값이다(#408 — 그 전 리포트는 NULL, 백필 없음). AI 초안 컬럼이 아니다: AI 워커는 읽어서 청구 가능 범위(`claimed_min/max_amount`) 계산에 쓸 뿐 쓰지 않고, 생성 후 바꾸는 경로도 없다 |
 | `applicable_guarantees` | string[] | 적용 가능 보장 목록 (AI 원본 — 사정사 수정본은 REPORT_REVIEWS) |
 | `omitted_special_contract` | string[] | 누락 가능 특약 목록 (AI 원본) |
 | `basis_terms_precedents` | string[] | 근거 약관·판례 (AI 원본) |
