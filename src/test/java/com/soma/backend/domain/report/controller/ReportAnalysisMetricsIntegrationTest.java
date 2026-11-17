@@ -86,7 +86,7 @@ class ReportAnalysisMetricsIntegrationTest {
   }
 
   private UUID saveReport(UUID ownerId, String confidenceLevel, ReportStatus status) {
-    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, "후유장해 청구가 가능한가요?",
+    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "후유장해 청구가 가능한가요?",
         "RAM-" + UUID.randomUUID().toString().substring(0, 12));
     ReflectionTestUtils.setField(report, "confidenceLevel", confidenceLevel);
     ReflectionTestUtils.setField(report, "status", status);

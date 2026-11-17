@@ -118,7 +118,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "영수증과 진료확인서는 전부 영문으로 되어 있는데 번역 공증이 필요한지 궁금합니다.",
         300_000, reportAt.toLocalDate().minusDays(3), reportAt);
 
-    Report report = createReport(CUSTOMER_4, claimId, AccidentType.OTHER,
+    Report report = createReport(CUSTOMER_4, claimId, AccidentType.OTHER, 300_000,
         "여행 중에 배탈이 나서 현지 병원에 다녀왔는데 국내 실손보험으로 해외 진료비도 청구가 가능한지 궁금합니다.", reportAt);
     patchAiDraft(report.getId(), 200_000, 350_000, 300_000,
         List.of("해외여행 실손의료비"), List.of(), List.of("약관 제5조 해외 발생 의료비 보상 기준"),
@@ -156,7 +156,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "영수증은 회차별로 각각 발급받아서 전부 제출했습니다.",
         900_000, reportAt.toLocalDate().minusDays(20), reportAt);
 
-    Report report = createReport(CUSTOMER_1, claimId, AccidentType.MEDICAL_INDEMNITY,
+    Report report = createReport(CUSTOMER_1, claimId, AccidentType.MEDICAL_INDEMNITY, 900_000,
         "허리 디스크로 신경차단술을 3번 받았는데 실손 보험금이 회차별로 다 나오는지 궁금합니다.", reportAt);
     patchAiDraft(report.getId(), 800_000, 950_000, 900_000,
         List.of("질병통원 실손의료비", "비급여 주사료 특약"), List.of(), List.of("약관 제8조 통원의료비 지급기준"),
@@ -216,7 +216,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "3주 정도 통원 치료를 받았고 지금은 많이 호전됐습니다. 사고사실확인원은 경찰서에서 발급받아 첨부했습니다.",
         1_100_000, reportAt.toLocalDate().minusDays(28), reportAt);
 
-    Report report = createReport(CUSTOMER_3, claimId, AccidentType.TRAFFIC,
+    Report report = createReport(CUSTOMER_3, claimId, AccidentType.TRAFFIC, 1_100_000,
         "교차로에서 사고가 났는데 뇌진탕 진단을 받아서 그런지 어지럼증이 계속 있습니다. 후유증에 대한 보상도 받을 수 있나요?", reportAt);
     patchAiDraft(report.getId(), 950_000, 1_200_000, 1_100_000,
         List.of("교통상해 실손의료비", "상해통원비 특약"), List.of("자동차상해 특약 - 대인접수 확인 필요"),
@@ -273,7 +273,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "상가 화재 관련 소방서 화재현장조사서는 건물주 측에서 받아서 공유해주기로 했습니다.",
         500_000, reportAt.toLocalDate().minusDays(24), reportAt);
 
-    Report report = createReport(CUSTOMER_2, claimId, AccidentType.FIRE,
+    Report report = createReport(CUSTOMER_2, claimId, AccidentType.FIRE, 500_000,
         "상가 화재로 대피하다가 연기를 마셔서 병원에 갔는데, 상가 화재보험이랑 제 개인 실손보험 중 어디서 먼저 "
             + "보상받아야 하는지 궁금합니다.", reportAt);
     patchAiDraft(report.getId(), 400_000, 600_000, 500_000,
@@ -326,7 +326,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "가입 당시 설계사님이 소액암이 아니라 일반암으로 처리된다고 설명해주셨던 게 기억나서 확인 부탁드립니다.",
         20_000_000, reportAt.toLocalDate().minusDays(9), reportAt);
 
-    Report report = createReport(CUSTOMER_2, claimId, AccidentType.CANCER_DIAGNOSIS,
+    Report report = createReport(CUSTOMER_2, claimId, AccidentType.CANCER_DIAGNOSIS, 20_000_000,
         "건강검진에서 우연히 발견된 갑상선암인데, 암 진단비가 가입한 특약대로 전액 나올 수 있는지, 혹시 감액 "
             + "지급되는 경우도 있는지 궁금합니다.", reportAt);
     patchAiDraft(report.getId(), 18_000_000, 22_000_000, 20_000_000,
@@ -370,7 +370,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "재활병원 통원 치료 영수증도 계속 모으고 있는데 나중에 한꺼번에 제출해도 되는지 궁금합니다.",
         3_500_000, reportAt.toLocalDate().minusDays(7), reportAt);
 
-    Report report = createReport(CUSTOMER_3, claimId, AccidentType.DISABILITY,
+    Report report = createReport(CUSTOMER_3, claimId, AccidentType.DISABILITY, 3_500_000,
         "운동하다 다쳐서 십자인대 재건술을 받았는데 후유장해 진단까지 나올 정도인지, 장해보험금 청구가 "
             + "가능한지 궁금합니다.", reportAt);
     patchAiDraft(report.getId(), 2_500_000, 3_200_000, 3_500_000,
@@ -419,7 +419,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "소방서 화재현장조사서는 발급받았고, 집 수리 견적서는 별도로 준비 중입니다.",
         4_200_000, reportAt.toLocalDate().minusDays(5), reportAt);
 
-    Report report = createReport(CUSTOMER_4, claimId, AccidentType.FIRE,
+    Report report = createReport(CUSTOMER_4, claimId, AccidentType.FIRE, 4_200_000,
         "집에 화재가 나서 대피하다가 다쳤는데, 화재보험이랑 실손보험을 같이 청구할 수 있는지, 순서는 어떻게 "
             + "되는지 궁금합니다.", reportAt);
     patchAiDraft(report.getId(), 3_800_000, 4_500_000, 4_200_000,
@@ -482,7 +482,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "아래층 피해 사진과 수리업체 견적서를 받아뒀습니다. 원만하게 합의하고 싶은데 보험 처리 절차가 궁금합니다.",
         2_000_000, reportAt.toLocalDate().minusDays(3), reportAt);
 
-    Report report = createReport(CUSTOMER_QA, claimId, AccidentType.LIABILITY,
+    Report report = createReport(CUSTOMER_QA, claimId, AccidentType.LIABILITY, 2_000_000,
         "이웃집에 물이 새서 배상 문제가 생겼는데 일상생활배상책임보험으로 처리가 가능한지, 어느 정도 보상되는지 "
             + "알고 싶습니다.", reportAt);
     patchAiDraft(report.getId(), 1_500_000, 2_000_000, 2_000_000,
@@ -544,7 +544,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
             + "안내 부탁드립니다.",
         850_000, reportAt.toLocalDate().minusDays(2), reportAt);
 
-    Report report = createReport(CUSTOMER_QA, claimId, AccidentType.MEDICAL_INDEMNITY,
+    Report report = createReport(CUSTOMER_QA, claimId, AccidentType.MEDICAL_INDEMNITY, 850_000,
         "복막염 소견까지 나왔는데 실손 보험금이 얼마나 나올 수 있을지 궁금합니다. 수술 후 회복 기간도 길어질 것 "
             + "같아서 걱정이에요.", reportAt);
     patchAiDraft(report.getId(), null, null, 850_000,
@@ -568,7 +568,7 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
         "경찰 조사 결과 100% 상대방 과실로 나왔습니다. 진단서와 사고사실확인원 첨부했습니다.",
         1_200_000, reportAt.toLocalDate().minusDays(1), reportAt);
 
-    Report report = createReport(CUSTOMER_1, claimId, AccidentType.TRAFFIC,
+    Report report = createReport(CUSTOMER_1, claimId, AccidentType.TRAFFIC, 1_200_000,
         "신호대기 중 후방 추돌 사고로 손목이 골절됐는데, 상대방 보험사 합의금과 별개로 제 실손·운전자보험에서 "
             + "받을 수 있는 보상이 어느 정도인지 알고 싶습니다.", reportAt);
     patchAiDraft(report.getId(), null, null, 1_200_000,
@@ -589,16 +589,22 @@ public class DevMockDataSeedRunner implements ApplicationRunner {
     return claim.getId();
   }
 
-  private Report createReport(UUID userId, UUID claimId, AccidentType type, String question, LocalDateTime createdAt) {
+  /**
+   * 리포트를 검수 대기 상태로 저장한다. 제시액은 운영 POST /reports처럼 같은 시나리오의 청구와 같은 값을 팩터리로
+   * 넘긴다(#408).
+   */
+  private Report createReport(UUID userId, UUID claimId, AccidentType type, Integer offeredAmount, String question,
+      LocalDateTime createdAt) {
     // 운영 POST /reports와 같은 발급기를 쓴다(날짜 접두어 + 시퀀스)
     String caseNo = caseNoGenerator.generate();
-    return reportRepository.save(Report.createPending(userId, null, claimId, type, question, caseNo));
+    return reportRepository.save(Report.createPending(userId, null, claimId, type, offeredAmount, question, caseNo));
   }
 
   /**
    * REPORTS의 AI 초안 컬럼을 채운다. 운영에서는 report_worker가 OCR·AI 분석 후 이 컬럼들을 직접 SQL로
    * 갱신하는데(Spring에는 이 컬럼들을 위한 엔티티 setter가 없다), 이 러너로 만드는 리포트는 OCR 트리거를
    * 발행하지 않아 report_worker가 절대 채워주지 않으므로 여기서 직접 채운다. PII 암호화 대상 컬럼이 아니다.
+   * {@code offered_amount}는 이제 {@link #createReport}가 팩터리로도 넣으며(#408) 여기서는 같은 값을 다시 쓴다.
    */
   private void patchAiDraft(UUID reportId, Integer min, Integer max, Integer offered,
       List<String> guarantees, List<String> omitted, List<String> precedents, String treatment,

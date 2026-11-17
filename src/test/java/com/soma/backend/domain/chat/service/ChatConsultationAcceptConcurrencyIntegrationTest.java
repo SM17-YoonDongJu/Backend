@@ -130,7 +130,7 @@ class ChatConsultationAcceptConcurrencyIntegrationTest {
    * 트랜잭션 밖이라 상태 전이를 저장 전에 끝내야 반영된다.
    */
   private CounselingCase saveCounselingCase() {
-    Report report = Report.createPending(customerId, null, null, AccidentType.MEDICAL_INDEMNITY,
+    Report report = Report.createPending(customerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
         "질문", "ACONC-" + UUID.randomUUID().toString().substring(0, 12));
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     report.applyReviewTransition(ReportStatus.COUNSELING);

@@ -75,7 +75,7 @@ class ReportAnalysisStatusControllerTest {
   void setUp() {
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
         "ANS-" + UUID.randomUUID().toString().substring(0, 12))).getId();
   }
 
@@ -196,7 +196,7 @@ class ReportAnalysisStatusControllerTest {
   void adjusterOwnReportIsReadable() throws Exception {
     UUID adjusterId = UUID.randomUUID();
     UUID ownReportId = reportRepository.save(Report.createPending(
-        adjusterId, null, null, AccidentType.TRAFFIC, "질문",
+        adjusterId, null, null, AccidentType.TRAFFIC, null, "질문",
         "ANS-" + UUID.randomUUID().toString().substring(0, 12))).getId();
 
     mockMvc.perform(get("/reports/{id}/analysis-status", ownReportId)

@@ -108,7 +108,7 @@ class AdjusterReviewCommandServiceConcurrencyIntegrationTest {
   private UUID saveCustomerWithAcceptedCase(String nickname) {
     User customer = userRepository.save(
         User.create(nickname, LocalDate.of(1990, 1, 1), "F", null, null, Role.USER, null));
-    Report report = Report.createPending(customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY,
+    Report report = Report.createPending(customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null,
         "질문", "RCONC-" + UUID.randomUUID().toString().substring(0, 12));
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     UUID reportId = reportRepository.save(report).getId();

@@ -79,7 +79,7 @@ class ReuploadReasonConnectionBudgetTest {
     // DataSource는 JDBC 관측 프록시로 감싸져 있을 수 있어 캐스트가 아니라 unwrap으로 꺼낸다.
     assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isEqualTo(1);
     ownerId = UUID.randomUUID();
-    reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY,
+    reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
         "질문", "RCB-" + UUID.randomUUID().toString().substring(0, 12))).getId();
     jdbcTemplate.update("UPDATE reports SET status = 'NEEDS_REUPLOAD' WHERE id = ?", reportId);
     jdbcTemplate.update("""

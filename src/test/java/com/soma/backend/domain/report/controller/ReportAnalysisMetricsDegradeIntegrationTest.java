@@ -65,7 +65,7 @@ class ReportAnalysisMetricsDegradeIntegrationTest {
     assertThat(jdbcTemplate.queryForObject("select to_regclass('ai.report_drafts')::text", String.class)).isNull();
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
         "RAD-" + UUID.randomUUID().toString().substring(0, 12))).getId();
   }
 

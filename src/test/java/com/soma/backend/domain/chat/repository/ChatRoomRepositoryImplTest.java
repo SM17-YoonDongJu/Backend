@@ -136,7 +136,7 @@ class ChatRoomRepositoryImplTest {
   @DisplayName("파이프라인 방은 review_status를 채우고, 검색 방(제안 없음)은 report_id·review_status 모두 null")
   void findMyRoomRows_reviewStatus_pipelineHasValueAndSearchRoomIsNull() {
     Report report = Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260716-100");
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260716-100");
     reportRepository.save(report);
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster.getId()));
     ChatRoom pipelineRoom = persistRoom(customer, adjuster, report.getId(), review.getId());

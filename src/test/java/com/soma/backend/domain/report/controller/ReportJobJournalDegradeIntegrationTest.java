@@ -67,7 +67,7 @@ class ReportJobJournalDegradeIntegrationTest {
         .isNull();
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
         "RJD-" + UUID.randomUUID().toString().substring(0, 12))).getId();
   }
 

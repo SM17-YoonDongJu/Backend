@@ -77,7 +77,7 @@ class ReportQueryServiceTest {
   }
 
   private static CustomerReportDetailReader.Snapshot snapshot(UUID reportId, UUID ownerId) {
-    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, "질문", "RQS-1");
+    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "질문", "RQS-1");
     ReflectionTestUtils.setField(report, "id", reportId);
     CustomerReportDetailRow row = new CustomerReportDetailRow(null, null, null, null, null, null, null, null);
     return new CustomerReportDetailReader.Snapshot(report, List.of(), row, Map.of());

@@ -45,7 +45,7 @@ class ProposalQueryServiceTest {
   @Test
   void getProposals_throwsForbidden_whenNotOwner() {
     Report report = Report.createPending(
-        UUID.randomUUID(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260709-001");
+        UUID.randomUUID(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260709-001");
     given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
 
     assertThatThrownBy(() -> service.getProposals(UUID.randomUUID(), reportId, 1, 10))

@@ -264,7 +264,7 @@ class ReportCardQuerydslExecutionTest {
   // --- 시드 헬퍼 ---
 
   private UUID saveReport(UUID userId, ReportStatus status, AccidentType accidentType, String caseNo) {
-    Report report = Report.createPending(userId, null, null, accidentType, "질문", caseNo);
+    Report report = Report.createPending(userId, null, null, accidentType, null, "질문", caseNo);
     ReflectionTestUtils.setField(report, "status", status);
     return reportRepository.save(report).getId();
   }

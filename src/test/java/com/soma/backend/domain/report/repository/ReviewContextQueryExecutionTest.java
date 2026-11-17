@@ -61,7 +61,7 @@ class ReviewContextQueryExecutionTest {
             "included", "2026-01-02", null),
         "질문", "사고 경위", null));
     Report report = reportRepository.save(Report.createPending(
-        owner.getId(), productId, claim.getId(), AccidentType.MEDICAL_INDEMNITY, "질문", "RC-1"));
+        owner.getId(), productId, claim.getId(), AccidentType.MEDICAL_INDEMNITY, null, "질문", "RC-1"));
     flushAndClear();
 
     ReviewContextRow context = reportRepository.findReviewContext(report.getId());
@@ -81,7 +81,7 @@ class ReviewContextQueryExecutionTest {
   void leftJoinsKeepRowWithoutClaimOrProduct() {
     User owner = saveOwner();
     Report report = reportRepository.save(Report.createPending(
-        owner.getId(), null, null, AccidentType.OTHER, "질문", "RC-2"));
+        owner.getId(), null, null, AccidentType.OTHER, null, "질문", "RC-2"));
     flushAndClear();
 
     ReviewContextRow context = reportRepository.findReviewContext(report.getId());

@@ -298,10 +298,12 @@ public class K6ScenarioSeedWriter {
     return claim.getId();
   }
 
+  /** 리포트를 검수 대기 상태로 저장한다. 제시액은 운영 POST /reports처럼 청구와 같은 값을 팩터리로 넘긴다(#408). */
   private Report createReport(UUID userId, UUID claimId, AccidentType accidentType,
       String pool, int userSeq, int idx) {
     return reportRepository.save(Report.createPending(
-        userId, null, claimId, accidentType, SYNTHETIC_QUESTION, caseNo(pool, userSeq, idx)));
+        userId, null, claimId, accidentType, CLAIM_OFFERED_AMOUNT, SYNTHETIC_QUESTION,
+        caseNo(pool, userSeq, idx)));
   }
 
   private static String textMessageContent(int no) {
@@ -337,6 +339,9 @@ public class K6ScenarioSeedWriter {
    *
    * <p>{@code DevMockDataSeedRunner.patchAiDraft}와 달리 {@code title}도 함께 쓴다 — 카드 목록 응답에
    * 실리는 값이라 비워두면 목록 페이로드가 실제와 달라진다.
+   *
+   * <p>{@code offered_amount}는 이제 {@link #createReport}가 팩터리로도 넣으며(#408) 여기서는 같은 값
+   * ({@code AI_OFFERED_AMOUNT} == {@code CLAIM_OFFERED_AMOUNT})을 다시 쓴다.
    *
    * <p>테이블명에 스키마를 붙이지 않는다 — dev/prod는 JDBC URL {@code ?currentSchema=core,public}이,
    * test_db는 {@code public}이 해석한다. DDL이 아니라 DML이라 "신규 테이블은 {@code core.} 명시" 규칙과 무관하다.
