@@ -86,7 +86,7 @@ class ChatConsultationCommandServiceIntegrationTest {
 
   private Report counselingReport() {
     Report report = Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260716-001");
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260716-001");
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     report.applyReviewTransition(ReportStatus.COUNSELING);
     return reportRepository.save(report);

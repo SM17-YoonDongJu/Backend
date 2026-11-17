@@ -65,7 +65,7 @@ class AnalysisStatusDegradeIntegrationTest {
   void setUp() {
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
         "DEG-" + UUID.randomUUID().toString().substring(0, 12))).getId();
   }
 
@@ -120,7 +120,7 @@ class AnalysisStatusDegradeIntegrationTest {
   void needsReuploadSurvivesJournalDegrade() throws Exception {
     // Given: AI 워커가 원시 SQL로 세팅하는 종료 상태를 같은 값으로 만든다(전이표를 거치지 않는 진입).
     Report report = Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
         "DEG-" + UUID.randomUUID().toString().substring(0, 12));
     ReflectionTestUtils.setField(report, "status", ReportStatus.NEEDS_REUPLOAD);
     UUID needsReuploadId = reportRepository.save(report).getId();
@@ -144,7 +144,7 @@ class AnalysisStatusDegradeIntegrationTest {
   @DisplayName("E13 — 저널이 안 읽혀도 BLOCKED는 상세 조회에서 그대로 노출된다(PROCESSING으로 낮아지지 않는다)")
   void blockedSurvivesJournalDegrade() throws Exception {
     Report report = Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문",
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
         "DEG-" + UUID.randomUUID().toString().substring(0, 12));
     ReflectionTestUtils.setField(report, "status", ReportStatus.BLOCKED);
     UUID blockedId = reportRepository.save(report).getId();

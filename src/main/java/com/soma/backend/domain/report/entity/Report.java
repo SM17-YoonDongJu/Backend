@@ -157,14 +157,22 @@ public class Report extends BaseEntity {
 
   /**
    * 리포트 생성 진입점(design.md §3). OCR·AI 분석 전 상태이므로 status=AWAITING_INSPECTION으로 시작한다.
+   *
+   * <p>{@code offeredAmount}는 접수 시 사용자가 입력한 보험사 제시액이며, 같은 요청으로 만든
+   * {@code user_claims.offered_amount}와 같은 값이다. AI 초안 컬럼이 아니다 — AI 워커는 이 값을 읽어 청구 가능
+   * 범위를 계산할 뿐 쓰지 않고, 생성 후 이 값을 바꾸는 도메인 메서드도 없다. 여기서 받지 않으면 리포트 쪽이 NULL로
+   * 남아 청구 범위가 0~0으로 계산된다(#408).
+   *
+   * @param offeredAmount 접수 시 보험사 제시액(원). 미입력이면 null이고, 0 같은 기본값으로 바꾸지 않는다
    */
   public static Report createPending(UUID userId, UUID productId, UUID claimId, AccidentType accidentType,
-      String question, String caseNo) {
+      Integer offeredAmount, String question, String caseNo) {
     Report report = new Report();
     report.userId = userId;
     report.productId = productId;
     report.claimId = claimId;
     report.accidentType = accidentType;
+    report.offeredAmount = offeredAmount;
     report.question = question;
     report.caseNo = caseNo;
     report.status = ReportStatus.AWAITING_INSPECTION;

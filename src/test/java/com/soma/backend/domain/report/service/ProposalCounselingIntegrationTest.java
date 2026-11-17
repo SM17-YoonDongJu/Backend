@@ -85,7 +85,7 @@ class ProposalCounselingIntegrationTest {
   /** 검수가 끝나 제안을 고를 수 있는(AWAITING_ADOPTION) 리포트. */
   private Report awaitingAdoptionReport(String caseNo) {
     Report report = Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", caseNo);
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", caseNo);
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     return reportRepository.save(report);
   }
@@ -256,7 +256,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_rejectedForAwaitingInspectionReport_leavesNoOrphanRoom() {
     // Given
     Report report = reportRepository.save(Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260815-008"));
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260815-008"));
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When & Then

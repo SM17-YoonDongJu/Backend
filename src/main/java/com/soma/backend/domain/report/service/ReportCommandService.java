@@ -93,7 +93,12 @@ public class ReportCommandService {
         .register(meterRegistry);
   }
 
-  /** POST /reports — 사고 정보 입력 수신 → 저장 → OCR 트리거 발행. 202(비동기). */
+  /**
+   * POST /reports — 사고 정보 입력 수신 → 저장 → OCR 트리거 발행. 202(비동기).
+   *
+   * <p>접수 제시액({@code offered_amount})은 UserClaim과 Report 양쪽에 같은 값으로 넣는다. AI 워커는
+   * {@code reports.offered_amount}를 읽어 청구 가능 범위를 계산하므로 리포트 쪽이 비면 범위가 0~0이 된다(#408).
+   */
   public CreateReportResponse createReport(UUID userId, CreateReportRequest request) {
 
     if (request.accidentType() == null || request.accidentDate() == null) {
@@ -128,8 +133,8 @@ public class ReportCommandService {
 
     //Reports 테이블 스켈레톤 저장
     Report report = reportRepository.save(Report.createPending(
-        userId, request.productId(), claim.getId(), request.accidentType(), request.question(),
-        caseNo));
+        userId, request.productId(), claim.getId(), request.accidentType(), request.offeredAmount(),
+        request.question(), caseNo));
 
     // 첨부 저장과 OCR 발행을 두 패스로 나눈다(문서마다 번갈아 저장하지 않는다) — 같은 타입 INSERT으로 JDBC 배치 활용
     List<ReportAttachment> attachments = new ArrayList<>(docTotal);

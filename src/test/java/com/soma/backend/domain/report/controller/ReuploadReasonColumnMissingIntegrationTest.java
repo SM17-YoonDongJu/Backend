@@ -74,7 +74,7 @@ class ReuploadReasonColumnMissingIntegrationTest {
          where table_schema = 'ai' and table_name = 'claim_readiness' and column_name = 'reupload_reason'
         """, Integer.class)).isZero();
     ownerId = UUID.randomUUID();
-    reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY,
+    reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
         "질문", "RCM-" + UUID.randomUUID().toString().substring(0, 12))).getId();
     jdbcTemplate.update("UPDATE reports SET status = 'NEEDS_REUPLOAD' WHERE id = ?", reportId);
     // 사유 컬럼만 없는 상태 — 010 행 자체는 있어도 사유를 읽을 수 없다.

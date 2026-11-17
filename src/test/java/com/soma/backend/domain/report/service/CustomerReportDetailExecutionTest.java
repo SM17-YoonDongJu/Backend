@@ -187,13 +187,13 @@ class CustomerReportDetailExecutionTest {
   // --- 시드 헬퍼 ---
 
   private Report newReport(UUID userId, ReportStatus status, AccidentType accidentType, String caseNo) {
-    Report report = Report.createPending(userId, null, null, accidentType, "후유장해 청구가 가능한가요?", caseNo);
+    // 제시액은 접수 입력이라 팩터리로 넣는다(#408). 나머지는 생성 이후 상태·AI 초안 값이라 리플렉션으로 채운다.
+    Report report = Report.createPending(userId, null, null, accidentType, 8_500_000, "후유장해 청구가 가능한가요?", caseNo);
     ReflectionTestUtils.setField(report, "status", status);
     ReflectionTestUtils.setField(report, "treatment", "3주 입원 후 통원");
     ReflectionTestUtils.setField(report, "confidenceLevel", "high");
     ReflectionTestUtils.setField(report, "claimedMinAmount", 12_000_000);
     ReflectionTestUtils.setField(report, "claimedMaxAmount", 18_000_000);
-    ReflectionTestUtils.setField(report, "offeredAmount", 8_500_000);
     return report;
   }
 

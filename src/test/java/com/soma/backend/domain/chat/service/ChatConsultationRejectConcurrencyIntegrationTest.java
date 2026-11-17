@@ -90,7 +90,7 @@ class ChatConsultationRejectConcurrencyIntegrationTest {
         User.create("사정사B", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
     customerId = customer.getId();
 
-    Report report = Report.createPending(customerId, null, null, AccidentType.MEDICAL_INDEMNITY,
+    Report report = Report.createPending(customerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
         "질문", "CONC-" + UUID.randomUUID().toString().substring(0, 12));
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     report.applyReviewTransition(ReportStatus.COUNSELING);

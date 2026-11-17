@@ -114,7 +114,7 @@ class ReportQueryConnectionBudgetTest {
     assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isEqualTo(1);
     ownerId = UUID.randomUUID();
     // AI 초안이 없는(applicable_guarantees null) 리포트라 OCR 확정 실패가 있으면 FAILED로 판정된다.
-    reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY,
+    reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
         "질문", "RQB-" + UUID.randomUUID().toString().substring(0, 12))).getId();
     issueId = saveIssue(reportId);
     // 받은 제안 목록은 거절되지 않은 검수가 있어야 행이 나오고, 상세는 채택(ACCEPTED)이어야 쟁점 의견을 싣는다.

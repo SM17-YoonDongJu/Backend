@@ -188,7 +188,7 @@ class PendingReviewRowsExecutionTest {
   }
 
   private UUID saveReport(ReportStatus status, AccidentType accidentType, String caseNo) {
-    Report report = Report.createPending(customerId, null, null, accidentType, "질문", caseNo + "-" + region);
+    Report report = Report.createPending(customerId, null, null, accidentType, null, "질문", caseNo + "-" + region);
     ReflectionTestUtils.setField(report, "status", status);
     return reportRepository.save(report).getId();
   }

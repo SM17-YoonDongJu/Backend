@@ -40,6 +40,7 @@ import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
 import com.soma.backend.domain.report.entity.ReportStatus;
 import com.soma.backend.domain.report.entity.ReviewStatus;
+import com.soma.backend.domain.report.entity.UserClaim;
 import com.soma.backend.domain.report.entity.event.ConsultationRequestedEvent;
 import com.soma.backend.domain.report.repository.ReportAttachmentRepository;
 import com.soma.backend.domain.report.repository.ReportRepository;
@@ -198,6 +199,48 @@ class ReportCommandServiceTest {
     verify(reportRepository, never()).save(any());
     verify(reportAttachmentRepository, never()).save(any());
     verify(ocrJobOutboxPort, never()).enqueue(any());
+  }
+
+  @Test
+  @DisplayName("접수 제시액은 user_claims와 reports에 같은 값으로 들어간다(#408)")
+  void createReport_copiesOfferedAmountToReport() {
+    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
+    given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    CreateReportRequest request = new CreateReportRequest(
+        UUID.randomUUID(), AccidentType.MEDICAL_INDEMNITY, LocalDate.now(), List.of("급성 충수염"),
+        480_000, List.of(), "사고 경위", null, List.of(), "질문");
+
+    service.createReport(userId, request);
+
+    // AI 워커는 user_claims가 아니라 reports.offered_amount를 읽어 청구 가능 범위를 계산한다. 리포트 쪽이 비면
+    // claimed_min/max가 0~0으로 저장된다(#408, dev 실측 요청값 480,000).
+    ArgumentCaptor<UserClaim> claimCaptor = ArgumentCaptor.forClass(UserClaim.class);
+    verify(userClaimRepository).save(claimCaptor.capture());
+    ArgumentCaptor<Report> reportCaptor = ArgumentCaptor.forClass(Report.class);
+    verify(reportRepository).save(reportCaptor.capture());
+    assertThat(claimCaptor.getValue().getOfferedAmount()).isEqualTo(480_000);
+    assertThat(reportCaptor.getValue().getOfferedAmount()).isEqualTo(480_000);
+  }
+
+  @Test
+  @DisplayName("제시액을 입력하지 않으면 reports.offered_amount도 null이다 — 0 같은 기본값으로 바꾸지 않는다(#408)")
+  void createReport_leavesReportOfferedAmountNull_whenNotProvided() {
+    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
+    given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
+    CreateReportRequest request = new CreateReportRequest(
+        UUID.randomUUID(), AccidentType.MEDICAL_INDEMNITY, LocalDate.now(), List.of("급성 충수염"),
+        null, List.of(), "사고 경위", null, List.of(), "질문");
+
+    service.createReport(userId, request);
+
+    ArgumentCaptor<UserClaim> claimCaptor = ArgumentCaptor.forClass(UserClaim.class);
+    verify(userClaimRepository).save(claimCaptor.capture());
+    ArgumentCaptor<Report> reportCaptor = ArgumentCaptor.forClass(Report.class);
+    verify(reportRepository).save(reportCaptor.capture());
+    assertThat(claimCaptor.getValue().getOfferedAmount()).isNull();
+    assertThat(reportCaptor.getValue().getOfferedAmount()).isNull();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -479,7 +522,7 @@ class ReportCommandServiceTest {
 
   private Report reportOwnedBy(UUID ownerId, ReportStatus status) {
     Report report = Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, "질문", "20260709-001");
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260709-001");
     ReflectionTestUtils.setField(report, "id", reportId);
     ReflectionTestUtils.setField(report, "status", status);
     return report;
