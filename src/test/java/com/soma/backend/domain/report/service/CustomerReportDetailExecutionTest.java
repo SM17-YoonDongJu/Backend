@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -69,12 +71,18 @@ class CustomerReportDetailExecutionTest {
   @DisplayName("ACCEPTED 제안 없음 — 확정 배열은 report 원본, 코멘트·시각·사정사는 null, tags는 빈 배열, confidence는 대문자")
   void readsReportWithoutAcceptedReview() {
     UUID ownerId = UUID.randomUUID();
-    Report report = newReport(ownerId, ReportStatus.AWAITING_INSPECTION, AccidentType.DISABILITY, "CRD-1");
+    Report report = newReport(ownerId, ReportStatus.AWAITING_INSPECTION, AccidentType.DISABILITY);
     ReflectionTestUtils.setField(report, "applicableGuarantees", List.of("상해후유장해"));
     ReflectionTestUtils.setField(report, "omittedSpecialContract", List.of("일상생활배상책임"));
     ReflectionTestUtils.setField(report, "basisTermsPrecedents", List.of("약관 제12조"));
     UUID reportId = reportRepository.save(report).getId();
     saveIssue(reportId, "장해등급 과소 산정 가능", "우측 슬관절 후유장해 등급이 낮게 산정됨", "CONFIRMED", null, null);
+    entityManager.flush();
+    // 사건번호는 저장하지 않고 생성일 + ID로 파생한다(#413) — 생성 시각을 고정해 날짜 부분까지 확인한다.
+    entityManager.createNativeQuery("UPDATE reports SET created_at = :createdAt WHERE id = :id")
+        .setParameter("createdAt", LocalDateTime.of(2026, 3, 4, 10, 0))
+        .setParameter("id", reportId)
+        .executeUpdate();
     flushAndClear();
 
     CustomerReportDetailResponse res = reportQueryService.getReportDetail(ownerId, "USER", reportId);
@@ -87,7 +95,8 @@ class CustomerReportDetailExecutionTest {
     assertThat(res.claimedMaxAmount()).isEqualTo(18_000_000);
     assertThat(res.offeredAmount()).isEqualTo(8_500_000);
     assertThat(res.confidenceLevel()).isEqualTo("HIGH");
-    assertThat(res.reportNo()).isEqualTo("CRD-1");
+    assertThat(res.reportNo())
+        .isEqualTo("20260304-" + reportId.toString().substring(0, 8).toUpperCase(Locale.ROOT));
     // ACCEPTED 제안이 없으므로 확정 배열은 report 원본을 그대로 노출한다.
     assertThat(res.applicableGuarantees()).containsExactly("상해후유장해");
     assertThat(res.omittedSpecialContract()).containsExactly("일상생활배상책임");
@@ -111,7 +120,7 @@ class CustomerReportDetailExecutionTest {
   void readsReportWithAcceptedReviewAndAdjuster() {
     UUID ownerId = UUID.randomUUID();
     UUID adjusterId = saveAdjuster("박사정", 7);
-    Report report = newReport(ownerId, ReportStatus.CLOSED, AccidentType.TRAFFIC, "CRD-2");
+    Report report = newReport(ownerId, ReportStatus.CLOSED, AccidentType.TRAFFIC);
     ReflectionTestUtils.setField(report, "adjusterId", adjusterId);
     // report 원본 배열은 ACCEPTED review 값으로 대체돼야 한다(구분 가능한 마커값).
     ReflectionTestUtils.setField(report, "applicableGuarantees", List.of("REPORT_보장"));
@@ -152,7 +161,7 @@ class CustomerReportDetailExecutionTest {
   void adjusterCanReadOthersReport() {
     UUID ownerId = UUID.randomUUID();
     UUID reportId =
-        reportRepository.save(newReport(ownerId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "CRD-3"))
+        reportRepository.save(newReport(ownerId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER))
             .getId();
     flushAndClear();
 
@@ -167,7 +176,7 @@ class CustomerReportDetailExecutionTest {
   void strangerUserForbidden() {
     UUID ownerId = UUID.randomUUID();
     UUID reportId =
-        reportRepository.save(newReport(ownerId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "CRD-4"))
+        reportRepository.save(newReport(ownerId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER))
             .getId();
     flushAndClear();
 
@@ -186,9 +195,9 @@ class CustomerReportDetailExecutionTest {
 
   // --- 시드 헬퍼 ---
 
-  private Report newReport(UUID userId, ReportStatus status, AccidentType accidentType, String caseNo) {
+  private Report newReport(UUID userId, ReportStatus status, AccidentType accidentType) {
     // 제시액은 접수 입력이라 팩터리로 넣는다(#408). 나머지는 생성 이후 상태·AI 초안 값이라 리플렉션으로 채운다.
-    Report report = Report.createPending(userId, null, null, accidentType, 8_500_000, "후유장해 청구가 가능한가요?", caseNo);
+    Report report = Report.createPending(userId, null, null, accidentType, 8_500_000, "후유장해 청구가 가능한가요?");
     ReflectionTestUtils.setField(report, "status", status);
     ReflectionTestUtils.setField(report, "treatment", "3주 입원 후 통원");
     ReflectionTestUtils.setField(report, "confidenceLevel", "high");

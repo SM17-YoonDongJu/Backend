@@ -19,6 +19,7 @@ import com.soma.backend.domain.adjuster.entity.AdjusterRating;
 import com.soma.backend.domain.adjuster.repository.AdjusterHomeRepository;
 import com.soma.backend.domain.adjuster.repository.AdjusterIdentityRow;
 import com.soma.backend.domain.adjuster.repository.InProgressCaseRow;
+import com.soma.backend.domain.report.entity.CaseNo;
 import com.soma.backend.domain.report.repository.ReportReviewRepository;
 import com.soma.backend.infra.s3.S3ObjectStorage;
 
@@ -115,12 +116,14 @@ public class AdjusterHomeQueryService {
     return new InProgressCases(total, items);
   }
 
+  /** 진행 중 사건 row를 홈 응답 항목으로 바꾼다. 사건번호는 리포트 생성 시각과 리포트 ID로 만든다(#413). */
   private InProgressCases.Item toInProgressItem(InProgressCaseRow row) {
     String reportStatus = row.reportStatus().name();
     String reviewStatus = row.reviewStatus().name();
     return new InProgressCases.Item(
         row.reportId(),
-        row.caseNo(),
+        // 사건번호는 저장값이 아니라 리포트 생성 시각과 ID로 만든다(#413)
+        CaseNo.of(row.reportCreatedAt(), row.reportId()),
         row.accidentType() == null ? null : row.accidentType().getValue(),
         titleOrDefault(row.title()),
         reportStatus,

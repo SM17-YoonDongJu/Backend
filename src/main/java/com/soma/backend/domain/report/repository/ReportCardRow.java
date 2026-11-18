@@ -12,6 +12,9 @@ import com.soma.backend.domain.report.entity.ReportStatus;
  * reviewedAt·adjusterNickname은 그 리뷰(report_reviews) 값, 나머지(status·accidentType·claimed·offered·
  * treatment·proposalCount)는 소속 리포트(reports) 값이다. proposalCount는 REJECTED 제외 리뷰 수(리포트 단위),
  * status는 REPORTS.status(응답에서 CLOSED→MATCHED 매핑), adjusterNickname은 리뷰 담당 사정사가 없으면 null.
+ *
+ * <p>사건번호는 담지 않는다. 응답 DTO가 {@code reportId}와 {@code createdAt}(리포트 생성 시각)으로 만든다(#413).
+ * 그래서 {@code createdAt}은 리뷰가 아니라 리포트({@code reports.created_at})의 값이어야 한다.
  */
 public record ReportCardRow(
     UUID reportId,
@@ -19,7 +22,6 @@ public record ReportCardRow(
     AccidentType accidentType,
     String title,
     LocalDateTime createdAt,
-    String caseNo,
     Integer claimedMinAmount,
     Integer claimedMaxAmount,
     Long proposalCount,

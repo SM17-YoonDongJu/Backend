@@ -40,6 +40,8 @@ import com.soma.backend.infra.s3.S3ObjectStorage;
 @ExtendWith(MockitoExtension.class)
 class AdjusterHomeQueryServiceTest {
 
+  private static final UUID REPORT_ID = UUID.fromString("3f2b8c1e-5a6d-4e7f-8a9b-0c1d2e3f4a5b");
+
   @Mock
   private AdjusterHomeRepository adjusterHomeRepository;
 
@@ -93,6 +95,8 @@ class AdjusterHomeQueryServiceTest {
     assertThat(result.inProgressCases().total()).isEqualTo(2L);
     assertThat(result.inProgressCases().items()).hasSize(1);
     AdjusterHomeResponse.InProgressCases.Item item = result.inProgressCases().items().get(0);
+    // 사건번호는 리포트 생성일 + 리포트 ID 앞 8자리 대문자로 만든다(#413)
+    assertThat(item.caseNo()).isEqualTo("20260528-3F2B8C1E");
     assertThat(item.stageLabel()).isEqualTo("고객 검토 대기");
     assertThat(item.progressPercent()).isEqualTo(70);
   }
@@ -164,7 +168,7 @@ class AdjusterHomeQueryServiceTest {
     stubMinimal();
     given(adjusterHomeRepository.findInProgressCases(eq(adjusterId), anyInt()))
         .willReturn(List.of(new InProgressCaseRow(
-            UUID.randomUUID(), "20260528-023", AccidentType.DISABILITY, null,
+            UUID.randomUUID(), LocalDateTime.of(2026, 5, 28, 9, 0), AccidentType.DISABILITY, null,
             ReportStatus.AWAITING_INSPECTION, ReviewStatus.SENT)));
 
     AdjusterHomeResponse.InProgressCases.Item item =
@@ -199,7 +203,7 @@ class AdjusterHomeQueryServiceTest {
 
   private static InProgressCaseRow inProgressRow(String reportStatus, String reviewStatus) {
     return new InProgressCaseRow(
-        UUID.randomUUID(), "20260528-022", AccidentType.DISABILITY, "장해등급 재산정 의견 작성 중",
+        REPORT_ID, LocalDateTime.of(2026, 5, 28, 9, 0), AccidentType.DISABILITY, "장해등급 재산정 의견 작성 중",
         ReportStatus.valueOf(reportStatus), ReviewStatus.valueOf(reviewStatus));
   }
 }

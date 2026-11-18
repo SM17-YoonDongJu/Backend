@@ -83,7 +83,7 @@ class ReuploadReasonGrantIntegrationTest {
         "superuser 접속은 권한 검사를 건너뛰어 컬럼 한정 GRANT를 재현할 수 없다(CI의 POSTGRES_USER=test)");
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
-        "질문", "RGI-" + UUID.randomUUID().toString().substring(0, 12))).getId();
+        "질문")).getId();
     jdbcTemplate.update("UPDATE reports SET status = 'NEEDS_REUPLOAD' WHERE id = ?", reportId);
     jdbcTemplate.update("""
         INSERT INTO ai.claim_readiness (claim_id, report_id, doc_total, missing_doc_types, status, reupload_reason)

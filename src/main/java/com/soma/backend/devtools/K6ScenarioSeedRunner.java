@@ -82,10 +82,15 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * 유저의 남은 풀을 건너뛰므로 idx에 구멍이 생기지 않고, 다음 실행이 정확히 이어서 채운다. 최종 방어선은
  * DB 제약({@code reports.case_no} UNIQUE, {@code report_reviews (report_id, adjuster_id)} UNIQUE)이다.
  *
+ * <p><b>{@code case_no}는 레거시 컬럼이다.</b> #413 이후 앱은 이 컬럼을 읽지도 쓰지도 않고(응답의 사건번호는
+ * 생성일과 리포트 ID로 만든다) k6 시드 표식으로만 남는다. 표식은 {@link K6ScenarioSeedWriter}가 시딩 단위
+ * 트랜잭션 안에서 flush 뒤 JDBC로 기록한다. 컬럼 삭제(2차) 전에 표식을 재설계해야 한다 — 아래 멱등 카운트와
+ * 사후 정리 SQL이 전부 이 컬럼에 기댄다.
+ *
  * <p><b>전제 — 연속성이 이 러너 밖에서 깨지지 않아야 한다.</b> 카운트 기반 재개는 "1..existing이 연속"을
  * 가정한다. 이 러너 자신이 실패하는 경로(유저 단위 try/catch)는 항상 뒤쪽 idx만 비우므로 이 전제를 지킨다.
- * 다만 외부에서 중간 idx의 시드 리포트만 골라 지우는 등 연속성이 깨지면, 그다음 idx 생성 시도가
- * {@code case_no} UNIQUE 위반으로 실패해 그 (유저,풀)이 재실행으로도 복구되지 않는다 — 정상적인 실행
+ * 다만 외부에서 중간 idx의 시드 리포트만 골라 지우는 등 연속성이 깨지면, 그다음 idx 생성 시도의
+ * 표식 기록이 {@code case_no} UNIQUE 위반으로 실패해 그 (유저,풀)이 재실행으로도 복구되지 않는다 — 정상적인 실행
  * 중단·재실행 흐름에서는 발생하지 않는다.
  *
  * <p>{@code JdbcTemplate} 카운트는 쿼리 규칙 위반이 아니다 — "조회에 native query 금지"는 도메인
@@ -125,9 +130,9 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * DELETE FROM core.user_claims      WHERE user_id IN (SELECT id FROM core.users WHERE nickname LIKE 'k6-%');
  * -- 계정(users)은 재사용 가능하므로 마지막에 판단해서 지운다.
  * </pre>
- * 부하테스트 중 k6가 {@code POST /reports}를 호출했다면 그 리포트의 case_no는 {@code yyyyMMdd-NNN}
- * 형식이라 위 조건에 걸리지 않는다 — 그 시나리오를 넣었다면 정리 조건에 {@code user_id IN (k6 유저)}를
- * 함께 쓴다.
+ * 부하테스트 중 k6가 {@code POST /reports}를 호출했다면 그 리포트의 case_no는 NULL이라(#413 이후 앱은 이
+ * 컬럼을 쓰지 않는다) 위 조건에 걸리지 않는다 — 그 시나리오를 넣었다면 정리 조건에
+ * {@code user_id IN (k6 유저)}를 함께 쓴다.
  */
 @Slf4j
 @Component

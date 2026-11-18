@@ -83,9 +83,9 @@ class ProposalCounselingIntegrationTest {
   }
 
   /** 검수가 끝나 제안을 고를 수 있는(AWAITING_ADOPTION) 리포트. */
-  private Report awaitingAdoptionReport(String caseNo) {
+  private Report awaitingAdoptionReport() {
     Report report = Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", caseNo);
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문");
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     return reportRepository.save(report);
   }
@@ -98,7 +98,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("상담 시작하면 제안·리포트가 COUNSELING이 되고 제안에 연결된 방과 SYSTEM 안내 1건이 저장된다")
   void counseling_persistsRoomAndTransitionsInOneCommit() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-001");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
@@ -136,7 +136,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("같은 요청을 2회 연속 보내도 방은 1개·SYSTEM 메시지도 1건이다(멱등)")
   void counseling_isIdempotentOnRepeatedRequests() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-002");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
@@ -157,7 +157,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("같은 리포트의 서로 다른 제안 2건으로 각각 상담을 시작하면 방이 2개 열린다(형제 방)")
   void counseling_opensSeparateRoomPerProposal() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-003");
+    Report report = awaitingAdoptionReport();
     ReportReview review1 = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ReportReview review2 = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster2.getId()));
 
@@ -176,7 +176,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("상담 시작 후 GET /chats 목록에 방이 보이고 review_status=COUNSELING·안읽음 0이다")
   void counseling_roomAppearsInBothParticipantsRoomList() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-004");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
@@ -202,7 +202,7 @@ class ProposalCounselingIntegrationTest {
   @Test
   @DisplayName("상담을 시작하기 전에는 그 제안에 연결된 방이 없다")
   void noRoomExistsBeforeCounselingStarts() {
-    Report report = awaitingAdoptionReport("20260815-005");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     assertThat(chatRoomRepository.findByReportReviewId(review.getId())).isEmpty();
@@ -213,7 +213,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("상담 시작 → PATCH /chats/{id}/accept 연결: 제안 ACCEPTED·리포트 CLOSED·내 방 ACTIVE 유지")
   void counseling_thenChatAcceptCompletesFlow() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-006");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
         customer.getId(), report.getId(), review.getId(), true);
@@ -237,7 +237,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("상담 시작 → PATCH /chats/{id}/reject 후 같은 제안으로 재요청하면 409 INVALID_STATE_TRANSITION")
   void counseling_cannotRestartAfterChatReject() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-007");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
         customer.getId(), report.getId(), review.getId(), true);
@@ -256,7 +256,7 @@ class ProposalCounselingIntegrationTest {
   void counseling_rejectedForAwaitingInspectionReport_leavesNoOrphanRoom() {
     // Given
     Report report = reportRepository.save(Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260815-008"));
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문"));
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When & Then
@@ -271,7 +271,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("리포트 소유자가 아니면 403 FORBIDDEN이고 방이 만들어지지 않는다")
   void counseling_forbiddenForNonOwner() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-009");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When & Then
@@ -286,7 +286,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("status=REJECTED는 no-op이다 — 제안·리포트 DB row가 그대로고 방도 생기지 않는다")
   void rejected_isNoOp_andPersistsNothing() {
     // Given
-    Report report = awaitingAdoptionReport("20260815-010");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
 
     // When
@@ -311,7 +311,7 @@ class ProposalCounselingIntegrationTest {
   @DisplayName("상담 중(COUNSELING)인 제안에 REJECTED를 보내도 409가 아니라 no-op으로 통과한다")
   void rejected_isNoOp_evenWhenProposalCounseling() {
     // Given — 먼저 상담을 시작해 방까지 열어 둔다
-    Report report = awaitingAdoptionReport("20260815-011");
+    Report report = awaitingAdoptionReport();
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster1.getId()));
     ProposalDecisionResponse counseling = reportCommandService.decide(
         customer.getId(), report.getId(), review.getId(), true);

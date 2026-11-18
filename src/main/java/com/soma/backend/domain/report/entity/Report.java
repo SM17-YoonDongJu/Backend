@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.jspecify.annotations.Nullable;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -79,9 +80,6 @@ public class Report extends BaseEntity {
 
   @Column(name = "claim_id")
   private UUID claimId;
-
-  @Column(name = "case_no", nullable = false, length = 100)
-  private String caseNo;
 
   @Column(name = "title")
   private String title;
@@ -163,10 +161,12 @@ public class Report extends BaseEntity {
    * 범위를 계산할 뿐 쓰지 않고, 생성 후 이 값을 바꾸는 도메인 메서드도 없다. 여기서 받지 않으면 리포트 쪽이 NULL로
    * 남아 청구 범위가 0~0으로 계산된다(#408).
    *
+   * <p>사건번호는 받지 않는다. 저장하지 않고 응답할 때 생성일과 ID로 만든다({@link #getCaseNo()}, #413).
+   *
    * @param offeredAmount 접수 시 보험사 제시액(원). 미입력이면 null이고, 0 같은 기본값으로 바꾸지 않는다
    */
   public static Report createPending(UUID userId, UUID productId, UUID claimId, AccidentType accidentType,
-      Integer offeredAmount, String question, String caseNo) {
+      Integer offeredAmount, String question) {
     Report report = new Report();
     report.userId = userId;
     report.productId = productId;
@@ -174,9 +174,19 @@ public class Report extends BaseEntity {
     report.accidentType = accidentType;
     report.offeredAmount = offeredAmount;
     report.question = question;
-    report.caseNo = caseNo;
     report.status = ReportStatus.AWAITING_INSPECTION;
     return report;
+  }
+
+  /**
+   * 사람용 사건번호({@code yyyyMMdd-XXXXXXXX}). 컬럼이 아니라 응답 표시용 파생값이다 — 생성일과 리포트 ID로 그때그때
+   * 만든다({@link CaseNo}, #413). {@code reports.case_no} 컬럼은 2차 삭제 전까지 남아 있지만 이 엔티티는 읽지도
+   * 쓰지도 않는다.
+   *
+   * @return 사건번호. 아직 저장 전이라 ID·생성 시각이 없으면 null
+   */
+  public @Nullable String getCaseNo() {
+    return CaseNo.of(getCreatedAt(), id);
   }
 
   public AmountRange amountRange() {

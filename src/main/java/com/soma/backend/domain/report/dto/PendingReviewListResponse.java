@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.soma.backend.domain.report.entity.AmountRange;
+import com.soma.backend.domain.report.entity.CaseNo;
 import com.soma.backend.domain.report.repository.PendingReviewRow;
 
 /** API#2 응답. 노션 스펙 정합 — {@code { list: [...], pagination: {...} }} 구조(page는 1-based). */
@@ -57,6 +58,12 @@ public record PendingReviewListResponse(
       boolean held,
       @Schema(requiredMode = Schema.RequiredMode.REQUIRED) LocalDateTime createdAt) {
 
+    /**
+     * 조회 행을 목록 아이템으로 바꾼다. {@code caseId}(사건번호)는 저장값이 아니라 리포트 생성 시각과 ID로 만든다
+     * ({@link CaseNo}, #413).
+     *
+     * @param reportReviewStatus 요청 사정사 본인의 이 리포트 검수 상태. 본인 검수가 없으면 null
+     */
     public static Item from(PendingReviewRow row, String reportReviewStatus) {
       long offerHeadroom = new AmountRange(
           row.claimedMinAmount(), row.claimedMaxAmount(), row.offeredAmount()).offerHeadroom();
@@ -64,7 +71,7 @@ public record PendingReviewListResponse(
       boolean held = Boolean.TRUE.equals(row.held());
       return new Item(
           row.reportId(),
-          row.caseNo(),
+          CaseNo.of(row.createdAt(), row.reportId()),
           ReportResponseSupport.title(row.title()),
           row.accidentType() == null ? null : row.accidentType().getValue(),
           joinRegion(row.region()),

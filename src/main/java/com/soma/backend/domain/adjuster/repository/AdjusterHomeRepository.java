@@ -129,7 +129,7 @@ public class AdjusterHomeRepository {
     QReport rp = QReport.report;
     return queryFactory
         .select(Projections.constructor(InProgressCaseRow.class,
-            rv.reportId, rp.caseNo, rp.accidentType, rp.title, rp.status, rv.status))
+            rv.reportId, rp.createdAt, rp.accidentType, rp.title, rp.status, rv.status))
         .from(rv)
         .join(rp).on(rp.id.eq(rv.reportId))
         .where(rv.adjusterId.eq(adjusterId)

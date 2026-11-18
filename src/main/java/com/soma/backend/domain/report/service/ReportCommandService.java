@@ -9,8 +9,6 @@ import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import io.micrometer.core.instrument.MeterRegistry;
@@ -51,25 +49,26 @@ public class ReportCommandService {
   private final ReportAttachmentRepository reportAttachmentRepository;
   private final ReportReviewRepository reportReviewRepository;
   private final OcrJobOutboxPort ocrJobOutboxPort;
-  private final CaseNoGenerator caseNoGenerator;
   private final ConsultationRoomOpener consultationRoomOpener;
   private final ApplicationEventPublisher eventPublisher;
   private final MeterRegistry meterRegistry;
 
-  // 쓰기 경로 구간 계측(#306). http.server.requests는 엔드포인트 총 시간만 주고, JDBC span도 메서드
-  // span도 없어서 그 총 시간을 커넥션 대기·락 대기·flush로 쪼갤 수단이 없었다. 세 타이머가 각각
-  // 다른 질문에 답한다 — 구간이 서로 겹치는 건 의도된 것이다.
-  private final Timer caseNoTimer;
+  // 쓰기 경로 구간 계측(#306). http.server.requests는 엔드포인트 총 시간만 주므로 영속화 호출 구간을 따로 잰다.
+  // 사건번호 발급 구간(report.create.caseno)과 발급~커밋 임계 구간(report.create.lock_hold) 타이머는 사건번호를
+  // 저장·발급하지 않게 되면서 잴 구간이 없어져 함께 없앴다(#413).
   private final Timer persistTimer;
-  private final Timer lockHoldTimer;
 
+  /**
+   * 리포트 생성·제안 결정에 필요한 리포지토리·아웃박스·협력 객체를 받고, 영속화 구간 타이머를 등록한다.
+   *
+   * @param meterRegistry {@code report.create.persist} 타이머를 등록할 레지스트리
+   */
   public ReportCommandService(
       UserClaimRepository userClaimRepository,
       ReportRepository reportRepository,
       ReportAttachmentRepository reportAttachmentRepository,
       ReportReviewRepository reportReviewRepository,
       OcrJobOutboxPort ocrJobOutboxPort,
-      CaseNoGenerator caseNoGenerator,
       ConsultationRoomOpener consultationRoomOpener,
       ApplicationEventPublisher eventPublisher,
       MeterRegistry meterRegistry) {
@@ -78,18 +77,11 @@ public class ReportCommandService {
     this.reportAttachmentRepository = reportAttachmentRepository;
     this.reportReviewRepository = reportReviewRepository;
     this.ocrJobOutboxPort = ocrJobOutboxPort;
-    this.caseNoGenerator = caseNoGenerator;
     this.consultationRoomOpener = consultationRoomOpener;
     this.eventPublisher = eventPublisher;
     this.meterRegistry = meterRegistry;
-    this.caseNoTimer = Timer.builder("report.create.caseno")
-        .description("사건번호 발급 — 랜덤 코드 생성 + 중복 확인(#309). 이전에는 카운터 락 대기 + UPSERT였다")
-        .register(meterRegistry);
     this.persistTimer = Timer.builder("report.create.persist")
         .description("리포트 생성의 영속화 호출 구간(claim·report·첨부·아웃박스). 커밋 flush는 제외")
-        .register(meterRegistry);
-    this.lockHoldTimer = Timer.builder("report.create.lock_hold")
-        .description("리포트 생성 임계 구간(사건번호 발급~커밋 완료). #309 이전에는 case_no 카운터 락 보유 구간이었다")
         .register(meterRegistry);
   }
 
@@ -125,16 +117,10 @@ public class ReportCommandService {
         request.accidentType(), details, request.question(), request.description(),
         request.additionalInformation()));
 
-    // 리포트 생성의 임계 구간(사건번호 발급~커밋)
-    // case_no 카운터 행 락이 커밋까지 유지됐으나 랜덤 발급으로 바꿔 락 해소
-    Timer.Sample lockSample = Timer.start(meterRegistry);
-
-    String caseNo = caseNoTimer.record(caseNoGenerator::generate);
-
-    //Reports 테이블 스켈레톤 저장
+    // Reports 테이블 스켈레톤 저장. 사건번호는 발급하지 않는다 — 응답할 때 생성일과 ID로 만든다(#413).
     Report report = reportRepository.save(Report.createPending(
         userId, request.productId(), claim.getId(), request.accidentType(), request.offeredAmount(),
-        request.question(), caseNo));
+        request.question()));
 
     // 첨부 저장과 OCR 발행을 두 패스로 나눈다(문서마다 번갈아 저장하지 않는다) — 같은 타입 INSERT으로 JDBC 배치 활용
     List<ReportAttachment> attachments = new ArrayList<>(docTotal);
@@ -167,7 +153,6 @@ public class ReportCommandService {
     }
 
     persistSample.stop(persistTimer);
-    stopOnCommit(lockSample);
 
     return CreateReportResponse.from(report);
   }
@@ -220,27 +205,6 @@ public class ReportCommandService {
           review.getAdjusterId(), report.getUserId(), report.getId(), review.getId(), room.chatRoomId()));
     }
     return room.chatRoomId();
-  }
-
-  /**
-   * 임계 구간 타이머를 <b>커밋 이후</b>에 정지한다. 서비스 메서드가 반환하는 시점에 재면 flush·커밋에
-   * 걸린 시간이 통째로 빠져 구간을 과소평가한다 — 첨부·아웃박스 INSERT가 배치로 묶여 커밋 시점에
-   * 나가는 구조라 그 누락이 특히 크다.
-   *
-   * <p>트랜잭션 동기화가 없는 컨텍스트(단위 테스트 등)에서는 등록이 {@code IllegalStateException}이므로
-   * 즉시 정지한다. 그 경우 값은 커밋을 뺀 근사치다.
-   */
-  private void stopOnCommit(Timer.Sample sample) {
-    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-      sample.stop(lockHoldTimer);
-      return;
-    }
-    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-      @Override
-      public void afterCompletion(int status) {
-        sample.stop(lockHoldTimer);
-      }
-    });
   }
 
   private String toS3Key(String s3Url) {

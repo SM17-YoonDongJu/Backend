@@ -47,12 +47,17 @@ import com.soma.backend.domain.report.repository.UserClaimRepository;
  * 한 Aggregate" 원칙의 목적은 동시성 하의 불변식 보호인데 부트타임 픽스처 로딩에는 경쟁이 없다.
  * Aggregate별로 쪼개면 중간 실패 시 "방은 있는데 리포트는 채택 대기"처럼 k6가 풀을 오분류하는 상태가 남는다.
  *
- * <p><b>raw SQL은 {@link #patchAiDraft} 한 곳뿐이다.</b> {@code DevMockDataSeedRunner}가 명문화한 두 조건을
- * 모두 충족한다 — (1) 대상 컬럼에 PII 암호화 대상이 하나도 없고(암호화는 {@code reports.question}뿐이며
- * 그건 팩터리가 처리한다) (2) 엔티티에 이 컬럼들을 쓰는 정식 경로가 아예 없다(운영에서도 AI 워커가 raw
- * SQL로 UPDATE한다). {@code DevMockDataSeedRunner}가 필요로 했던 나머지 raw SQL은 이번엔 전부 불필요하다 —
- * 백데이트가 필요 없고(시드는 생성 시각 그대로 쓴다), COUNSELING·방 개설 조합을 도메인 메서드로 그대로
- * 만들 수 있기 때문이다.
+ * <p><b>raw SQL은 {@link #patchAiDraftAndSeedMarker} 한 곳뿐이다.</b> {@code DevMockDataSeedRunner}가 명문화한
+ * 두 조건을 모두 충족한다 — (1) 대상 컬럼에 PII 암호화 대상이 하나도 없고(암호화는 {@code reports.question}뿐이며
+ * 그건 팩터리가 처리한다) (2) 엔티티에 이 컬럼들을 쓰는 정식 경로가 아예 없다(AI 초안 컬럼은 운영에서도 AI 워커가
+ * raw SQL로 UPDATE하고, 시드 표식 {@code case_no}는 #413부터 엔티티 매핑이 없다). {@code DevMockDataSeedRunner}가
+ * 필요로 했던 나머지 raw SQL은 이번엔 전부 불필요하다 — 백데이트가 필요 없고(시드는 생성 시각 그대로 쓴다),
+ * COUNSELING·방 개설 조합을 도메인 메서드로 그대로 만들 수 있기 때문이다.
+ *
+ * <p><b>시드 표식({@code case_no}).</b> {@code case_no}는 #413 이후 앱이 쓰지 않는 레거시 컬럼이고(엔티티 매핑
+ * 없음, 사건번호는 응답 때 생성일과 ID로 만든다) k6 시드 표식으로만 남는다. 그래서 표식은 팩터리가 아니라
+ * {@link #patchAiDraftAndSeedMarker}의 같은 UPDATE로 쓴다. 2차에서 컬럼을 지우기 전에 표식을 재설계해야 한다 —
+ * 러너의 멱등 카운트와 사후 정리 SQL이 이 컬럼에 기대고 있다.
  *
  * <p>{@code @Profile}을 {@link K6ScenarioSeedRunner}와 동일하게 맞춘다 — 호출자(러너)가 이미 prod에서
  * 빈으로 등록되지 않으므로 실행 경로는 없지만, 33,700행을 실제로 쓰는 이 컴포넌트 자체가 prod 컨텍스트에
@@ -160,7 +165,7 @@ public class K6ScenarioSeedWriter {
   public void seedProposalReport(UUID userId, int userSeq, int idx, List<UUID> adjusterIds) {
     AccidentType accidentType = accidentTypeOf(idx);
     UUID claimId = createClaim(userId, accidentType);
-    Report report = createReport(userId, claimId, accidentType, POOL_PROPOSAL, userSeq, idx);
+    Report report = createReport(userId, claimId, accidentType);
 
     for (UUID adjusterId : adjusterIds) {
       ReportReview review = ReportReview.create(report.getId(), adjusterId);
@@ -170,7 +175,7 @@ public class K6ScenarioSeedWriter {
     }
     report.applyReviewStart();
 
-    finish(report.getId());
+    finish(report.getId(), caseNo(POOL_PROPOSAL, userSeq, idx));
   }
 
   /**
@@ -186,7 +191,7 @@ public class K6ScenarioSeedWriter {
   public void seedConsultRoom(UUID userId, int userSeq, int idx, UUID adjusterId) {
     AccidentType accidentType = accidentTypeOf(idx);
     UUID claimId = createClaim(userId, accidentType);
-    Report report = createReport(userId, claimId, accidentType, POOL_CONSULT, userSeq, idx);
+    Report report = createReport(userId, claimId, accidentType);
 
     ReportReview review = ReportReview.create(report.getId(), adjusterId);
     review.updateReviewContent(REVIEW_ESTIMATE_MIN_AMOUNT, REVIEW_ESTIMATE_MAX_AMOUNT,
@@ -202,7 +207,7 @@ public class K6ScenarioSeedWriter {
     ChatMessage opened = chatMessageRepository.save(ChatMessage.system(room.getId(), ROOM_OPENED_MESSAGE));
     room.touchLastMessage(ROOM_OPENED_MESSAGE, messageTimeOf(opened));
 
-    finish(report.getId());
+    finish(report.getId(), caseNo(POOL_CONSULT, userSeq, idx));
   }
 
   /**
@@ -218,7 +223,7 @@ public class K6ScenarioSeedWriter {
   public void seedDurableRoom(UUID userId, int userSeq, int idx, UUID adjusterId) {
     AccidentType accidentType = accidentTypeOf(idx);
     UUID claimId = createClaim(userId, accidentType);
-    Report report = createReport(userId, claimId, accidentType, POOL_DURABLE, userSeq, idx);
+    Report report = createReport(userId, claimId, accidentType);
 
     ReportReview review = ReportReview.create(report.getId(), adjusterId);
     review.updateReviewContent(REVIEW_ESTIMATE_MIN_AMOUNT, REVIEW_ESTIMATE_MAX_AMOUNT,
@@ -242,7 +247,7 @@ public class K6ScenarioSeedWriter {
     }
     room.touchLastMessage(lastContent, messageTimeOf(lastMessage));
 
-    finish(report.getId());
+    finish(report.getId(), caseNo(POOL_DURABLE, userSeq, idx));
   }
 
   /**
@@ -256,9 +261,9 @@ public class K6ScenarioSeedWriter {
   public void seedInspectionReport(UUID userId, int userSeq, int idx) {
     AccidentType accidentType = accidentTypeOf(idx);
     UUID claimId = createClaim(userId, accidentType);
-    Report report = createReport(userId, claimId, accidentType, POOL_INSPECTION, userSeq, idx);
+    Report report = createReport(userId, claimId, accidentType);
 
-    finish(report.getId());
+    finish(report.getId(), caseNo(POOL_INSPECTION, userSeq, idx));
   }
 
   /**
@@ -275,11 +280,10 @@ public class K6ScenarioSeedWriter {
   }
 
   /**
-   * case_no는 {@code CaseNoGenerator}(시퀀스 nextval)를 쓰지 않고 직접 만든다 —
-   * (1) 5,100번의 DB 왕복이 사라지고, (2) 운영 사건번호 시퀀스를 소모하지 않아 부하테스트 중 실제
-   * {@code POST /reports}의 사건번호가 이어서 발급되며, (3) {@code case_no LIKE 'K6-%'} 하나로 시드 전량을
-   * 식별할 수 있어 멱등 체크와 사후 정리가 자명해진다. {@code case_no}는 {@code varchar(100) UNIQUE}이고
-   * 포맷을 파싱하는 코드가 레포에 없다(표시용).
+   * 시드 표식 — 레거시 {@code case_no} 컬럼에 기록하는 값({@code K6-<풀>-<유저 4자리>-<순번 3자리>}). 앱은 #413 이후
+   * 이 컬럼을 읽지도 쓰지도 않으므로(응답의 사건번호는 생성일과 ID로 만든다) 시드 식별 용도로만 쓴다.
+   * {@code case_no LIKE 'K6-%'} 하나로 시드 전량을 식별할 수 있어 멱등 체크와 사후 정리가 자명해진다.
+   * {@code case_no}는 {@code varchar(100) UNIQUE}(NULL 허용, V50)라 표식끼리만 겹치지 않으면 된다.
    */
   static String caseNo(String pool, int userSeq, int idx) {
     return String.format(Locale.ROOT, "K6-%s-%04d-%03d", pool, userSeq, idx);
@@ -298,12 +302,13 @@ public class K6ScenarioSeedWriter {
     return claim.getId();
   }
 
-  /** 리포트를 검수 대기 상태로 저장한다. 제시액은 운영 POST /reports처럼 청구와 같은 값을 팩터리로 넘긴다(#408). */
-  private Report createReport(UUID userId, UUID claimId, AccidentType accidentType,
-      String pool, int userSeq, int idx) {
+  /**
+   * 리포트를 검수 대기 상태로 저장한다. 제시액은 운영 POST /reports처럼 청구와 같은 값을 팩터리로 넘긴다(#408).
+   * 시드 표식({@code case_no})은 여기서 넣지 않는다 — 엔티티에 매핑이 없어 {@link #finish}가 flush 뒤 기록한다.
+   */
+  private Report createReport(UUID userId, UUID claimId, AccidentType accidentType) {
     return reportRepository.save(Report.createPending(
-        userId, null, claimId, accidentType, CLAIM_OFFERED_AMOUNT, SYNTHETIC_QUESTION,
-        caseNo(pool, userSeq, idx)));
+        userId, null, claimId, accidentType, CLAIM_OFFERED_AMOUNT, SYNTHETIC_QUESTION));
   }
 
   private static String textMessageContent(int no) {
@@ -318,23 +323,28 @@ public class K6ScenarioSeedWriter {
 
   /**
    * 시딩 단위를 마무리한다 — <b>순서가 중요하다.</b> 먼저 영속성 컨텍스트를 flush해 INSERT와 상태 전이
-   * UPDATE를 DB에 반영한 다음에야 {@link #patchAiDraft}의 raw UPDATE를 날린다.
+   * UPDATE를 DB에 반영한 다음에야 {@link #patchAiDraftAndSeedMarker}의 raw UPDATE를 날린다.
    *
    * <p>순서를 뒤집으면 두 가지가 모두 깨진다. (1) raw UPDATE가 아직 INSERT되지 않은 행을 찾아 0행 갱신이
    * 된다(JdbcTemplate은 Hibernate의 flush-before-query 대상이 아니다). (2) 설령 행이 있어도, Hibernate는
    * {@code @DynamicUpdate}가 없으면 <b>전 컬럼</b>을 쓰는 UPDATE를 만들므로 이후 커밋 flush가 방금 채운 AI
    * 초안 컬럼을 엔티티의 null 값으로 덮어쓴다. flush 이후에는 엔티티를 더 건드리지 않으므로(스냅샷 == 현재
    * 상태) 커밋 시점에 추가 UPDATE가 생기지 않는다.
+   *
+   * <p>네 풀(P·D·M·I)이 모두 이 메서드로 끝나므로 시드 표식({@code case_no})도 여기서 함께 기록된다. 엔티티의
+   * 전 컬럼 UPDATE에는 {@code case_no}가 없으므로(매핑 없음, #413) 커밋 flush가 표식을 덮어쓰지 않는다.
+   *
+   * @param seedMarker {@link #caseNo}로 만든 시드 표식
    */
-  private void finish(UUID reportId) {
+  private void finish(UUID reportId, String seedMarker) {
     reportRepository.flush();
-    patchAiDraft(reportId);
+    patchAiDraftAndSeedMarker(reportId, seedMarker);
   }
 
   /**
-   * REPORTS의 AI 초안 컬럼을 채운다(문서화된 raw SQL 예외). 운영에서는 AI 워커가 OCR·분석 후 이 컬럼들을
-   * 직접 SQL로 갱신하며 Spring 엔티티에는 쓰기 경로가 없다. 이 러너가 만드는 리포트는 OCR 트리거를 발행하지
-   * 않아 AI 워커가 절대 채워주지 않으므로 여기서 직접 채운다. 대상 컬럼 중 PII 암호화 대상은 없다
+   * REPORTS의 AI 초안 컬럼과 시드 표식({@code case_no})을 채운다(문서화된 raw SQL 예외). 운영에서는 AI 워커가
+   * OCR·분석 후 AI 초안 컬럼을 직접 SQL로 갱신하며 Spring 엔티티에는 쓰기 경로가 없다. 이 러너가 만드는 리포트는
+   * OCR 트리거를 발행하지 않아 AI 워커가 절대 채워주지 않으므로 여기서 직접 채운다. 대상 컬럼 중 PII 암호화 대상은 없다
    * ({@code question}만 암호화 대상이고 그건 {@code Report.createPending}이 컨버터로 처리한다).
    *
    * <p>{@code DevMockDataSeedRunner.patchAiDraft}와 달리 {@code title}도 함께 쓴다 — 카드 목록 응답에
@@ -343,14 +353,18 @@ public class K6ScenarioSeedWriter {
    * <p>{@code offered_amount}는 이제 {@link #createReport}가 팩터리로도 넣으며(#408) 여기서는 같은 값
    * ({@code AI_OFFERED_AMOUNT} == {@code CLAIM_OFFERED_AMOUNT})을 다시 쓴다.
    *
+   * <p>시드 표식({@code case_no})도 같은 UPDATE로 쓴다. 표식만 따로 UPDATE하면 리포트마다(기본 설정 30,600건)
+   * DB 왕복이 하나씩 늘어 시딩 시간이 그만큼 길어진다. {@code case_no}도 PII 암호화 대상이 아니고 엔티티 쓰기
+   * 경로가 없어(#413) 위 두 조건을 그대로 충족한다.
+   *
    * <p>테이블명에 스키마를 붙이지 않는다 — dev/prod는 JDBC URL {@code ?currentSchema=core,public}이,
    * test_db는 {@code public}이 해석한다. DDL이 아니라 DML이라 "신규 테이블은 {@code core.} 명시" 규칙과 무관하다.
    */
-  private void patchAiDraft(UUID reportId) {
-    jdbcTemplate.update(
+  private void patchAiDraftAndSeedMarker(UUID reportId, String seedMarker) {
+    int updated = jdbcTemplate.update(
         "UPDATE reports SET title=?, claimed_min_amount=?, claimed_max_amount=?, offered_amount=?, "
             + "applicable_guarantees=?, omitted_special_contract=?, basis_terms_precedents=?, "
-            + "treatment=?, confidence_level=?, is_masked=false WHERE id=?",
+            + "treatment=?, confidence_level=?, is_masked=false, case_no=? WHERE id=?",
         ps -> {
           ps.setString(1, AI_TITLE);
           ps.setObject(2, AI_CLAIMED_MIN_AMOUNT);
@@ -361,7 +375,13 @@ public class K6ScenarioSeedWriter {
           ps.setArray(7, ps.getConnection().createArrayOf("text", AI_PRECEDENTS.toArray()));
           ps.setString(8, AI_TREATMENT);
           ps.setString(9, AI_CONFIDENCE_LEVEL);
-          ps.setObject(10, reportId);
+          ps.setString(10, seedMarker);
+          ps.setObject(11, reportId);
         });
+    // 표식은 러너 멱등 카운트의 기준이다. 예전엔 INSERT에 실려 빠질 수 없었지만 이제 별도 UPDATE라, 0행 갱신
+    // (flush 누락 등)을 그냥 넘기면 표식 없는 시드가 커밋되고 재실행 때 같은 idx를 다시 만든다. 롤백시켜 드러낸다.
+    if (updated != 1) {
+      throw new IllegalStateException("k6 시드 리포트 패치가 " + updated + "행에 적용됐다(기대 1행)");
+    }
   }
 }

@@ -99,8 +99,7 @@ class ReportAnalysisAttachmentIntegrationTest {
   }
 
   private UUID saveReport(boolean withAiDraft) {
-    Report report = Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
-        "ANA-" + UUID.randomUUID().toString().substring(0, 12));
+    Report report = Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문");
     if (withAiDraft) {
       ReflectionTestUtils.setField(report, "applicableGuarantees", List.of("상해후유장해"));
     }

@@ -91,7 +91,7 @@ class ReuploadReasonPoolExhaustionIntegrationTest {
     assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isEqualTo(1);
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
-        "질문", "RPE-" + UUID.randomUUID().toString().substring(0, 12))).getId();
+        "질문")).getId();
     jdbcTemplate.update("UPDATE reports SET status = 'NEEDS_REUPLOAD' WHERE id = ?", reportId);
     // 읽히기만 하면 DOMAIN_MISMATCH가 나올 행 — 일반 문구가 나오면 그건 조회 실패를 흡수한 결과다.
     jdbcTemplate.update("""

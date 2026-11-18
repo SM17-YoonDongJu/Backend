@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -80,6 +81,15 @@ class ChatRoomRepositoryImplTest {
     return chatRoomRepository.save(room);
   }
 
+  /** created_at은 감사 컬럼(updatable=false)이라 flush 뒤 네이티브 UPDATE로 리포트 생성 시각을 고정한다(테스트 전용). */
+  private void overrideReportCreatedAt(UUID reportId, LocalDateTime createdAt) {
+    entityManager.flush();
+    entityManager.createNativeQuery("UPDATE reports SET created_at = :createdAt WHERE id = :id")
+        .setParameter("createdAt", createdAt)
+        .setParameter("id", reportId)
+        .executeUpdate();
+  }
+
   private ChatMessage persistMessage(UUID roomId, UUID senderId, String content) {
     ChatMessage message = senderId == null
         ? ChatMessage.system(roomId, content)
@@ -133,13 +143,16 @@ class ChatRoomRepositoryImplTest {
   }
 
   @Test
-  @DisplayName("파이프라인 방은 review_status를 채우고, 검색 방(제안 없음)은 report_id·review_status 모두 null")
+  @DisplayName("파이프라인 방은 review_status·리포트 생성 시각을 채우고, 검색 방(제안 없음)은 report_id·review_status 모두 null")
   void findMyRoomRows_reviewStatus_pipelineHasValueAndSearchRoomIsNull() {
     Report report = Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260716-100");
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문");
     reportRepository.save(report);
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster.getId()));
     ChatRoom pipelineRoom = persistRoom(customer, adjuster, report.getId(), review.getId());
+    // 리포트 생성 시각을 방 생성 시각(지금)과 다른 날로 고정해 두 created_at이 섞이면 드러나게 한다(#413).
+    LocalDateTime reportCreatedAt = LocalDateTime.of(2026, 7, 16, 9, 0);
+    overrideReportCreatedAt(report.getId(), reportCreatedAt);
 
     User searchAdjuster = userRepository.save(
         User.create("검색사정사", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
@@ -152,7 +165,7 @@ class ChatRoomRepositoryImplTest {
     assertThat(pipelineRow.reportId()).isEqualTo(report.getId());
     assertThat(pipelineRow.reportReviewId()).isEqualTo(review.getId());
     assertThat(pipelineRow.reviewStatus()).isEqualTo(ReviewStatus.SENT);
-    assertThat(pipelineRow.caseNo()).isEqualTo("20260716-100");
+    assertThat(pipelineRow.reportCreatedAt()).isEqualTo(reportCreatedAt);
     assertThat(pipelineRow.accidentType()).isEqualTo(AccidentType.MEDICAL_INDEMNITY);
 
     ChatRoomListRow searchRow =
@@ -160,8 +173,30 @@ class ChatRoomRepositoryImplTest {
     assertThat(searchRow.reportId()).isNull();
     assertThat(searchRow.reportReviewId()).isNull();
     assertThat(searchRow.reviewStatus()).isNull();
-    assertThat(searchRow.caseNo()).isNull();
+    assertThat(searchRow.reportCreatedAt()).isNull();
     assertThat(searchRow.accidentType()).isNull();
+  }
+
+  @Test
+  @DisplayName("목록·단건 상세의 case_no는 방이 아니라 리포트 생성일 + 리포트 ID로 만들고, 검색 방은 null이다(#413)")
+  void caseNo_isDerivedFromReportCreatedAtAndId_andNullForSearchRoom() {
+    Report report = reportRepository.save(Report.createPending(
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문"));
+    ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster.getId()));
+    ChatRoom pipelineRoom = persistRoom(customer, adjuster, report.getId(), review.getId());
+    overrideReportCreatedAt(report.getId(), LocalDateTime.of(2026, 7, 16, 9, 0));
+    User searchAdjuster = userRepository.save(
+        User.create("검색사정사", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
+    ChatRoom searchRoom = persistRoom(customer, searchAdjuster, null, null);
+    String expected = "20260716-" + report.getId().toString().substring(0, 8).toUpperCase(Locale.ROOT);
+
+    List<ChatRoomSummaryResponse> rooms = chatRoomQueryService.listMyRooms(customer.getId(), null, 20).rooms();
+
+    assertThat(rooms).filteredOn(room -> room.chatRoomId().equals(pipelineRoom.getId()))
+        .singleElement().extracting(ChatRoomSummaryResponse::caseNo).isEqualTo(expected);
+    assertThat(rooms).filteredOn(room -> room.chatRoomId().equals(searchRoom.getId()))
+        .singleElement().extracting(ChatRoomSummaryResponse::caseNo).isNull();
+    assertThat(chatRoomQueryService.getRoom(customer.getId(), pipelineRoom.getId()).caseNo()).isEqualTo(expected);
   }
 
   @Test

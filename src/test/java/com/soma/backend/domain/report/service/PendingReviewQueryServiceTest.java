@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -105,7 +106,9 @@ class PendingReviewQueryServiceTest {
         service.getPendingReviewList(null, null, null, reportId, pageable);
 
     PendingReviewListResponse.Item item = result.list().get(0);
-    assertThat(item.caseId()).isEqualTo("CASE-1");
+    // case_id는 저장값이 아니라 리포트 생성일(row.createdAt) + 리포트 ID 앞 8자리 대문자다(#413)
+    assertThat(item.caseId())
+        .isEqualTo("20260531-" + reportId.toString().substring(0, 8).toUpperCase(Locale.ROOT));
     assertThat(item.region()).isEqualTo("서울");
     assertThat(item.offerHeadroom()).isEqualTo(-3000L);
     assertThat(item.issueCount()).isEqualTo(2L);
@@ -304,7 +307,7 @@ class PendingReviewQueryServiceTest {
   private static PendingReviewRow row(
       UUID reportId, Integer claimedMin, Integer claimedMax, Integer offered, Long issueCount, Boolean held) {
     return new PendingReviewRow(
-        reportId, "CASE-1", "제목", AccidentType.DISABILITY, List.of("서울"), ReportStatus.AWAITING_INSPECTION,
+        reportId, "제목", AccidentType.DISABILITY, List.of("서울"), ReportStatus.AWAITING_INSPECTION,
         claimedMin, claimedMax, offered, issueCount, held, LocalDateTime.of(2026, 5, 31, 9, 0));
   }
 }

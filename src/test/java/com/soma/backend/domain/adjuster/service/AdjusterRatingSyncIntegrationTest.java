@@ -75,7 +75,7 @@ class AdjusterRatingSyncIntegrationTest {
     User customer = userRepository.save(
         User.create("고객", LocalDate.of(1990, 1, 1), "F", null, null, Role.USER, null));
     Report report = reportRepository.save(Report.createPending(
-        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "RSYNC-" + UUID.randomUUID()));
+        customer.getId(), null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문"));
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     ReportReview review = reportReviewRepository.save(ReportReview.create(report.getId(), adjuster.getId()));
     review.accept();

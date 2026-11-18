@@ -82,8 +82,7 @@ class ReportAnalysisStatusExecutionTest {
   }
 
   private UUID saveReport(UUID userId) {
-    Report report = Report.createPending(userId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
-        "ANL-" + UUID.randomUUID().toString().substring(0, 12));
+    Report report = Report.createPending(userId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문");
     return reportRepository.save(report).getId();
   }
 

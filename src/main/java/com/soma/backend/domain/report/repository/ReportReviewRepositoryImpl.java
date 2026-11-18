@@ -55,7 +55,7 @@ public class ReportReviewRepositoryImpl implements ReportReviewRepositoryCustom 
     List<ReviewedReportRow> content = queryFactory
         .select(Projections.constructor(ReviewedReportRow.class,
             rv.reportId,
-            rp.caseNo,
+            rp.createdAt,
             rp.title,
             rp.accidentType,
             us.region,

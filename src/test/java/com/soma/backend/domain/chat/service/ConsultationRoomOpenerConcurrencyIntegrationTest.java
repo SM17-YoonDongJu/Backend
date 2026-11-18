@@ -100,7 +100,7 @@ class ConsultationRoomOpenerConcurrencyIntegrationTest {
     adjusterId = adjuster.getId();
 
     Report report = Report.createPending(customerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
-        "질문", "CONC-" + UUID.randomUUID().toString().substring(0, 12));
+        "질문");
     report.applyReviewTransition(ReportStatus.AWAITING_ADOPTION);
     reportId = reportRepository.save(report).getId();
     reviewId = reportReviewRepository.save(ReportReview.create(reportId, adjusterId)).getId();

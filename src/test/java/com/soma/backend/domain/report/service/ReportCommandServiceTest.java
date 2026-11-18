@@ -73,8 +73,6 @@ class ReportCommandServiceTest {
   @Mock
   private OcrJobOutboxPort ocrJobOutboxPort;
   @Mock
-  private CaseNoGenerator caseNoGenerator;
-  @Mock
   private ConsultationRoomOpener consultationRoomOpener;
   @Mock
   private ApplicationEventPublisher eventPublisher;
@@ -96,9 +94,8 @@ class ReportCommandServiceTest {
   }
 
   @Test
-  @DisplayName("createReport는 구간 타이머 3종을 기록한다 — 총 지연을 락·저장으로 쪼개 보기 위한 계측(#306)")
-  void createReport_recordsStageTimers() {
-    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
+  @DisplayName("createReport는 영속화 구간 타이머만 기록한다 — 사건번호 발급·임계 구간 타이머는 #413에서 없앴다")
+  void createReport_recordsPersistTimerOnly() {
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     CreateReportRequest request = new CreateReportRequest(
@@ -107,15 +104,14 @@ class ReportCommandServiceTest {
 
     service.createReport(userId, request);
 
-    assertThat(meterRegistry.get("report.create.caseno").timer().count()).isEqualTo(1L);
     assertThat(meterRegistry.get("report.create.persist").timer().count()).isEqualTo(1L);
-    // 트랜잭션 동기화가 없는 단위 테스트에서는 afterCompletion 대신 즉시 정지 경로를 탄다.
-    assertThat(meterRegistry.get("report.create.lock_hold").timer().count()).isEqualTo(1L);
+    // 사건번호를 발급하지 않으니(#413) 발급 구간·발급~커밋 임계 구간 타이머는 등록조차 되지 않는다.
+    assertThat(meterRegistry.find("report.create.caseno").timer()).isNull();
+    assertThat(meterRegistry.find("report.create.lock_hold").timer()).isNull();
   }
 
   @Test
   void createReport_persistsClaimReportAttachments_andEnqueuesOcrJobPerDocument() {
-    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportAttachmentRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
@@ -150,7 +146,6 @@ class ReportCommandServiceTest {
 
   @Test
   void createReport_succeeds_whenProductIdNull() {
-    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
 
@@ -180,7 +175,7 @@ class ReportCommandServiceTest {
   @Test
   @DisplayName("문서 수가 상한을 넘으면 400 REPORT_TOO_MANY_DOCUMENTS — DB 쓰기·발행 전에 막는다")
   void createReport_throwsTooManyDocuments_whenExceedsLimit() {
-    // 상한(ReportAttachment.MAX_PER_REPORT=20)을 넘는 21건 — 카운터·claim·report·첨부·발행 어느 것도 일어나면 안 된다
+    // 상한(ReportAttachment.MAX_PER_REPORT=20)을 넘는 21건 — claim·report·첨부·발행 어느 것도 일어나면 안 된다
     List<CreateReportRequest.Document> tooMany = IntStream.rangeClosed(1, 21)
         .mapToObj(n -> new CreateReportRequest.Document(
             "https://bucket.s3.ap-northeast-2.amazonaws.com/uploads/" + n + ".pdf",
@@ -194,7 +189,6 @@ class ReportCommandServiceTest {
         .isInstanceOfSatisfying(BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.REPORT_TOO_MANY_DOCUMENTS));
 
-    verify(caseNoGenerator, never()).generate();
     verify(userClaimRepository, never()).save(any());
     verify(reportRepository, never()).save(any());
     verify(reportAttachmentRepository, never()).save(any());
@@ -204,7 +198,6 @@ class ReportCommandServiceTest {
   @Test
   @DisplayName("접수 제시액은 user_claims와 reports에 같은 값으로 들어간다(#408)")
   void createReport_copiesOfferedAmountToReport() {
-    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     CreateReportRequest request = new CreateReportRequest(
@@ -226,7 +219,6 @@ class ReportCommandServiceTest {
   @Test
   @DisplayName("제시액을 입력하지 않으면 reports.offered_amount도 null이다 — 0 같은 기본값으로 바꾸지 않는다(#408)")
   void createReport_leavesReportOfferedAmountNull_whenNotProvided() {
-    given(caseNoGenerator.generate()).willReturn("20260914-K3F9XM");
     given(userClaimRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     given(reportRepository.save(any())).willAnswer(inv -> withId(inv.getArgument(0)));
     CreateReportRequest request = new CreateReportRequest(
@@ -522,7 +514,7 @@ class ReportCommandServiceTest {
 
   private Report reportOwnedBy(UUID ownerId, ReportStatus status) {
     Report report = Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문", "20260709-001");
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문");
     ReflectionTestUtils.setField(report, "id", reportId);
     ReflectionTestUtils.setField(report, "status", status);
     return report;

@@ -118,7 +118,7 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
             room.reportReviewId,
             room.status,
             review.status,
-            report.caseNo,
+            report.createdAt,
             report.accidentType,
             room.userId,
             room.adjusterId,
