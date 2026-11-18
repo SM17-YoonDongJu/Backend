@@ -1,6 +1,7 @@
 package com.soma.backend.domain.report.repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -17,6 +18,13 @@ public interface ReportReviewRepositoryCustom {
    */
   Page<ReviewedReportRow> findReviewedReportRows(
       UUID adjusterId, ReviewStatus status, LocalDateTime monthFrom, LocalDateTime monthTo, Pageable pageable);
+
+  /**
+   * API#5 필터 탭 배지용 — 요청 사정사 본인 검수의 상태별 건수. 월 필터는 {@link #findReviewedReportRows}와 같은
+   * 조건을 쓰되 status 탭 필터는 걸지 않는다(어떤 탭이 선택돼도 전체 분포 배지를 보여야 하므로). 경계는 각각 null이면
+   * 걸지 않고, 범위는 [monthFrom, monthTo)다. 건수가 0인 상태는 결과에 없다(0 채움은 서비스가 한다).
+   */
+  List<StatusCount> countByStatusGrouped(UUID adjusterId, LocalDateTime monthFrom, LocalDateTime monthTo);
 
   /**
    * API#6 제안 목록(design.md §6) — 리포트에 달린 사정사 제안을 최신순으로 조회한다. REJECTED는 노출하지 않는다.

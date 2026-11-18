@@ -14,7 +14,7 @@ import com.soma.backend.domain.report.entity.ReportReview;
 
 /**
  * ReportReview Aggregate Spring Data JPA 리포지토리 + 통계 파생 쿼리.
- * 동적 목록 조회는 {@link ReportReviewRepositoryCustom}(QueryDSL)에서 구현한다.
+ * 동적 조회(목록·상태별 건수)는 {@link ReportReviewRepositoryCustom}(QueryDSL)에서 구현한다.
  */
 public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID>, ReportReviewRepositoryCustom {
 
@@ -113,20 +113,4 @@ public interface ReportReviewRepository extends JpaRepository<ReportReview, UUID
       + "ORDER BY rv.createdAt DESC")
   List<UUID> findAcceptedReportIdsForReviewer(
       @Param("adjusterId") UUID adjusterId, @Param("userId") UUID userId);
-
-  /**
-   * API#5 필터 탭 배지용 — 요청 사정사 본인 검수의 상태별 건수. 월 필터는 목록과 동일하게 적용하되
-   * status 탭 필터는 걸지 않는다(어떤 탭이 선택돼도 전체 분포 배지를 보여야 하므로). JPQL 생성자 표현식으로
-   * StatusCount(status, count)를 만든다(네이티브 미사용).
-   */
-  @Query("SELECT new com.soma.backend.domain.report.repository.StatusCount(rv.status, COUNT(rv)) "
-      + "FROM ReportReview rv "
-      + "WHERE rv.adjusterId = :adjusterId "
-      + "AND (:monthFrom IS NULL OR rv.createdAt >= :monthFrom) "
-      + "AND (:monthTo IS NULL OR rv.createdAt < :monthTo) "
-      + "GROUP BY rv.status")
-  List<StatusCount> countByStatusGrouped(
-      @Param("adjusterId") UUID adjusterId,
-      @Param("monthFrom") LocalDateTime monthFrom,
-      @Param("monthTo") LocalDateTime monthTo);
 }
