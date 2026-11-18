@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.entry;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -134,9 +135,25 @@ class ReviewedReportQueryServiceExecutionTest {
     assertThat(response.stats().totalCount()).isEqualTo(4L);
   }
 
+  @Test
+  @DisplayName("case_no는 검수 등록 시각이 아니라 리포트 생성일 + 리포트 ID로 만든다(#413)")
+  void caseNoUsesReportCreatedAtNotReviewedAt() {
+    // 검수 등록일(2026-09-15)과 다른 날로 리포트 생성 시각을 고정한다 — 검수 시각을 잘못 쓰면 날짜가 달라진다.
+    entityManager.createNativeQuery("UPDATE reports SET created_at = :createdAt WHERE id = :id")
+        .setParameter("createdAt", LocalDateTime.of(2026, 6, 1, 10, 0, 0))
+        .setParameter("id", sentReportId)
+        .executeUpdate();
+
+    ReviewedReportListResponse response =
+        reviewedReportQueryService.getReviewedReports(adjusterId, "SENT", "2026-09", PageRequest.of(0, 20));
+
+    assertThat(response.items()).singleElement().extracting(ReviewedReportListResponse.Item::caseNo)
+        .isEqualTo("20260601-" + sentReportId.toString().substring(0, 8).toUpperCase(Locale.ROOT));
+  }
+
   private UUID saveReport() {
     Report report = Report.createPending(
-        customerId, null, null, AccidentType.TRAFFIC, null, "질문", "RR411-" + UUID.randomUUID());
+        customerId, null, null, AccidentType.TRAFFIC, null, "질문");
     return reportRepository.save(report).getId();
   }
 

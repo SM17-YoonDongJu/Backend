@@ -68,7 +68,7 @@ class PendingReviewCountCacheIntegrationTest {
     entityManager.persist(customer);
     for (int idx = 0; idx < 3; idx++) {
       Report report = Report.createPending(
-          customer.getId(), null, null, AccidentType.OTHER, null, "질문", "CC-" + idx + "-" + region);
+          customer.getId(), null, null, AccidentType.OTHER, null, "질문");
       reportRepository.save(report);
     }
     entityManager.flush();

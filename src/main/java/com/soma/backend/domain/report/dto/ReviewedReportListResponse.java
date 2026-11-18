@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import com.soma.backend.domain.report.entity.CaseNo;
 import com.soma.backend.domain.report.repository.ReviewedReportRow;
 
 /**
@@ -61,10 +62,14 @@ public record ReviewedReportListResponse(
       @Schema(nullable = true) Integer confirmedMaxAmount,
       @Schema(nullable = true, description = "고객의 사건별 평점. 미작성 시 null") Integer rating) {
 
+    /**
+     * 조회 행을 목록 아이템으로 바꾼다. {@code caseNo}(사건번호)는 저장값이 아니라 리포트 생성 시각과 ID로 만든다
+     * ({@link CaseNo}, #413). 검수 시각({@code reviewedAt})이 아니라 리포트 생성 시각을 쓴다.
+     */
     public static Item from(ReviewedReportRow row) {
       return new Item(
           row.reportId(),
-          row.caseNo(),
+          CaseNo.of(row.reportCreatedAt(), row.reportId()),
           ReportResponseSupport.title(row.title()),
           row.accidentType() == null ? null : row.accidentType().getValue(),
           ReportResponseSupport.joinRegion(row.region()),

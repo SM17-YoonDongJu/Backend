@@ -83,8 +83,7 @@ class AnalysisFailedNotificationIntegrationTest {
   void setUp() {
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(
-        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문",
-        "SWP-" + UUID.randomUUID().toString().substring(0, 12))).getId();
+        ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null, "질문")).getId();
     deviceTokenRepository.save(DeviceToken.create(ownerId, "fcm-analysis-failed", Platform.ANDROID));
   }
 

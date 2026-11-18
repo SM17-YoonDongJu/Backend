@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -144,6 +145,30 @@ class ReviewWorkspaceQueryServiceTest {
 
     assertThat(result.progress().total()).isEqualTo(2);
     assertThat(result.progress().accepted()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("case_no는 리포트 생성일 + 리포트 ID 앞 8자리 대문자다 — 수정·검수 시각이 아니라 리포트 생성 시각을 쓴다(#413)")
+  void caseNoIsDerivedFromReportCreatedAtAndId() {
+    // Given: 리포트 생성·수정 시각과 작업본 생성 시각을 모두 다른 날로 둔다. 생성 시각이 아닌 값을 쓰면 날짜가 달라진다.
+    Report report = report();
+    ReflectionTestUtils.setField(report, "createdAt", LocalDateTime.of(2026, 4, 7, 9, 30));
+    ReflectionTestUtils.setField(report, "updatedAt", LocalDateTime.of(2026, 4, 9, 18, 0));
+    ReportReview review = review();
+    ReflectionTestUtils.setField(review, "createdAt", LocalDateTime.of(2026, 4, 8, 10, 0));
+    given(reportRepository.findById(reportId)).willReturn(Optional.of(report));
+    given(reportRepository.findReviewContext(reportId)).willReturn(context());
+    given(reportRepository.findRegionByReportId(reportId)).willReturn(List.of("서울 강남"));
+    given(reportIssueRepository.findAllByReportId(reportId)).willReturn(List.of());
+    given(reportReviewRepository.findByReportIdAndAdjusterId(reportId, adjusterId)).willReturn(Optional.of(review));
+    given(reportAttachmentRepository.findAllByReportId(reportId)).willReturn(List.of());
+
+    // When
+    ReviewWorkspaceResponse result = service.getReviewWorkspace(reportId, adjusterId);
+
+    // Then
+    assertThat(result.caseNo())
+        .isEqualTo("20260407-" + reportId.toString().substring(0, 8).toUpperCase(Locale.ROOT));
   }
 
   @Test

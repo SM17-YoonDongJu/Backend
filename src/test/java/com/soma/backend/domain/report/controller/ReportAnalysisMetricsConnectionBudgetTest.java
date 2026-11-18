@@ -75,8 +75,7 @@ class ReportAnalysisMetricsConnectionBudgetTest {
     // DataSource는 JDBC 관측 프록시로 감싸져 있을 수 있어 캐스트가 아니라 unwrap으로 꺼낸다.
     assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isEqualTo(1);
     ownerId = UUID.randomUUID();
-    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "질문",
-        "RAB-" + UUID.randomUUID().toString().substring(0, 12));
+    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "질문");
     ReflectionTestUtils.setField(report, "confidenceLevel", "medium");
     reportId = reportRepository.save(report).getId();
     jdbcTemplate.update("INSERT INTO ai.report_drafts (report_id, draft) VALUES (?, ?::jsonb)",

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 
+import com.soma.backend.domain.report.dto.PendingReviewListResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.HoldReason;
 import com.soma.backend.domain.report.entity.Report;
@@ -67,13 +69,13 @@ class PendingReviewRowsExecutionTest {
   @Test
   @DisplayName("보류·내 SENT·COUNSELING 검수는 목록과 건수에서 함께 빠지고, REJECTED·타인 검수·풀 밖 상태는 기준대로")
   void listAndCountShareMyQueueCondition() {
-    UUID inspection = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "RW-1");
-    UUID adoption = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "RW-2");
-    UUID held = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "RW-3");
-    UUID mySent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "RW-4");
-    UUID myRejected = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "RW-5");
-    UUID othersSent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "RW-6");
-    saveReport(ReportStatus.COUNSELING, AccidentType.OTHER, "RW-7"); // 풀 밖 — 제외
+    UUID inspection = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
+    UUID adoption = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    UUID held = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
+    UUID mySent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    UUID myRejected = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    UUID othersSent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    saveReport(ReportStatus.COUNSELING, AccidentType.OTHER); // 풀 밖 — 제외
     entityManager.persist(ReportHold.create(held, adjuster, HoldReason.SCHEDULE_CONFLICT, null));
     entityManager.persist(ReportReview.create(mySent, adjuster));
     persistReview(myRejected, adjuster, ReviewStatus.REJECTED);
@@ -89,9 +91,9 @@ class PendingReviewRowsExecutionTest {
   @Test
   @DisplayName("status·accidentType 필터 조합마다 건수가 목록 개수와 같다")
   void countMatchesListPerFilter() {
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC, "RF-1");
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE, "RF-2");
-    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.TRAFFIC, "RF-3");
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC);
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE);
+    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.TRAFFIC);
     flushAndClear();
 
     assertSameSize(null, null, 3);
@@ -104,8 +106,8 @@ class PendingReviewRowsExecutionTest {
   @Test
   @DisplayName("전문분야 매칭 유형이 상단에 오고, 정렬 인자(specialtyTypes)는 건수에 영향이 없다")
   void specialtySortDoesNotAffectCount() {
-    UUID fire = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE, "RS-1");
-    UUID traffic = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC, "RS-2");
+    UUID fire = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE);
+    UUID traffic = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC);
     flushAndClear();
 
     List<UUID> sorted = reportRepository.findPendingReviewRows(
@@ -122,13 +124,13 @@ class PendingReviewRowsExecutionTest {
     LocalDateTime t1 = LocalDateTime.of(2026, 10, 1, 10, 0);
     LocalDateTime t2 = t1.plusHours(1);
     List<UUID> all = new ArrayList<>();
-    all.add(saveReportAt(AccidentType.FIRE, "RP-1", t1));
-    all.add(saveReportAt(AccidentType.FIRE, "RP-2", t2));
-    all.add(saveReportAt(AccidentType.FIRE, "RP-3", t2));
-    all.add(saveReportAt(AccidentType.TRAFFIC, "RP-4", t2));
-    all.add(saveReportAt(AccidentType.TRAFFIC, "RP-5", t2));
-    all.add(saveReportAt(AccidentType.OTHER, "RP-6", t2));
-    all.add(saveReportAt(AccidentType.TRAFFIC, "RP-7", t1));
+    all.add(saveReportAt(AccidentType.FIRE, t1));
+    all.add(saveReportAt(AccidentType.FIRE, t2));
+    all.add(saveReportAt(AccidentType.FIRE, t2));
+    all.add(saveReportAt(AccidentType.TRAFFIC, t2));
+    all.add(saveReportAt(AccidentType.TRAFFIC, t2));
+    all.add(saveReportAt(AccidentType.OTHER, t2));
+    all.add(saveReportAt(AccidentType.TRAFFIC, t1));
     flushAndClear();
 
     List<PendingReviewRow> collected = new ArrayList<>();
@@ -167,13 +169,27 @@ class PendingReviewRowsExecutionTest {
   @Test
   @DisplayName("ID 단계가 0건이면(마지막 페이지 너머·조건 불일치) 상세 조회 없이 빈 목록")
   void emptyIdsReturnEmptyList() {
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE, "RE-1");
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE);
     flushAndClear();
 
     assertThat(reportRepository.findPendingReviewRows(
         null, null, region, adjuster, Set.of(), PageRequest.of(1, 50))).isEmpty();
     assertThat(reportRepository.findPendingReviewRows(
         null, AccidentType.TRAFFIC, region, adjuster, Set.of(), FIRST_PAGE)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("검수대기 아이템의 case_id는 리포트 생성일 + 리포트 ID로 만든다(#413)")
+  void caseIdIsDerivedFromReportCreatedAtAndId() {
+    UUID reportId = saveReportAt(AccidentType.FIRE, LocalDateTime.of(2026, 10, 1, 10, 0));
+    flushAndClear();
+
+    PendingReviewRow row = reportRepository.findPendingReviewRows(
+        null, null, region, adjuster, Set.of(), FIRST_PAGE).get(0);
+
+    assertThat(row.reportId()).isEqualTo(reportId);
+    assertThat(PendingReviewListResponse.Item.from(row, null).caseId())
+        .isEqualTo("20261001-" + reportId.toString().substring(0, 8).toUpperCase(Locale.ROOT));
   }
 
   private void assertSameSize(ReportStatus status, AccidentType accidentType, int expected) {
@@ -187,15 +203,15 @@ class PendingReviewRowsExecutionTest {
         .stream().map(PendingReviewRow::reportId).toList();
   }
 
-  private UUID saveReport(ReportStatus status, AccidentType accidentType, String caseNo) {
-    Report report = Report.createPending(customerId, null, null, accidentType, null, "질문", caseNo + "-" + region);
+  private UUID saveReport(ReportStatus status, AccidentType accidentType) {
+    Report report = Report.createPending(customerId, null, null, accidentType, null, "질문");
     ReflectionTestUtils.setField(report, "status", status);
     return reportRepository.save(report).getId();
   }
 
   /** created_at은 감사 컬럼(updatable=false)이라 flush 후 네이티브 UPDATE로 동률·순서를 고정한다(테스트 전용). */
-  private UUID saveReportAt(AccidentType accidentType, String caseNo, LocalDateTime createdAt) {
-    UUID id = saveReport(ReportStatus.AWAITING_INSPECTION, accidentType, caseNo);
+  private UUID saveReportAt(AccidentType accidentType, LocalDateTime createdAt) {
+    UUID id = saveReport(ReportStatus.AWAITING_INSPECTION, accidentType);
     entityManager.flush();
     entityManager.createNativeQuery("UPDATE reports SET created_at = :createdAt WHERE id = :id")
         .setParameter("createdAt", createdAt)

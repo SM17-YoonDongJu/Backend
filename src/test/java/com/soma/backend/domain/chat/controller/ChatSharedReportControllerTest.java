@@ -98,7 +98,7 @@ class ChatSharedReportControllerTest {
     SharedReportResponse.Issue issue = new SharedReportResponse.Issue(
         issueId, reviewIssueId, "장해등급 과소", "인정 의견", "설명", 3_000_000, "ACCEPTED", List.of("교통"));
     SharedReportResponse response = new SharedReportResponse(
-        chatRoomId, reportId, proposalId, "20260520-017", "traffic", "교통사고 후유장해",
+        chatRoomId, reportId, proposalId, "20260520-3F2B8C1E", "traffic", "교통사고 후유장해",
         "COUNSELING", "SENT",
         LocalDateTime.of(2026, 5, 20, 9, 0), LocalDateTime.of(2026, 5, 22, 10, 0),
         "검수 요약 인용문", adjuster, estimate, 5_000_000, List.of(issue), 1,
@@ -112,7 +112,7 @@ class ChatSharedReportControllerTest {
         .andExpect(jsonPath("$.data.chat_room_id").value(chatRoomId.toString()))
         .andExpect(jsonPath("$.data.report_id").value(reportId.toString()))
         .andExpect(jsonPath("$.data.proposal_id").value(proposalId.toString()))
-        .andExpect(jsonPath("$.data.case_no").value("20260520-017"))
+        .andExpect(jsonPath("$.data.case_no").value("20260520-3F2B8C1E"))
         .andExpect(jsonPath("$.data.accident_type").value("traffic"))
         .andExpect(jsonPath("$.data.title").value("교통사고 후유장해"))
         .andExpect(jsonPath("$.data.report_status").value("COUNSELING"))

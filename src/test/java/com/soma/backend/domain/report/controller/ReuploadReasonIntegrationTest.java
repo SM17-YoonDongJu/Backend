@@ -103,7 +103,7 @@ class ReuploadReasonIntegrationTest {
   /** AI 워커가 원시 SQL로 세팅하는 종료 상태를 같은 값으로 만든다(전이표를 거치지 않는 진입). */
   private UUID saveReport(String status) {
     UUID reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY,
-        null, "질문", "RRI-" + UUID.randomUUID().toString().substring(0, 12))).getId();
+        null, "질문")).getId();
     createdReportIds.add(reportId);
     jdbcTemplate.update("UPDATE reports SET status = ? WHERE id = ?", status, reportId);
     return reportId;

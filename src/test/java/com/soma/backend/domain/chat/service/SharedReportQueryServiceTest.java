@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -97,7 +98,9 @@ class SharedReportQueryServiceTest {
     assertThat(response.chatRoomId()).isEqualTo(chatRoomId);
     assertThat(response.reportId()).isEqualTo(reportId);
     assertThat(response.proposalId()).isEqualTo(reviewId);
-    assertThat(response.caseNo()).isEqualTo("20260520-017");
+    // 사건번호는 저장값이 아니라 리포트 생성일 + 리포트 ID 앞 8자리 대문자다(#413)
+    assertThat(response.caseNo())
+        .isEqualTo("20260519-" + reportId.toString().substring(0, 8).toUpperCase(Locale.ROOT));
     assertThat(response.accidentType()).isEqualTo("traffic");
     assertThat(response.title()).isEqualTo("교통사고 후유장해");
     assertThat(response.reportStatus()).isEqualTo("COUNSELING");
@@ -301,7 +304,7 @@ class SharedReportQueryServiceTest {
   private Report report() {
     Report report = BeanUtils.instantiateClass(Report.class);
     ReflectionTestUtils.setField(report, "id", reportId);
-    ReflectionTestUtils.setField(report, "caseNo", "20260520-017");
+    ReflectionTestUtils.setField(report, "createdAt", LocalDateTime.of(2026, 5, 19, 14, 0));
     ReflectionTestUtils.setField(report, "title", "교통사고 후유장해");
     ReflectionTestUtils.setField(report, "accidentType", AccidentType.TRAFFIC);
     ReflectionTestUtils.setField(report, "status", ReportStatus.COUNSELING);

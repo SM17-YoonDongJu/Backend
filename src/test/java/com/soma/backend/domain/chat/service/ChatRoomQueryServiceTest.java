@@ -51,6 +51,8 @@ import com.soma.backend.infra.s3.S3ObjectStorage;
 @ExtendWith(MockitoExtension.class)
 class ChatRoomQueryServiceTest {
 
+  private static final UUID REPORT_ID = UUID.fromString("3f2b8c1e-5a6d-4e7f-8a9b-0c1d2e3f4a5b");
+
   @Mock
   private ChatRoomRepository chatRoomRepository;
 
@@ -65,9 +67,10 @@ class ChatRoomQueryServiceTest {
   void listMyRooms_meIsUser_counterpartIsAdjuster() {
     UUID me = UUID.randomUUID();
     UUID adjusterId = UUID.randomUUID();
+    LocalDateTime reportCreatedAt = LocalDateTime.of(2026, 5, 20, 8, 0);
     ChatRoomListRow row = new ChatRoomListRow(
-        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), ChatRoomStatus.ACTIVE, ReviewStatus.SENT,
-        "20260520-017", AccidentType.TRAFFIC, me, adjusterId, "고객닉네임", "사정사닉네임", "고객아바타", "사정사아바타",
+        UUID.randomUUID(), REPORT_ID, UUID.randomUUID(), ChatRoomStatus.ACTIVE, ReviewStatus.SENT,
+        reportCreatedAt, AccidentType.TRAFFIC, me, adjusterId, "고객닉네임", "사정사닉네임", "고객아바타", "사정사아바타",
         "마지막 메시지", LocalDateTime.now(), 3L, null);
     given(chatRoomRepository.findMyRoomRows(me, null, 21)).willReturn(List.of(row));
     given(s3ObjectStorage.presignedGetUrl("사정사아바타")).willReturn("사정사아바타");
@@ -78,7 +81,8 @@ class ChatRoomQueryServiceTest {
     assertThat(summary.counterpart().userId()).isEqualTo(adjusterId);
     assertThat(summary.counterpart().name()).isEqualTo("사정사닉네임");
     assertThat(summary.counterpart().avatarUrl()).isEqualTo("사정사아바타");
-    assertThat(summary.caseNo()).isEqualTo("20260520-017");
+    // 사건번호는 리포트 생성일 + 리포트 ID 앞 8자리 대문자로 만든다(#413)
+    assertThat(summary.caseNo()).isEqualTo("20260520-3F2B8C1E");
     assertThat(summary.reportTypeLabel()).isEqualTo(AccidentType.TRAFFIC);
     assertThat(summary.unreadCount()).isEqualTo(3L);
   }
@@ -128,6 +132,7 @@ class ChatRoomQueryServiceTest {
     assertThat(summary.reportId()).isNull();
     assertThat(summary.proposalId()).isNull();
     assertThat(summary.matchStatus()).isNull();
+    assertThat(summary.caseNo()).isNull();
   }
 
   @Test
@@ -137,9 +142,11 @@ class ChatRoomQueryServiceTest {
     UUID chatRoomId = UUID.randomUUID();
     UUID adjusterId = UUID.randomUUID();
     LocalDateTime createdAt = LocalDateTime.of(2026, 5, 20, 9, 0);
+    // 리포트는 방보다 이틀 먼저 만들어졌다 — case_no 날짜가 방이 아니라 리포트 생성일을 따르는지 본다(#413).
+    LocalDateTime reportCreatedAt = LocalDateTime.of(2026, 5, 18, 14, 0);
     ChatRoomListRow row = new ChatRoomListRow(
-        chatRoomId, UUID.randomUUID(), UUID.randomUUID(), ChatRoomStatus.ACTIVE, ReviewStatus.SENT,
-        "20260520-017", AccidentType.TRAFFIC, me, adjusterId, "고객닉네임", "사정사닉네임", "고객아바타", "사정사아바타",
+        chatRoomId, REPORT_ID, UUID.randomUUID(), ChatRoomStatus.ACTIVE, ReviewStatus.SENT,
+        reportCreatedAt, AccidentType.TRAFFIC, me, adjusterId, "고객닉네임", "사정사닉네임", "고객아바타", "사정사아바타",
         "마지막 메시지", LocalDateTime.now(), 1L, createdAt);
     given(chatRoomRepository.findMyRoomRow(me, chatRoomId)).willReturn(Optional.of(row));
 
@@ -151,6 +158,7 @@ class ChatRoomQueryServiceTest {
     assertThat(detail.roomStatus()).isEqualTo(ChatRoomStatus.ACTIVE);
     assertThat(detail.matchStatus()).isEqualTo(ReviewStatus.SENT);
     assertThat(detail.reportTypeLabel()).isEqualTo(AccidentType.TRAFFIC);
+    assertThat(detail.caseNo()).isEqualTo("20260518-3F2B8C1E");
     assertThat(detail.createdAt()).isEqualTo(createdAt);
   }
 

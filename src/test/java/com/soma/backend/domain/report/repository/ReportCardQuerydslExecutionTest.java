@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 
+import com.soma.backend.domain.report.dto.ReportCardListResponse;
 import com.soma.backend.domain.report.entity.AccidentType;
 import com.soma.backend.domain.report.entity.Report;
 import com.soma.backend.domain.report.entity.ReportReview;
@@ -57,11 +59,11 @@ class ReportCardQuerydslExecutionTest {
   void includesReviewlessReportsWithinOwnerScope() {
     UUID userA = UUID.randomUUID();
     UUID userB = UUID.randomUUID();
-    UUID a1 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A1");
+    UUID a1 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     saveReview(a1, saveUser("사정1"), ReviewStatus.SENT);
     saveReview(a1, saveUser("사정2"), ReviewStatus.COUNSELING);
-    UUID a2 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-A2"); // 리뷰 없음 → 1행
-    UUID b1 = saveReport(userB, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "OS-B1");
+    UUID a2 = saveReport(userA, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER); // 리뷰 없음 → 1행
+    UUID b1 = saveReport(userB, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     saveReview(b1, saveUser("사정3"), ReviewStatus.SENT);
     flushAndClear();
 
@@ -79,7 +81,7 @@ class ReportCardQuerydslExecutionTest {
   @DisplayName("무리뷰 리포트 단독 — 카드 1행, reviewedAt·adjusterNickname은 null이고 proposalCount는 0")
   void reviewlessReportBecomesSingleEmptyCard() {
     UUID userId = UUID.randomUUID();
-    UUID reportId = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC, "NR-1");
+    UUID reportId = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC);
     setReportExtras(reportId, 1_000_000, 2_000_000, null, null);
     flushAndClear();
 
@@ -91,7 +93,6 @@ class ReportCardQuerydslExecutionTest {
     assertThat(row.reportId()).isEqualTo(reportId);
     assertThat(row.status()).isEqualTo(ReportStatus.AWAITING_INSPECTION);
     assertThat(row.accidentType()).isEqualTo(AccidentType.TRAFFIC);
-    assertThat(row.caseNo()).isEqualTo("NR-1");
     assertThat(row.claimedMinAmount()).isEqualTo(1_000_000);
     assertThat(row.claimedMaxAmount()).isEqualTo(2_000_000);
     assertThat(row.reviewedAt()).isNull();
@@ -104,9 +105,9 @@ class ReportCardQuerydslExecutionTest {
   void reviewlessRowSortsLastOnCreatedAtTie() {
     UUID userId = UUID.randomUUID();
     LocalDateTime tie = LocalDateTime.of(2026, 7, 5, 13, 0);
-    UUID reviewed = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "NL-1");
+    UUID reviewed = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     saveReview(reviewed, saveUser("사정1"), ReviewStatus.SENT);
-    UUID reviewless = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "NL-2");
+    UUID reviewless = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     entityManager.flush();
     overrideCreatedAt(reviewed, tie);
     overrideCreatedAt(reviewless, tie);
@@ -122,10 +123,10 @@ class ReportCardQuerydslExecutionTest {
   @DisplayName("페이지네이션 정합 — total은 무리뷰 1행까지 포함한 카드 행 수와 일치한다")
   void totalMatchesCardRowCountIncludingReviewlessReports() {
     UUID userId = UUID.randomUUID();
-    UUID withReviews = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "CT-1");
+    UUID withReviews = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     saveReview(withReviews, saveUser("사정1"), ReviewStatus.SENT);
     saveReview(withReviews, saveUser("사정2"), ReviewStatus.REJECTED);
-    saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "CT-2"); // 무리뷰 → 1행
+    saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER); // 무리뷰 → 1행
     flushAndClear();
 
     Page<ReportCardRow> all = reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10));
@@ -143,8 +144,8 @@ class ReportCardQuerydslExecutionTest {
   @DisplayName("status 필터 × 무리뷰 — 상태가 맞으면 리뷰가 없어도 카드로 남는다")
   void statusFilterKeepsReviewlessReports() {
     UUID userId = UUID.randomUUID();
-    UUID awaiting = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "SN-1"); // 무리뷰
-    UUID counseling = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER, "SN-2");
+    UUID awaiting = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER); // 무리뷰
+    UUID counseling = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER);
     saveReview(counseling, saveUser("사정1"), ReviewStatus.COUNSELING);
     flushAndClear();
 
@@ -161,11 +162,11 @@ class ReportCardQuerydslExecutionTest {
   @DisplayName("status 필터 — 지정 리포트 상태의 리뷰만, 필터 없으면 전 상태")
   void filtersByReportStatus() {
     UUID userId = UUID.randomUUID();
-    UUID r1 = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "SF-1");
+    UUID r1 = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     saveReview(r1, saveUser("a"), ReviewStatus.SENT);
-    UUID r2 = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER, "SF-2");
+    UUID r2 = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER);
     saveReview(r2, saveUser("b"), ReviewStatus.SENT);
-    UUID r3 = saveReport(userId, ReportStatus.CLOSED, AccidentType.OTHER, "SF-3");
+    UUID r3 = saveReport(userId, ReportStatus.CLOSED, AccidentType.OTHER);
     saveReview(r3, saveUser("c"), ReviewStatus.ACCEPTED);
     flushAndClear();
 
@@ -182,7 +183,7 @@ class ReportCardQuerydslExecutionTest {
   @DisplayName("리뷰별·리포트별 필드 — 모든 리뷰(REJECTED 포함)가 행이 되고 리포트값·리뷰값이 맞게 채워진다")
   void mapsReviewAndReportFields() {
     UUID userId = UUID.randomUUID();
-    UUID reportId = saveReport(userId, ReportStatus.CLOSED, AccidentType.TRAFFIC, "AC-1");
+    UUID reportId = saveReport(userId, ReportStatus.CLOSED, AccidentType.TRAFFIC);
     setReportExtras(reportId, 1_000_000, 2_000_000, 8_500_000, "후유장해");
     saveReview(reportId, saveUser("김사정"), ReviewStatus.ACCEPTED);
     saveReview(reportId, saveUser("이사정"), ReviewStatus.SENT);
@@ -196,7 +197,6 @@ class ReportCardQuerydslExecutionTest {
       assertThat(row.reportId()).isEqualTo(reportId);
       assertThat(row.status()).isEqualTo(ReportStatus.CLOSED);
       assertThat(row.accidentType()).isEqualTo(AccidentType.TRAFFIC);
-      assertThat(row.caseNo()).isEqualTo("AC-1");
       assertThat(row.claimedMinAmount()).isEqualTo(1_000_000);
       assertThat(row.claimedMaxAmount()).isEqualTo(2_000_000);
       assertThat(row.proposalCount()).isEqualTo(2L); // ACCEPTED + SENT (REJECTED 제외)
@@ -215,7 +215,7 @@ class ReportCardQuerydslExecutionTest {
     List<UUID> ids = new ArrayList<>();
     LocalDateTime base = LocalDateTime.of(2026, 7, 1, 9, 0);
     for (int idx = 0; idx < 5; idx++) {
-      UUID reportId = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "PG-" + idx);
+      UUID reportId = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
       saveReview(reportId, saveUser("adj-" + idx), ReviewStatus.SENT);
       ids.add(reportId);
     }
@@ -241,15 +241,15 @@ class ReportCardQuerydslExecutionTest {
   @DisplayName("findReportsWithProposals — REJECTED 제외 리뷰만 per-review로, 전부 REJECTED·무리뷰·타인은 제외")
   void findReportsWithProposalsExcludesRejected() {
     UUID userId = UUID.randomUUID();
-    UUID r1 = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER, "RP-1");
+    UUID r1 = saveReport(userId, ReportStatus.COUNSELING, AccidentType.OTHER);
     saveReview(r1, saveUser("사정1"), ReviewStatus.SENT);
     saveReview(r1, saveUser("사정2"), ReviewStatus.REJECTED); // 제외
-    UUID r2 = saveReport(userId, ReportStatus.CLOSED, AccidentType.OTHER, "RP-2");
+    UUID r2 = saveReport(userId, ReportStatus.CLOSED, AccidentType.OTHER);
     saveReview(r2, saveUser("사정3"), ReviewStatus.ACCEPTED);
-    UUID r3 = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "RP-3");
+    UUID r3 = saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     saveReview(r3, saveUser("사정4"), ReviewStatus.REJECTED); // 전부 REJECTED → 행 없음
-    saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "RP-4"); // 무리뷰 → 행 없음
-    UUID other = saveReport(UUID.randomUUID(), ReportStatus.COUNSELING, AccidentType.OTHER, "RP-5");
+    saveReport(userId, ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER); // 무리뷰 → 행 없음
+    UUID other = saveReport(UUID.randomUUID(), ReportStatus.COUNSELING, AccidentType.OTHER);
     saveReview(other, saveUser("사정5"), ReviewStatus.SENT); // 타인 → 제외
     flushAndClear();
 
@@ -261,10 +261,31 @@ class ReportCardQuerydslExecutionTest {
         .containsExactlyInAnyOrder("사정1", "사정3");
   }
 
+  @Test
+  @DisplayName("카드 report_no는 리포트 생성일 + 리포트 ID로 만든다 — 내 리포트·받은 제안 모두 리뷰 시각과 무관하다(#413)")
+  void reportNoIsDerivedFromReportCreatedAtAndId() {
+    UUID userId = UUID.randomUUID();
+    UUID reportId = saveReport(userId, ReportStatus.COUNSELING, AccidentType.TRAFFIC);
+    saveReview(reportId, saveUser("사정1"), ReviewStatus.SENT);
+    entityManager.flush();
+    // 리뷰는 지금 시각으로 남기고 리포트만 다른 날로 고정해, 두 created_at이 섞이면 드러나게 한다.
+    overrideCreatedAt(reportId, LocalDateTime.of(2026, 3, 4, 10, 0));
+    flushAndClear();
+    String expected = "20260304-" + reportId.toString().substring(0, 8).toUpperCase(Locale.ROOT);
+
+    ReportCardRow myReportRow =
+        reportRepository.findUserReportCards(userId, null, PageRequest.of(0, 10)).getContent().get(0);
+    ReportCardRow proposalRow =
+        reportRepository.findReportsWithProposals(userId, PageRequest.of(0, 10)).getContent().get(0);
+
+    assertThat(ReportCardListResponse.Card.from(myReportRow, null).reportNo()).isEqualTo(expected);
+    assertThat(ReportCardListResponse.Card.from(proposalRow, null).reportNo()).isEqualTo(expected);
+  }
+
   // --- 시드 헬퍼 ---
 
-  private UUID saveReport(UUID userId, ReportStatus status, AccidentType accidentType, String caseNo) {
-    Report report = Report.createPending(userId, null, null, accidentType, null, "질문", caseNo);
+  private UUID saveReport(UUID userId, ReportStatus status, AccidentType accidentType) {
+    Report report = Report.createPending(userId, null, null, accidentType, null, "질문");
     ReflectionTestUtils.setField(report, "status", status);
     return reportRepository.save(report).getId();
   }

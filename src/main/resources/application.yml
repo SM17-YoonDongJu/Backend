@@ -215,13 +215,12 @@ management:
         # "얼마나 걸렸는지"는 안 보여서 추가.
         chat.ws.handshake.duration: true
         chat.ws.subscribe.duration: true
-        # POST /reports 쓰기 경로 구간(#306). 총 지연을 락 대기·저장·커밋으로 쪼개 보기 위한 것이라
-        # 평균이 아니라 꼬리(p95/p99)가 필요하다 — 병목은 평균이 아니라 꼬리에서 먼저 드러난다.
-        report.create.caseno: true
+        # POST /reports 쓰기 경로의 영속화 구간(#306). 평균이 아니라 꼬리(p95/p99)가 필요하다 — 병목은 평균이
+        # 아니라 꼬리에서 먼저 드러난다. 사건번호 발급(caseno)·발급~커밋 임계 구간(lock_hold) 타이머는 사건번호를
+        # 저장·발급하지 않게 되면서 없앴다(#413).
         report.create.persist: true
-        report.create.lock_hold: true
         # 커넥션 획득 대기. Boot가 기본 등록하지만 count/sum/max뿐이라 평균만 나왔다 — p95가 있어야
-        # "커넥션이 없어 기다린 것"과 "case_no 락에서 기다린 것"을 구분할 수 있다.
+        # 쓰기 지연이 "커넥션이 없어 기다린 것"인지 "영속화 자체가 느린 것"인지 구분할 수 있다.
         hikaricp.connections.acquire: true
         # 아웃박스 적재→SQS 발행 지연. 202 응답 이후 구간이라 http.server.requests에는 안 잡힌다.
         outbox.relay.latency: true

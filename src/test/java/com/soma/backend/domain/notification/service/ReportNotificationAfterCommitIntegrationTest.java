@@ -12,7 +12,6 @@ import static org.mockito.Mockito.verify;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -98,7 +97,7 @@ class ReportNotificationAfterCommitIntegrationTest {
     adjuster = userRepository.save(
         User.create("사정사", LocalDate.of(1985, 1, 1), "M", null, null, Role.CERTIFICATED_ADJUSTER, null));
     Report pending = Report.createPending(customer.getId(), null, null,
-        AccidentType.MEDICAL_INDEMNITY, null, "질문", "INT-" + UUID.randomUUID().toString().substring(0, 12));
+        AccidentType.MEDICAL_INDEMNITY, null, "질문");
     if (status != ReportStatus.AWAITING_INSPECTION) {
       ReflectionTestUtils.setField(pending, "status", status);
     }

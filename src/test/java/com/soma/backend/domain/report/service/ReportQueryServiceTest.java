@@ -73,11 +73,11 @@ class ReportQueryServiceTest {
 
   private static ReportCardRow cardRow(UUID reportId) {
     return new ReportCardRow(reportId, ReportStatus.AWAITING_INSPECTION, AccidentType.DISABILITY, null,
-        LocalDateTime.of(2026, 11, 16, 9, 0), "RQS-1", null, null, 0L, null, null, null, null);
+        LocalDateTime.of(2026, 11, 16, 9, 0), null, null, 0L, null, null, null, null);
   }
 
   private static CustomerReportDetailReader.Snapshot snapshot(UUID reportId, UUID ownerId) {
-    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "질문", "RQS-1");
+    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "질문");
     ReflectionTestUtils.setField(report, "id", reportId);
     CustomerReportDetailRow row = new CustomerReportDetailRow(null, null, null, null, null, null, null, null);
     return new CustomerReportDetailReader.Snapshot(report, List.of(), row, Map.of());

@@ -54,7 +54,7 @@ class CustomerReportDetailReaderTest {
   private ReportReviewRepository reportReviewRepository;
 
   private static Report report(UUID reportId, UUID ownerId) {
-    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "질문", "CRR-1");
+    Report report = Report.createPending(ownerId, null, null, AccidentType.DISABILITY, null, "질문");
     ReflectionTestUtils.setField(report, "id", reportId);
     return report;
   }

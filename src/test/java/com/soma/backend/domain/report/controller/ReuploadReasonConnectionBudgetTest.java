@@ -80,7 +80,7 @@ class ReuploadReasonConnectionBudgetTest {
     assertThat(dataSource.unwrap(HikariDataSource.class).getMaximumPoolSize()).isEqualTo(1);
     ownerId = UUID.randomUUID();
     reportId = reportRepository.save(Report.createPending(ownerId, null, null, AccidentType.MEDICAL_INDEMNITY, null,
-        "질문", "RCB-" + UUID.randomUUID().toString().substring(0, 12))).getId();
+        "질문")).getId();
     jdbcTemplate.update("UPDATE reports SET status = 'NEEDS_REUPLOAD' WHERE id = ?", reportId);
     jdbcTemplate.update("""
         INSERT INTO ai.claim_readiness (claim_id, report_id, doc_total, missing_doc_types, status, reupload_reason)

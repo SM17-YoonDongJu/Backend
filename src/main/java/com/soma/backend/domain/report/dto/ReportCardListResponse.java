@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import com.soma.backend.domain.report.entity.CaseNo;
 import com.soma.backend.domain.report.entity.ReportAnalysis;
 import com.soma.backend.domain.report.repository.ReportCardRow;
 
@@ -77,6 +78,12 @@ public record ReportCardListResponse(
               + "NEEDS_REUPLOAD는 재업로드 사유별로 문구가 다르다")
       String analysisFailureMessage) {
 
+    /**
+     * 조회 행을 카드로 바꾼다. {@code reportNo}(사건번호)는 저장값이 아니라 리포트 생성 시각과 ID로 만든다
+     * ({@link CaseNo}, #413).
+     *
+     * @param analysis 이 리포트의 분석 처리 상태. null이면 PROCESSING으로 내린다
+     */
     public static Card from(ReportCardRow row, ReportAnalysis analysis) {
       return new Card(
           row.reportId(),
@@ -84,7 +91,7 @@ public record ReportCardListResponse(
           row.accidentType() == null ? null : row.accidentType().getValue(),
           ReportResponseSupport.title(row.title()),
           row.createdAt(),
-          row.caseNo(),
+          CaseNo.of(row.createdAt(), row.reportId()),
           row.claimedMinAmount(),
           row.claimedMaxAmount(),
           row.proposalCount() == null ? 0 : row.proposalCount().intValue(),

@@ -421,7 +421,7 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 ### REPORTS (AI 초안 — 불변)
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| `case_no` | varchar(100) | 사람용 사건번호 `yyyyMMdd-NNN`(당일 시퀀스 발급) |
+| `case_no` | varchar(100), NULL 허용(V50) | **레거시 컬럼 — 운영 경로는 저장·발급·조회하지 않는다(#413).** 응답의 사건번호(`case_no`·`report_no`·`case_id`)는 리포트 `created_at`의 날짜 + 리포트 ID 앞 8자리 대문자로 응답할 때 만든다(`yyyyMMdd-XXXXXXXX`, 예 `20261119-3F2B8C1E`, `CaseNo`). 표시 전용이라 유일성을 보장하지 않으므로 조회 키·UNIQUE로 쓰지 않는다. 컬럼은 2차 삭제 전까지 dev k6 시드 표식(`K6-…`)으로만 쓰이고, UNIQUE는 유지된다(NULL끼리는 충돌하지 않음) |
 | `title` | varchar | 리포트 제목(nullable) |
 | `accident_type` | enum | `medical_indemnity, traffic, disability, cancer_diagnosis, fire, liability, other` (영문) |
 | `status` | enum | `AWAITING_INSPECTION`, `AWAITING_ADOPTION`, `COUNSELING`, `CLOSED`, `NOT_SELECTED`, `BLOCKED`(AI 워커가 원시 SQL로 직접 세팅, §3-1 참고), `NEEDS_REUPLOAD`(AI 워커가 원시 SQL로 직접 세팅, OCR 품질 미달, §3-1 참고). DB는 varchar(30) — CHECK 제약·PostgreSQL enum 없음, 값 목록은 Java enum(`ReportStatus`)에서만 강제된다 |
@@ -523,8 +523,8 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 | `doc_type` | enum | `LICENSE` / `REGISTRATION` (enum `DocumentType`) |
 | `status` | enum | `PENDING` / `APPROVED` / `RESUBMIT_REQUIRED` (enum `DocumentStatus`, 반려 시 재제출 요구) |
 
-### REPORT_CASE_SEQUENCES (사건번호 시퀀스 — V14)
-> `case_no`(yyyyMMdd-NNN)의 당일 시퀀스 카운터(`day` PK, `seq`). 동시 생성 경합을 막으려 DB 원자 카운터(ON CONFLICT)로만 증가시킨다.
+### REPORT_CASE_SEQUENCES (옛 사건번호 당일 카운터 — V14, 미사용)
+> **미사용 — 2차에서 DROP 예정(#413).** 예전 `case_no`(yyyyMMdd-NNN)의 당일 시퀀스 카운터(`day` PK, `seq`)였다. 랜덤 코드를 거쳐 전역 시퀀스 `report_case_seq`(V47)로 바뀌면서 이미 쓰지 않았고, #413부터는 사건번호를 발급하지 않아 `report_case_seq`도 쓰지 않는다. 롤링 업데이트·롤백 호환을 위해 1차에서는 테이블·시퀀스·`reports.case_no` 컬럼을 모두 남겨 두고, 2차에서 함께 지운다(k6 시드 표식 재설계 후).
 
 ---
 
@@ -608,6 +608,7 @@ NOTIFICATION_NOT_FOUND   // (404) 알림 없음
 
 | 날짜 | 변경 내용                                                                                                                                              | 사유 |
 |------|----------------------------------------------------------------------------------------------------------------------------------------------------|------|
+| 2026-11-19 | **사건번호 응답 시 파생(#413 1차)**: §14 REPORTS `case_no`를 레거시 컬럼으로 정정 — 앱은 저장·발급·조회하지 않고 응답의 사건번호를 리포트 `created_at` 날짜 + 리포트 ID 앞 8자리 대문자(`yyyyMMdd-XXXXXXXX`)로 만든다(표시 전용, 유일성 보장 안 함). 컬럼은 V50에서 NOT NULL만 풀고 남겨 dev k6 시드 표식으로 쓴다. §14 REPORT_CASE_SEQUENCES를 미사용·2차 DROP 예정으로 표기. | 사건번호를 생성일 + PK로 반환하기로 결정 — 컬럼·시퀀스 DROP은 롤링·롤백 호환 때문에 2차로 분리 |
 | 2026-11-14 | **재업로드 사유별 실패 사유·안내 문구 반영(#401)**: §3-1 실패 사유 항목의 "`NEEDS_REUPLOAD`의 `failure_reason`은 항상 null"을 정정 — NEEDS_REUPLOAD 사유는 별도 ACL `ReuploadReason`(`ai.claim_readiness.reupload_reason`, AI 013)이 번역하고 응답 사유 필드는 FAILED면 `AnalysisFailureReason`, NEEDS_REUPLOAD면 확인된 사유(`DOMAIN_MISMATCH`/`MISSING_REQUIRED_DOCUMENTS`)다. `ai.claim_readiness` 항목 신설(컬럼 한정 GRANT 4개·`ClaimReadinessView`·값→코드·문구 대응·일반 안내로 낮추는 경우·NEEDS_REUPLOAD 리포트에만 조회·폴링 포함 전부 degrade·`analysis.reupload_reason.degraded{cause}`). API 항목의 낡은 서술("`failed_documents`는 빈 배열 고정 — 후속 이슈") 정정과 사유 필드 non-null 조건·enum 금지 추가. 알림 항목에 NEEDS_REUPLOAD 푸시 본문의 사유별 문구(인앱 알림함 `body` 포함, data엔 사유 코드 없음) 추가. | AI#105(`claim_readiness.reupload_reason`) 백엔드 후속 |
 | 2026-11-12 | **AI 분석 근거 수치 조회 반영(#396)**: §3-1에 `ai.report_drafts`(`draft -> 'metrics'`만 읽기, `NO_DRAFT`/`LEGACY_REPORT`/`UNAVAILABLE`, `report.metrics.unavailable{cause}`) 1항목, §10 report 표에 `GET /reports/{reportId}/analysis-metrics` 추가. | AI#92(리포트 수치·confidence_level) 백엔드 후속 |
 | 2026-11-01 | **리포트 생성 실패 저널(`ai.report_job_failures`) 반영(#370, AI PR #75 후속)**: §3-1 판정 우선순위 5→6단계(OCR 저널 다음·PROCESSING 앞에 리포트 생성 저널 terminal → `FAILED`, 순서 자체가 AI contracts.md §4-1 계약). `ai.report_job_failures` 항목 신설(012, `ReportJobFailureView` — terminal·report_id 존재 행만 노출, `error_type` 미매핑, failure_class는 전부 `UNKNOWN`, 012 미적용 환경은 목록·상세·스윕 degrade + 폴링은 테이블 부재(42P01)일 때만 degrade, `analysis.journal.degraded{journal}` 카운터). "FAILED도 굳은 상태가 아니다"(회복 시 저널 삭제 → 조회 시점 파생, FAILED 알림 후 COMPLETED 허용) 명시. 확정 실패 알림 스윕이 두 저널을 함께 보고 멱등 가드 공유. §3 BLOCKED 의미 확장(리포트 생성 LLM 거절 포함, 사용자 문구 동일). 리포트 본문 마스킹 토큰(`[이름]`·`[전화번호]` 등) 안내 추가. | AI 레포 PR #75(Claude·Voyage 전환 + 실패 리포트 미저장·실패 저널) 백엔드 후속 작업 |

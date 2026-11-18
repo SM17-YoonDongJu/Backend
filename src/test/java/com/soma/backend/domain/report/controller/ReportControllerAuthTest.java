@@ -153,7 +153,7 @@ class ReportControllerAuthTest {
   void authenticatedListReturns200() throws Exception {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
         UUID.randomUUID(), "MATCHED", "traffic", "교통사고 리포트",
-        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-1",
+        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-3F2B8C1E",
         1_000_000, 2_000_000, 3,
         LocalDateTime.of(2026, 7, 27, 12, 0), "홍사정",
         8_500_000, "후유장해",
@@ -168,7 +168,7 @@ class ReportControllerAuthTest {
         .andExpect(jsonPath("$.data.list[0].report_id").value(card.reportId().toString()))
         .andExpect(jsonPath("$.data.list[0].status").value("MATCHED"))
         .andExpect(jsonPath("$.data.list[0].accident_type").value("traffic"))
-        .andExpect(jsonPath("$.data.list[0].report_no").value("20260727-1"))
+        .andExpect(jsonPath("$.data.list[0].report_no").value("20260727-3F2B8C1E"))
         .andExpect(jsonPath("$.data.list[0].claimed_min_amount").value(1_000_000))
         .andExpect(jsonPath("$.data.list[0].claimed_max_amount").value(2_000_000))
         .andExpect(jsonPath("$.data.list[0].proposal_count").value(3))
@@ -188,7 +188,7 @@ class ReportControllerAuthTest {
   void listSerializesReviewlessCardWithNullReviewFields() throws Exception {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
         UUID.randomUUID(), "AWAITING_INSPECTION", "traffic", "제목 없음",
-        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
+        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-9A0B1C2D",
         null, null, 0,
         null, null,
         null, null,
@@ -237,7 +237,7 @@ class ReportControllerAuthTest {
   void authenticatedReceivedProposalsReturns200() throws Exception {
     ReportCardListResponse.Card card = new ReportCardListResponse.Card(
         UUID.randomUUID(), "COUNSELING", "traffic", "교통사고 리포트",
-        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-2",
+        LocalDateTime.of(2026, 7, 27, 10, 0), "20260727-9A0B1C2D",
         1_000_000, 2_000_000, 1,
         LocalDateTime.of(2026, 7, 27, 12, 0), "김사정",
         null, "후유장해",
@@ -250,7 +250,7 @@ class ReportControllerAuthTest {
             .with(authenticatedAs(UUID.randomUUID())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("200"))
-        .andExpect(jsonPath("$.data.list[0].report_no").value("20260727-2"))
+        .andExpect(jsonPath("$.data.list[0].report_no").value("20260727-9A0B1C2D"))
         .andExpect(jsonPath("$.data.list[0].adjuster_nickname").value("김사정"))
         .andExpect(jsonPath("$.data.pagination.page").value(2));
 
@@ -280,7 +280,7 @@ class ReportControllerAuthTest {
         reportId, "MATCHED", "disability", "3주 입원 후 통원",
         12_000_000, 18_000_000, 8_500_000,
         List.of("상해후유장해"), List.of("일상생활배상책임"), List.of("대법원 2019다12345"),
-        List.of(issue), "후유장해 청구가 가능한가요?", adjusterId, "HIGH", "20260727-1",
+        List.of(issue), "후유장해 청구가 가능한가요?", adjusterId, "HIGH", "20260727-3F2B8C1E",
         "검수 의견입니다", LocalDateTime.of(2026, 7, 27, 12, 0), adjuster,
         "COMPLETED", null, null);
     given(reportQueryService.getReportDetail(any(), any(), any())).willReturn(response);
@@ -306,7 +306,7 @@ class ReportControllerAuthTest {
         .andExpect(jsonPath("$.data.question").value("후유장해 청구가 가능한가요?"))
         .andExpect(jsonPath("$.data.adjuster_id").value(adjusterId.toString()))
         .andExpect(jsonPath("$.data.confidence_level").value("HIGH"))
-        .andExpect(jsonPath("$.data.report_no").value("20260727-1"))
+        .andExpect(jsonPath("$.data.report_no").value("20260727-3F2B8C1E"))
         .andExpect(jsonPath("$.data.review_comment").value("검수 의견입니다"))
         .andExpect(jsonPath("$.data.reviewed_at").exists())
         .andExpect(jsonPath("$.data.adjuster.nickname").value("홍사정"))

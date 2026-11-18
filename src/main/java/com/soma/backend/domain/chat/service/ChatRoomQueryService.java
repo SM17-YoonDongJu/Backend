@@ -20,6 +20,7 @@ import com.soma.backend.domain.chat.dto.ChatRoomSummaryResponse;
 import com.soma.backend.domain.chat.repository.ChatRoomCursor;
 import com.soma.backend.domain.chat.repository.ChatRoomListRow;
 import com.soma.backend.domain.chat.repository.ChatRoomRepository;
+import com.soma.backend.domain.report.entity.CaseNo;
 import com.soma.backend.global.exception.BusinessException;
 import com.soma.backend.global.exception.ErrorCode;
 import com.soma.backend.infra.s3.S3ObjectStorage;
@@ -67,7 +68,7 @@ public class ChatRoomQueryService {
         row.reportReviewId(),
         row.status(),
         row.reviewStatus(),
-        row.caseNo(),
+        caseNo(row),
         row.accidentType(),
         resolveCounterpart(row, me),
         row.lastMessage(),
@@ -76,6 +77,7 @@ public class ChatRoomQueryService {
         row.createdAt());
   }
 
+  /** 채팅방 목록 row를 응답으로 바꾼다. 사건번호는 연결 리포트의 생성 시각과 ID로 만든다({@link #caseNo}). */
   private ChatRoomSummaryResponse toSummary(ChatRoomListRow row, UUID me) {
     return new ChatRoomSummaryResponse(
         row.chatRoomId(),
@@ -83,7 +85,7 @@ public class ChatRoomQueryService {
         row.reportReviewId(),
         row.status(),
         row.reviewStatus(),
-        row.caseNo(),
+        caseNo(row),
         row.accidentType(),
         resolveCounterpart(row, me),
         row.lastMessage(),
@@ -99,6 +101,14 @@ public class ChatRoomQueryService {
     String counterpartAvatarUrl = iAmUser ? row.adjusterAvatarUrl() : row.userAvatarUrl();
     return new ChatRoomSummaryResponse.Counterpart(
         counterpartId, counterpartName, s3ObjectStorage.presignedGetUrl(counterpartAvatarUrl));
+  }
+
+  /**
+   * 연결 리포트의 사건번호. 저장값이 아니라 리포트 생성 시각과 ID로 만든다(#413). 검색 방처럼 리포트가 없으면
+   * 둘 다 null이라 null이다. 방 생성 시각({@code createdAt})이 아니라 리포트 생성 시각을 쓴다.
+   */
+  private String caseNo(ChatRoomListRow row) {
+    return CaseNo.of(row.reportCreatedAt(), row.reportId());
   }
 
   private long unread(ChatRoomListRow row) {

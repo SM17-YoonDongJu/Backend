@@ -51,6 +51,11 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
   private final JPAQueryFactory queryFactory;
   private final EntityManager entityManager;
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>사건번호는 row에 싣지 않는다. DTO가 리포트 생성 시각과 리포트 ID로 만든다(#413).
+   */
   @Override
   public List<PendingReviewRow> findPendingReviewRows(
       ReportStatus status, AccidentType accidentType, String region, UUID adjusterId,
@@ -79,7 +84,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
 
     return queryFactory
         .select(Projections.constructor(PendingReviewRow.class,
-            rp.id, rp.caseNo, rp.title, rp.accidentType, us.region, rp.status,
+            rp.id, rp.title, rp.accidentType, us.region, rp.status,
             rp.claimedMinAmount, rp.claimedMaxAmount, rp.offeredAmount,
             JPAExpressions.select(ri.count()).from(ri).where(ri.reportId.eq(rp.id)),
             // 보류 건은 where에서 제외되므로 held는 항상 false다. FE 계약 유지를 위해 필드만 남긴다.
@@ -209,7 +214,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
 
     List<ReportCardRow> content = queryFactory
         .select(Projections.constructor(ReportCardRow.class,
-            rp.id, rp.status, rp.accidentType, rp.title, rp.createdAt, rp.caseNo,
+            rp.id, rp.status, rp.accidentType, rp.title, rp.createdAt,
             rp.claimedMinAmount, rp.claimedMaxAmount,
             // proposalCount = REJECTED 제외 리뷰 수(리포트 단위). 무리뷰 리포트는 0이 된다.
             JPAExpressions.select(sibling.count()).from(sibling)
@@ -264,7 +269,7 @@ public class ReportRepositoryImpl implements ReportRepositoryCustom {
 
     List<ReportCardRow> content = queryFactory
         .select(Projections.constructor(ReportCardRow.class,
-            rp.id, rp.status, rp.accidentType, rp.title, rp.createdAt, rp.caseNo,
+            rp.id, rp.status, rp.accidentType, rp.title, rp.createdAt,
             rp.claimedMinAmount, rp.claimedMaxAmount,
             // proposalCount = REJECTED 제외 리뷰 수(리포트 단위).
             JPAExpressions.select(sibling.count()).from(sibling)

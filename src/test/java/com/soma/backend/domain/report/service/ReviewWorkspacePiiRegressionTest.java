@@ -106,8 +106,7 @@ class ReviewWorkspacePiiRegressionTest {
         owner.getId(), productId, 1_000_000, LocalDate.of(2026, 1, 1),
         AccidentType.MEDICAL_INDEMNITY, details, "질문", "사고 경위입니다", ADDITIONAL_INFORMATION));
     Report report = reportRepository.save(Report.createPending(
-        owner.getId(), productId, claim.getId(), AccidentType.MEDICAL_INDEMNITY, null, "질문",
-        "PII-" + UUID.randomUUID().toString().substring(0, 8)));
+        owner.getId(), productId, claim.getId(), AccidentType.MEDICAL_INDEMNITY, null, "질문"));
     reportId = report.getId();
 
     entityManager.flush();

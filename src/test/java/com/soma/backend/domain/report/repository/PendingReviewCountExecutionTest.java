@@ -46,19 +46,19 @@ class PendingReviewCountExecutionTest {
   @Test
   @DisplayName("countPendingNotHeldBy — 검수대기 풀은 AWAITING_INSPECTION + AWAITING_ADOPTION (그 외 상태 제외)")
   void countPendingCountsBothPoolStatuses() {
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "PC-1");
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "PC-2");
-    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "PC-3");
-    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "PC-4");
-    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "PC-5");
-    saveReport(ReportStatus.COUNSELING, AccidentType.OTHER, "PC-6");   // 제외
-    saveReport(ReportStatus.CLOSED, AccidentType.OTHER, "PC-7");       // 제외
-    saveReport(ReportStatus.NOT_SELECTED, AccidentType.OTHER, "PC-8"); // 제외
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
+    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    saveReport(ReportStatus.COUNSELING, AccidentType.OTHER);   // 제외
+    saveReport(ReportStatus.CLOSED, AccidentType.OTHER);       // 제외
+    saveReport(ReportStatus.NOT_SELECTED, AccidentType.OTHER); // 제외
     // AI 워커가 원시 SQL로 세팅하는 종료 상태 둘. 사정사가 손댈 수 없는 리포트라 검수 풀에서 빠져야 한다
     // (design.md §10 E5). 특히 NEEDS_REUPLOAD는 AI 초안이 영영 안 생기므로, 풀에 남으면 사정사가 검수할
     // 내용이 없는 리포트를 계속 보게 된다.
-    saveReport(ReportStatus.BLOCKED, AccidentType.OTHER, "PC-9");        // 제외
-    saveReport(ReportStatus.NEEDS_REUPLOAD, AccidentType.OTHER, "PC-10"); // 제외
+    saveReport(ReportStatus.BLOCKED, AccidentType.OTHER);        // 제외
+    saveReport(ReportStatus.NEEDS_REUPLOAD, AccidentType.OTHER); // 제외
     flushAndClear();
 
     // 보류가 없으면 전역 풀 그대로 5건.
@@ -69,9 +69,9 @@ class PendingReviewCountExecutionTest {
   @DisplayName("countPendingNotHeldBy — 요청 사정사가 보류한 리포트는 검수대기 카운트에서 빠진다(보류 시 -1)")
   void countPendingExcludesHeldByRequestingAdjuster() {
     UUID adjuster = UUID.randomUUID();
-    UUID held = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-1");
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "HP-2");
-    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "HP-3");
+    UUID held = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
+    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
     entityManager.persist(ReportHold.create(held, adjuster, HoldReason.SCHEDULE_CONFLICT, null));
     flushAndClear();
 
@@ -84,9 +84,9 @@ class PendingReviewCountExecutionTest {
   @DisplayName("countPendingNotHeldBy — 본인이 검수 진행 중(SENT)인 리포트는 빠지고 거절(REJECTED)은 남는다")
   void countPendingExcludesMyInProgressReview() {
     UUID adjuster = UUID.randomUUID();
-    UUID sent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-1");
-    UUID rejected = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "IR-2");
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "IR-3");
+    UUID sent = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    UUID rejected = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
     entityManager.persist(ReportReview.create(sent, adjuster));   // 기본 status = SENT
     ReportReview rejectedReview = ReportReview.create(rejected, adjuster);
     ReflectionTestUtils.setField(rejectedReview, "status", ReviewStatus.REJECTED);
@@ -101,10 +101,10 @@ class PendingReviewCountExecutionTest {
   @Test
   @DisplayName("countPendingByAccidentTypeIn — 검수대기 풀(두 상태) 중 지정 사고유형만")
   void countPendingByAccidentTypeCountsBothPoolStatuses() {
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC, "AT-1");
-    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.TRAFFIC, "AT-2");
-    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE, "AT-3");   // 유형 불일치 제외
-    saveReport(ReportStatus.COUNSELING, AccidentType.TRAFFIC, "AT-4");         // 상태 제외
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.TRAFFIC);
+    saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.TRAFFIC);
+    saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.FIRE);   // 유형 불일치 제외
+    saveReport(ReportStatus.COUNSELING, AccidentType.TRAFFIC);         // 상태 제외
     flushAndClear();
 
     assertThat(reportRepository.countPendingByAccidentTypeInNotHeldBy(
@@ -114,8 +114,8 @@ class PendingReviewCountExecutionTest {
   @Test
   @DisplayName("countDueSoon — 검수 SLA 임박은 AWAITING_INSPECTION만 (검수 받은 AWAITING_ADOPTION 제외)")
   void countDueSoonCountsOnlyAwaitingInspection() {
-    UUID inspection = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER, "DS-1");
-    UUID adoption = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER, "DS-2");
+    UUID inspection = saveReport(ReportStatus.AWAITING_INSPECTION, AccidentType.OTHER);
+    UUID adoption = saveReport(ReportStatus.AWAITING_ADOPTION, AccidentType.OTHER);
     flushAndClear();
     LocalDateTime old = LocalDateTime.now().minusDays(10);
     overrideCreatedAt(inspection, old);
@@ -128,8 +128,8 @@ class PendingReviewCountExecutionTest {
 
   // --- 시드 헬퍼 ---
 
-  private UUID saveReport(ReportStatus status, AccidentType accidentType, String caseNo) {
-    Report report = Report.createPending(UUID.randomUUID(), null, null, accidentType, null, "질문", caseNo);
+  private UUID saveReport(ReportStatus status, AccidentType accidentType) {
+    Report report = Report.createPending(UUID.randomUUID(), null, null, accidentType, null, "질문");
     ReflectionTestUtils.setField(report, "status", status);
     return reportRepository.save(report).getId();
   }
