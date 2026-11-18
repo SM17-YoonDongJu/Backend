@@ -112,8 +112,13 @@ class ReviewedReportQueryServiceExecutionTest {
     // 9월 검수는 SENT·COUNSELING 각 1건이다. SENT 탭을 골라도 배지는 9월 전체 분포를 보여야 한다.
     assertThat(response.statusCounts()).containsExactly(
         entry("total", 2), entry("SENT", 1), entry("COUNSELING", 1), entry("REJECTED", 0), entry("ACCEPTED", 0));
-    // 목록과 총건수는 월 필터와 status 탭 필터를 둘 다 받는다.
+    // 목록과 총건수는 월 필터와 status 탭 필터를 둘 다 받는다. 본문이 있는 첫 페이지에서는 PageImpl이 총건수를
+    // 본문 크기로 다시 맞추므로, count 쿼리 값을 그대로 보려면 빈 2페이지도 확인해야 한다(아래).
     assertThat(response.totalElements()).isEqualTo(1L);
+    ReviewedReportListResponse emptySecondPage =
+        reviewedReportQueryService.getReviewedReports(adjusterId, "SENT", "2026-09", PageRequest.of(1, 20));
+    assertThat(emptySecondPage.items()).isEmpty();
+    assertThat(emptySecondPage.totalElements()).isEqualTo(1L);
     assertThat(response.items()).singleElement().satisfies(item -> {
       assertThat(item.reportId()).isEqualTo(sentReportId);
       assertThat(item.status()).isEqualTo("SENT");

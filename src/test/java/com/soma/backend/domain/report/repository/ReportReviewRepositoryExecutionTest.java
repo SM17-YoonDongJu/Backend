@@ -105,8 +105,10 @@ class ReportReviewRepositoryExecutionTest {
 
   /**
    * countByStatusGrouped 시드(#411) — 대상 사정사 6건과 다른 사정사 2건. 2026-09 필터 기준으로 월초 정각(SENT)과
-   * 월말 1초 전(REJECTED)은 포함, 월초 1초 전(ACCEPTED)과 익월초 정각(SENT)은 제외된다. 필터가 없으면 대상 사정사
-   * 6건이 모두 잡혀 SENT 3·COUNSELING 1·REJECTED 1·ACCEPTED 1이다. 다른 사정사 행은 어느 경우에도 섞이면 안 된다.
+   * 월말 1초 전(REJECTED)은 포함, 월초 1초 전(ACCEPTED)과 익월초 정각(ACCEPTED)은 제외된다. 필터가 없으면 대상 사정사
+   * 6건이 모두 잡혀 SENT 2·COUNSELING 1·REJECTED 1·ACCEPTED 2다. 다른 사정사 행은 어느 경우에도 섞이면 안 된다.
+   * 두 정각 경계 행(월초 SENT·익월초 ACCEPTED)은 상태를 다르게 둔다 — 같으면 두 경계가 함께 한 칸씩 밀려도(하한
+   * 배제·상한 포함) 한 행이 다른 행을 대신해 건수가 그대로라 회귀가 가려진다.
    */
   private void seedStatusCountFixture(UUID adjusterId) {
     UUID otherAdjusterId = UUID.randomUUID();
@@ -115,7 +117,7 @@ class ReportReviewRepositoryExecutionTest {
     seedReview(adjusterId, ReviewStatus.COUNSELING, LocalDateTime.of(2026, 9, 20, 10, 0, 0));
     seedReview(adjusterId, ReviewStatus.REJECTED, OCT_START.minusSeconds(1));
     seedReview(adjusterId, ReviewStatus.ACCEPTED, SEP_START.minusSeconds(1));
-    seedReview(adjusterId, ReviewStatus.SENT, OCT_START);
+    seedReview(adjusterId, ReviewStatus.ACCEPTED, OCT_START);
     seedReview(otherAdjusterId, ReviewStatus.SENT, LocalDateTime.of(2026, 9, 10, 10, 0, 0));
     seedReview(otherAdjusterId, ReviewStatus.ACCEPTED, LocalDateTime.of(2026, 9, 11, 10, 0, 0));
     entityManager.flush();
@@ -252,12 +254,12 @@ class ReportReviewRepositoryExecutionTest {
 
     List<StatusCount> counts = reportReviewRepository.countByStatusGrouped(adjusterId, null, null);
 
-    // 월 경계 밖 행(월초 1초 전 ACCEPTED·익월초 정각 SENT)도 세고, 다른 사정사 행(SENT·ACCEPTED)은 섞이지 않는다.
+    // 월 경계 밖 행(월초 1초 전 ACCEPTED·익월초 정각 ACCEPTED)도 세고, 다른 사정사 행(SENT·ACCEPTED)은 섞이지 않는다.
     assertThat(counts).containsExactlyInAnyOrder(
-        new StatusCount(ReviewStatus.SENT, 3L),
+        new StatusCount(ReviewStatus.SENT, 2L),
         new StatusCount(ReviewStatus.COUNSELING, 1L),
         new StatusCount(ReviewStatus.REJECTED, 1L),
-        new StatusCount(ReviewStatus.ACCEPTED, 1L));
+        new StatusCount(ReviewStatus.ACCEPTED, 2L));
   }
 
   @Test
@@ -268,8 +270,9 @@ class ReportReviewRepositoryExecutionTest {
 
     List<StatusCount> counts = reportReviewRepository.countByStatusGrouped(adjusterId, SEP_START, OCT_START);
 
-    // SENT 2 = 월초 정각(하한 포함) + 9/15. 익월초 정각 행은 상한 배타라 빠진다. 월초 1초 전 ACCEPTED만 있던
-    // ACCEPTED는 0건이라 0으로 오지 않고 행 자체가 없다(0 채움은 서비스 몫).
+    // SENT 2 = 월초 정각(하한 포함) + 9/15. ACCEPTED 두 건(월초 1초 전·익월초 정각)은 둘 다 범위 밖이라 0건이고,
+    // 0으로 오지 않고 행 자체가 없다(0 채움은 서비스 몫). 하한이 배타로 바뀌면 SENT가 1로, 상한이 포함으로 바뀌면
+    // ACCEPTED 1이 생겨 각각 따로 드러난다.
     assertThat(counts).containsExactlyInAnyOrder(
         new StatusCount(ReviewStatus.SENT, 2L),
         new StatusCount(ReviewStatus.COUNSELING, 1L),
