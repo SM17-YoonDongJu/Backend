@@ -36,11 +36,19 @@ import com.soma.backend.domain.user.repository.UserRepository;
  * <p>{@code countAcceptedByAdjusterId}(상담 완료 수 재집계 JPQL)는 모수가 "채택(ACCEPTED)"으로 한정되는지
  * (상담 도달 SENT·COUNSELING·REJECTED 제외), {@code findProposalRows}(제안 목록 QueryDSL)는 REJECTED 제외·
  * 최신순 정렬과 rating이 adjuster_profiles.rating_mean을 그대로 읽는지 확인한다.
+ *
+ * <p>{@code countByStatusGrouped}(필터 탭 배지용 상태별 건수)는 월 경계([월초, 익월초))·사정사 스코프·상태별 건수를
+ * 검증한다. 예전 JPQL의 {@code (:monthFrom IS NULL OR ...)}가 PostgreSQL에서 준비 단계부터 거부되던 결함(42P18)을
+ * 목 테스트가 놓쳤기 때문에, 월 필터가 없는 경우와 있는 경우를 모두 실DB로 실행한다(#411).
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
 class ReportReviewRepositoryExecutionTest {
+
+  /** countByStatusGrouped 월 필터 경계(#411) — 2026-09의 [monthFrom, monthTo). */
+  private static final LocalDateTime SEP_START = LocalDateTime.of(2026, 9, 1, 0, 0, 0);
+  private static final LocalDateTime OCT_START = LocalDateTime.of(2026, 10, 1, 0, 0, 0);
 
   @Autowired
   private ReportReviewRepository reportReviewRepository;
@@ -88,6 +96,30 @@ class ReportReviewRepositoryExecutionTest {
         .setParameter("id", proposal.getId())
         .executeUpdate();
     return proposal;
+  }
+
+  /** 검수 한 건을 시드한다. 운영의 (report_id, adjuster_id) UK와 어긋나지 않게 리포트는 매번 새로 만든다. */
+  private void seedReview(UUID adjusterId, ReviewStatus status, LocalDateTime createdAt) {
+    saveProposal(UUID.randomUUID(), adjusterId, "검수 의견", status, createdAt);
+  }
+
+  /**
+   * countByStatusGrouped 시드(#411) — 대상 사정사 6건과 다른 사정사 2건. 2026-09 필터 기준으로 월초 정각(SENT)과
+   * 월말 1초 전(REJECTED)은 포함, 월초 1초 전(ACCEPTED)과 익월초 정각(SENT)은 제외된다. 필터가 없으면 대상 사정사
+   * 6건이 모두 잡혀 SENT 3·COUNSELING 1·REJECTED 1·ACCEPTED 1이다. 다른 사정사 행은 어느 경우에도 섞이면 안 된다.
+   */
+  private void seedStatusCountFixture(UUID adjusterId) {
+    UUID otherAdjusterId = UUID.randomUUID();
+    seedReview(adjusterId, ReviewStatus.SENT, SEP_START);
+    seedReview(adjusterId, ReviewStatus.SENT, LocalDateTime.of(2026, 9, 15, 10, 0, 0));
+    seedReview(adjusterId, ReviewStatus.COUNSELING, LocalDateTime.of(2026, 9, 20, 10, 0, 0));
+    seedReview(adjusterId, ReviewStatus.REJECTED, OCT_START.minusSeconds(1));
+    seedReview(adjusterId, ReviewStatus.ACCEPTED, SEP_START.minusSeconds(1));
+    seedReview(adjusterId, ReviewStatus.SENT, OCT_START);
+    seedReview(otherAdjusterId, ReviewStatus.SENT, LocalDateTime.of(2026, 9, 10, 10, 0, 0));
+    seedReview(otherAdjusterId, ReviewStatus.ACCEPTED, LocalDateTime.of(2026, 9, 11, 10, 0, 0));
+    entityManager.flush();
+    entityManager.clear();
   }
 
   @Test
@@ -201,5 +233,60 @@ class ReportReviewRepositoryExecutionTest {
     assertThat(page.getTotalElements()).isEqualTo(3L);
     assertThat(page.getContent()).singleElement()
         .satisfies(row -> assertThat(row.adjusterId()).isEqualTo(first.getId()));
+  }
+
+  @Test
+  @DisplayName("countByStatusGrouped — 검수가 없는 사정사면 월 필터가 있든 없든 빈 목록이다")
+  void countByStatusGrouped_noRows_returnsEmpty() {
+    UUID adjusterId = UUID.randomUUID();
+
+    assertThat(reportReviewRepository.countByStatusGrouped(adjusterId, null, null)).isEmpty();
+    assertThat(reportReviewRepository.countByStatusGrouped(adjusterId, SEP_START, OCT_START)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("countByStatusGrouped — 월 필터가 없으면 그 사정사의 전 기간 검수를 상태별로 센다")
+  void countByStatusGrouped_withoutMonth_countsAllPeriods() {
+    UUID adjusterId = UUID.randomUUID();
+    seedStatusCountFixture(adjusterId);
+
+    List<StatusCount> counts = reportReviewRepository.countByStatusGrouped(adjusterId, null, null);
+
+    // 월 경계 밖 행(월초 1초 전 ACCEPTED·익월초 정각 SENT)도 세고, 다른 사정사 행(SENT·ACCEPTED)은 섞이지 않는다.
+    assertThat(counts).containsExactlyInAnyOrder(
+        new StatusCount(ReviewStatus.SENT, 3L),
+        new StatusCount(ReviewStatus.COUNSELING, 1L),
+        new StatusCount(ReviewStatus.REJECTED, 1L),
+        new StatusCount(ReviewStatus.ACCEPTED, 1L));
+  }
+
+  @Test
+  @DisplayName("countByStatusGrouped — 월 필터는 [월초, 익월초) 반개구간이고 건수 0인 상태는 결과에 없다")
+  void countByStatusGrouped_withMonth_countsHalfOpenRange() {
+    UUID adjusterId = UUID.randomUUID();
+    seedStatusCountFixture(adjusterId);
+
+    List<StatusCount> counts = reportReviewRepository.countByStatusGrouped(adjusterId, SEP_START, OCT_START);
+
+    // SENT 2 = 월초 정각(하한 포함) + 9/15. 익월초 정각 행은 상한 배타라 빠진다. 월초 1초 전 ACCEPTED만 있던
+    // ACCEPTED는 0건이라 0으로 오지 않고 행 자체가 없다(0 채움은 서비스 몫).
+    assertThat(counts).containsExactlyInAnyOrder(
+        new StatusCount(ReviewStatus.SENT, 2L),
+        new StatusCount(ReviewStatus.COUNSELING, 1L),
+        new StatusCount(ReviewStatus.REJECTED, 1L));
+  }
+
+  @Test
+  @DisplayName("findReviewedReportRows — 목록 총건수도 상태별 건수와 같은 [월초, 익월초) 범위로 센다")
+  void findReviewedReportRows_withMonth_totalMatchesStatusCountRange() {
+    UUID adjusterId = UUID.randomUUID();
+    seedStatusCountFixture(adjusterId);
+
+    Page<ReviewedReportRow> page =
+        reportReviewRepository.findReviewedReportRows(adjusterId, null, SEP_START, OCT_START, PageRequest.of(0, 20));
+
+    // 9월 범위의 4건(월초 정각 SENT·9/15 SENT·9/20 COUNSELING·월말 1초 전 REJECTED)만 센다. 이 시드에는 리포트·사용자
+    // 행이 없어 본문(inner join)은 비지만, 총건수는 rv만으로 세므로 월 필터가 빠지면 6건이 된다.
+    assertThat(page.getTotalElements()).isEqualTo(4L);
   }
 }
