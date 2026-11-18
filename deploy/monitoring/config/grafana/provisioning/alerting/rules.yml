@@ -37,18 +37,27 @@ groups:
             model:
               # brbs-etl(workload=etl taint) 노드가 최근 10분 내내 Ready가 아니면, 그 노드의 kubelet 타깃(node 라벨)과
               # 그 노드에 뜬 파드 타깃(node-exporter·dcgm-exporter 등, namespace·pod 라벨)을 뺀다.
+              # "10분 내내 Ready"는 10분 전에도 Ready였고 그 뒤 Ready 아닌 관측이 없다는 뜻이다. 기록이 10분이 안 되면
+              # 꺼진 것으로 본다. kube-state-metrics가 바뀌어 시계열이 둘이 돼도 노드별 최솟값으로 본다.
+              # taint는 effect별로 시계열이 따로라 노드당 하나로 줄인다(group_left는 오른쪽이 노드당 하나여야 한다).
               expr: |-
                 up
                 unless on (cluster, node) (
-                  kube_node_spec_taint{cluster="soma-k8s", key="workload", value="etl"}
-                  unless on (cluster, node) (min_over_time(kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"}[10m]) == 1)
+                  max by (cluster, node) (kube_node_spec_taint{cluster="soma-k8s", key="workload", value="etl"})
+                  unless on (cluster, node) (
+                    min by (cluster, node) (min_over_time(kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"}[10m])) == 1
+                    and on (cluster, node) min by (cluster, node) (kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"} offset 10m) == 1
+                  )
                 )
                 unless on (cluster, namespace, pod) (
                   kube_pod_info{cluster="soma-k8s"}
                   * on (cluster, node) group_left ()
                   (
-                    kube_node_spec_taint{cluster="soma-k8s", key="workload", value="etl"}
-                    unless on (cluster, node) (min_over_time(kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"}[10m]) == 1)
+                    max by (cluster, node) (kube_node_spec_taint{cluster="soma-k8s", key="workload", value="etl"})
+                    unless on (cluster, node) (
+                      min by (cluster, node) (min_over_time(kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"}[10m])) == 1
+                      and on (cluster, node) min by (cluster, node) (kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"} offset 10m) == 1
+                    )
                   )
                 )
               instant: true
@@ -1326,14 +1335,16 @@ groups:
             datasourceUid: prometheus
             model:
               # insurance-chunker·vllm은 nodeSelector workload=etl이라 brbs-etl에만 뜬다. 그 노드가 최근 10분 내내 Ready가
-              # 아니면 둘을 뺀다. 켠 뒤 10분이 지나면 다시 보므로(이 룰의 for 10m과 합쳐 켠 뒤 20분) 기동 실패는 그대로 잡힌다.
+              # 아니면 둘을 뺀다(판정은 TargetDown과 같다 — 10분 전에도 Ready였고 그 뒤 Ready 아닌 관측이 없어야 한다).
+              # 켠 뒤 10분이 지나면 다시 보므로(이 룰의 for 10m과 합쳐 켠 뒤 20분) 기동 실패는 그대로 잡힌다.
               # GPU 노드에 묶인 디플로이가 늘면 아래 deployment 정규식에 더한다.
               expr: |-
                 sum by (namespace, deployment) (kube_deployment_spec_replicas{cluster="soma-k8s"} - kube_deployment_status_replicas_available{cluster="soma-k8s"})
                 unless on (namespace, deployment) (
                   kube_deployment_spec_replicas{cluster="soma-k8s", namespace="default", deployment=~"insurance-chunker|vllm"}
                   unless on () (
-                    min_over_time(kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"}[10m]) == 1
+                    min by (cluster, node) (min_over_time(kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"}[10m])) == 1
+                    and on (cluster, node) min by (cluster, node) (kube_node_status_condition{cluster="soma-k8s", condition="Ready", status="true"} offset 10m) == 1
                     and on (cluster, node) kube_node_spec_taint{cluster="soma-k8s", key="workload", value="etl"}
                   )
                 )
